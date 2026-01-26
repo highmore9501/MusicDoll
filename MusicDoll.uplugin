@@ -1,0 +1,46 @@
+﻿{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0",
+  "FriendlyName": "MusicDoll",
+  "Description": "",
+  "Category": "Other",
+  "CreatedBy": "BigHippo78",
+  "CreatedByURL": "",
+  "DocsURL": "",
+  "MarketplaceURL": "",
+  "SupportURL": "",
+  "CanContainContent": true,
+  "IsBetaVersion": false,
+  "IsExperimentalVersion": false,
+  "Installed": false,
+  "Plugins": [
+    {
+      "Name": "EnhancedInput",
+      "Enabled": true
+    },
+    {
+      "Name": "ControlRig",
+      "Enabled": true
+    },
+    {
+      "Name": "ControlRigSpline",
+      "Enabled": true
+    }
+  ],
+  "Modules": [
+    {
+      "Name": "KeyRippleUnreal",
+      "Type": "Editor",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
+      "Name": "MusicDollUI",
+      "Type": "Editor",
+      "LoadingPhase": "PostEngineInit",
+      "BlacklistFolders": [ ".vshistory" ]
+    }
+
+  ]
+}
