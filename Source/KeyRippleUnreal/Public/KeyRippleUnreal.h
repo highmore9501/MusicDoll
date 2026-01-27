@@ -4,7 +4,7 @@
 #include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "InstrumentBase.h"  // 引入InstrumentBase头文件
+#include "InstrumentBase.h" 
 #include "KeyRippleUnreal.generated.h"
 
 UENUM(BlueprintType)
@@ -21,13 +21,13 @@ struct FSyncReport {
     GENERATED_BODY()
 
    public:
-    UPROPERTY()
+    UPROPERTY()   
     bool bSuccess = true;
 
-    UPROPERTY()
+    UPROPERTY()  
     TArray<FString> Warnings;
 
-    UPROPERTY()
+    UPROPERTY()   
     TArray<FString> Errors;
 
     void AddWarning(const FString& Message) { Warnings.Add(Message); }
@@ -49,6 +49,7 @@ struct FStringArray {
     GENERATED_BODY()
 
    public:
+    /** 字符串数组 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
     TArray<FString> Strings;
 
@@ -73,9 +74,11 @@ struct FRecorderTransform {
     GENERATED_BODY()
 
    public:
+    /** 位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform")
     FVector Location;
 
+    /** 旋转 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform")
     FQuat Rotation;
 
@@ -98,9 +101,9 @@ struct FRecorderTransform {
 struct FControlKeyframe {
     int32 FrameNumber;
     FVector Translation;
-    FQuat Rotation;  // 保持四元数形式直到最后插入时才转换
+    FQuat Rotation; 
 
-    // 辅助函数：将四元数转换为欧拉角（仅在需要时调用）
+    // 辅助函数：将四元数转换为欧拉角
     FRotator GetEulerRotation() const {
         return Rotation.Rotator();
     }
@@ -119,104 +122,129 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {  // 修改
    public:
     virtual void Tick(float DeltaTime) override;
 
+    /** 钢琴模型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "KeyRipple Configuration | SkeletalMesh")
+              Category = "Basic Properties")
     ASkeletalMeshActor* Piano;
 
+    /** 白键材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "KeyRipple Configuration | SkeletalMesh")
+              Category = "Basic Properties")
     class UMaterialInstance* KeyMatWhite;
 
+    /** 黑键材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "KeyRipple Configuration | SkeletalMesh")
+              Category = "Basic Properties")
     class UMaterialInstance* KeyMatBlack;
 
+    /** 单手手指数量 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 OneHandFingerNumber;
 
+    /** 最左侧位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 LeftestPosition;
 
+    /** 左侧位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 LeftPosition;
 
+    /** 中左位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 MiddleLeftPosition;
 
+    /** 中右位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 MiddleRightPosition;
 
+    /** 右侧位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 RightPosition;
 
+    /** 最右侧位置 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 RightestPosition;
 
+    /** 最小音键 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 MinKey;
 
+    /** 最大音键 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 MaxKey;
 
+    /** 单手跨度 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite,
               Category = "KeyRipple Configuration")
     int32 HandRange;
 
+    /** 左手按键类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple State")
     EKeyType LeftHandKeyType;
 
+    /** 左手位置类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple State")
     EPositionType LeftHandPositionType;
 
+    /** 右手按键类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple State")
     EKeyType RightHandKeyType;
 
+    /** 右手位置类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple State")
-    EPositionType RightHandPositionType;
+    EPositionType RightHandPositionType;    
 
-    // 注意：SkeletalMeshActor、IOFilePath 和 AnimationFilePath 现在从基类继承，不需要在这里重复声明
-    // FString KeyRippleFilePath 已重命名为 AnimationFilePath 并移至基类
-
+    /** 手指控制器 */
     UPROPERTY()
     TMap<FString, FString> FingerControllers;
 
+    /** 手指记录器 */
     UPROPERTY()
     TMap<FString, FStringArray> FingerRecorders;
 
+    /** 手部控制器 */
     UPROPERTY()
     TMap<FString, FString> HandControllers;
 
+    /** 手部记录器 */
     UPROPERTY()
     TMap<FString, FStringArray> HandRecorders;
 
+    /** 键盘关键位置点 */
     UPROPERTY()
     TMap<FString, FString> KeyBoardPositions;
 
+    /** 方向线 */
     UPROPERTY()
     TMap<FString, FString> Guidelines;
 
+    /** 人物朝向控制器 */
     UPROPERTY()
     TMap<FString, FString> TargetPoints;
 
+    /** 人物朝向记录器 */
     UPROPERTY()
     TMap<FString, FStringArray> TargetPointsRecorders;
 
+    /** 肩部控制器 */
     UPROPERTY()
     TMap<FString, FString> ShoulderControllers;
 
+    /** 肩部记录器 */
     UPROPERTY()
     TMap<FString, FStringArray> ShoulderRecorders;
 
-    UPROPERTY()
+    /** 手指极向量 */
+    UPROPERTY()   
     TMap<FString, FString> PolePoints;
 
     FString GetControllerName(int32 FingerNumber, EHandType HandType) const;
@@ -234,12 +262,15 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {  // 修改
 
     FString GetKeyTypeString(EKeyType KeyType) const;
 
+    /** 已创建的Actor对象 */
     UPROPERTY()
     TMap<FString, class AActor*> CreatedActors;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Data")
+    /** 记录器变换数据 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Data")    
     TMap<FString, FRecorderTransform> RecorderTransforms;
 
+    /** 生成的钢琴材质 */
     UPROPERTY()
     TMap<FString, class UMaterialInstanceConstant*> GeneratedPianoMaterials;
 };
