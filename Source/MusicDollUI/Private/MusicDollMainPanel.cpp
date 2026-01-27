@@ -1,11 +1,11 @@
-#include "MusicDollMainPanel.h"
+﻿#include "MusicDollMainPanel.h"
 
 #include "Animation/SkeletalMeshActor.h"
 #include "EngineUtils.h"
+#include "InstrumentBase.h"  // 包含InstrumentBase头文件
 #include "KeyRippleDisplayPanelInterface.h"
 #include "KeyRipplePropertiesPanel.h"
 #include "KeyRippleUnreal.h"
-#include "InstrumentBase.h" // 包含InstrumentBase头文件
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Layout/SBox.h"
@@ -26,8 +26,7 @@ void SActorSelectorPanel::Construct(const FArguments& InArgs) {
         [SNew(SVerticalBox) +
          SVerticalBox::Slot().AutoHeight().Padding(5.0f)
              [SNew(STextBlock)
-                  .Text(
-                      LOCTEXT("SelectActorLabel", "Select Instrument Actor:"))
+                  .Text(LOCTEXT("SelectActorLabel", "Select Instrument Actor:"))
                   .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFont"))] +
          SVerticalBox::Slot().AutoHeight().Padding(5.0f)
              [SNew(SHorizontalBox) +
@@ -183,7 +182,7 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
 
     // 检查选中的对象是否为AKeyRippleUnreal类型
     AKeyRippleUnreal* KeyRippleActor = Cast<AKeyRippleUnreal>(InActor);
-    
+
     if (KeyRippleActor) {
         // Create appropriate properties panel for this actor
         // Try KeyRipplePropertiesPanel first
@@ -200,3 +199,4 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         }
     }
 }
+#undef LOCTEXT_NAMESPACE
