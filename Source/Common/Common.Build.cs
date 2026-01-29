@@ -10,7 +10,9 @@ public class Common : ModuleRules
             "Core", 
             "CoreUObject", 
             "Engine", 
-            "AnimationCore"
+            "AnimationCore",
+            "RigVM",      // Rig Unit需依赖RigVM模块
+            "ControlRig"  // Control Rig模块
         });
 
         PrivateDependencyModuleNames.AddRange(new string[] {
