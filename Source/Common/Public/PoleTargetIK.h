@@ -20,8 +20,11 @@ struct COMMON_API FRigUnit_IKWithPole : public FRigUnit_CCDIKItemArray {
     UPROPERTY(meta = (Input))
     FVector SecondAxis = FVector(0.0f, 1.0f, 0.0f);  // 默认Y轴
 
+    UPROPERTY(meta = (Input))
+    bool bUseSecondaryAxisCorrection = true; // 新增布尔值，默认开启次轴修正
+
     FRigUnit_IKWithPole()
-        : PoleTarget(FVector::ZeroVector), SecondAxis(FVector::UpVector) {}
+        : PoleTarget(FVector::ZeroVector), SecondAxis(FVector::UpVector), bUseSecondaryAxisCorrection(true) {}
 
     RIGVM_METHOD()
     virtual void Execute() override;

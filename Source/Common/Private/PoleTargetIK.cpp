@@ -585,9 +585,11 @@ FRigUnit_IKWithPole_Execute() {
 
     ApplyPoleRotationToChain(CCDIKChain, TargetRotator, 1.0, 0);
 
-    ApplySecondaryAxisCorrection(CCDIKChain, RootPosition,
-                                 EffectorTransform.GetLocation(), PoleTarget,
-                                 PrimaryAxis, SecondAxis, Weight);
+    if (bUseSecondaryAxisCorrection) {
+        ApplySecondaryAxisCorrection(CCDIKChain, RootPosition,
+                                     EffectorTransform.GetLocation(), PoleTarget,
+                                     PrimaryAxis, SecondAxis, Weight);
+    }
 
     // 写回Hierarchy
     for (int32 i = 0; i < NumChainLinks; ++i) {
