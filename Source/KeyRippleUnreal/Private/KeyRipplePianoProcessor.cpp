@@ -377,6 +377,41 @@ void UKeyRipplePianoProcessor::GenerateMorphTargetAnimationInLevelSequencer(
         return;
     }
 
+    //===== Step 2.1: Get unique ObjectBindingID for this piano instance =====
+    FGuid PianoBindingID;
+    if (Sequencer.IsValid()) {
+        PianoBindingID =
+            Sequencer->GetHandleToObject(KeyRippleActor->Piano, true);
+        if (!PianoBindingID.IsValid()) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Failed to get ObjectBindingID for Piano instance!"));
+            return;
+        }
+        // 校验绑定对象
+        bool bFound = false;
+        auto BoundObjectsView = Sequencer->FindBoundObjects(
+            PianoBindingID, Sequencer->GetFocusedTemplateID());
+        for (const TWeakObjectPtr<UObject>& WeakObj : BoundObjectsView) {
+            UObject* Obj = WeakObj.Get();
+            if (Obj == KeyRippleActor->Piano) {
+                bFound = true;
+                break;
+            }
+        }
+        if (!bFound) {
+            UE_LOG(
+                LogTemp, Error,
+                TEXT("ObjectBindingID does not match current Piano instance!"));
+            return;
+        }
+        // 输出当前piano实例的ObjectBindingID
+        UE_LOG(LogTemp, Warning, TEXT("Current Piano SkeletalMeshActor binding ID: %s"), *PianoBindingID.ToString());
+
+    } else {
+        UE_LOG(LogTemp, Error, TEXT("Sequencer is not valid!"));
+        return;
+    }
+
     //===== Step 3: Get Piano's Control Rig Instance =====
     UControlRig* ControlRigInstance = nullptr;
     UControlRigBlueprint* ControlRigBlueprint = nullptr;
@@ -410,13 +445,22 @@ void UKeyRipplePianoProcessor::GenerateMorphTargetAnimationInLevelSequencer(
 
     UE_LOG(LogTemp, Warning, TEXT("Found root control: piano_key_root"));
 
-    //===== Step 5: Find or create Control Rig track =====
+    //===== Step 5: Find or create Control Rig track (must match this ControlRig
+    //instance) =====
     UMovieSceneControlRigParameterTrack* ControlRigTrack =
         FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
                                                          ControlRigInstance);
 
     if (!ControlRigTrack) {
         UE_LOG(LogTemp, Error, TEXT("Failed to find Control Rig track"));
+        return;
+    }
+
+    // 校验轨道归属（可选，增强健壮性）
+    if (ControlRigTrack->GetControlRig() != ControlRigInstance) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRigTrack does not match current Piano's ControlRig "
+                    "instance!"));
         return;
     }
 

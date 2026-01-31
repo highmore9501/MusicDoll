@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Animation/SkeletalMeshActor.h"
 #include "ControlRig/Public/ControlRig.h"
@@ -246,6 +246,14 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {  // 修改
     /** 手指极向量 */
     UPROPERTY()   
     TMap<FString, FString> PolePoints;
+
+    /** 右手原始方向 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Configuration")
+    FVector RightHandOriginalDirection;
+
+    /** 左手原始方向 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Configuration")
+    FVector LeftHandOriginalDirection;
 
     FString GetControllerName(int32 FingerNumber, EHandType HandType) const;
     FString GetRecorderName(EPositionType PositionType, EKeyType KeyType,

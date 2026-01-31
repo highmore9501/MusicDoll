@@ -152,6 +152,16 @@ void SKeyRipplePropertiesPanel::RefreshPropertyList() {
         5.0f)[CreateNumericPropertyRow(TEXT("HandRange"), KeyRipple->HandRange,
                                        TEXT("HandRange"))];
 
+    // Vector3 properties for hand original directions (moved here)
+    PropertiesContainer->AddSlot().AutoHeight().Padding(
+        5.0f)[CreateVector3PropertyRow(TEXT("RightHandOriginalDirection"),
+                                       KeyRipple->RightHandOriginalDirection,
+                                       TEXT("RightHandOriginalDirection"))];
+    PropertiesContainer->AddSlot().AutoHeight().Padding(
+        5.0f)[CreateVector3PropertyRow(TEXT("LeftHandOriginalDirection"),
+                                       KeyRipple->LeftHandOriginalDirection,
+                                       TEXT("LeftHandOriginalDirection"))];
+
     // File path properties with specific extensions
     PropertiesContainer->AddSlot().AutoHeight().Padding(
         5.0f)[CreateFilePathPropertyRow(TEXT("IOFilePath"),
@@ -387,6 +397,49 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateFilePathPropertyRow(
                              })];
 }
 
+TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateVector3PropertyRow(
+    const FString& PropertyName, const FVector& Value,
+    const FString& PropertyPath) {
+    return SNew(SHorizontalBox) +
+           SHorizontalBox::Slot().AutoWidth().Padding(
+               5.0f)[SNew(STextBlock)
+                         .Text(FText::FromString(PropertyName))
+                         .MinDesiredWidth(150.0f)] +
+           SHorizontalBox::Slot().AutoWidth().Padding(
+               5.0f, 0.0f)[SNew(SSpinBox<float>)
+                               .Value(Value.X)
+                               .OnValueChanged_Lambda(
+                                   [this, PropertyPath, &Value](float NewX) {
+                                       OnVector3PropertyChanged(PropertyPath, 0,
+                                                                NewX);
+                                   })
+                               .MinValue(-10000.f)
+                               .MaxValue(10000.f)
+                               .Delta(0.01f)] +
+           SHorizontalBox::Slot().AutoWidth().Padding(
+               5.0f, 0.0f)[SNew(SSpinBox<float>)
+                               .Value(Value.Y)
+                               .OnValueChanged_Lambda(
+                                   [this, PropertyPath, &Value](float NewY) {
+                                       OnVector3PropertyChanged(PropertyPath, 1,
+                                                                NewY);
+                                   })
+                               .MinValue(-10000.f)
+                               .MaxValue(10000.f)
+                               .Delta(0.01f)] +
+           SHorizontalBox::Slot().AutoWidth().Padding(
+               5.0f, 0.0f)[SNew(SSpinBox<float>)
+                               .Value(Value.Z)
+                               .OnValueChanged_Lambda(
+                                   [this, PropertyPath, &Value](float NewZ) {
+                                       OnVector3PropertyChanged(PropertyPath, 2,
+                                                                NewZ);
+                                   })
+                               .MinValue(-10000.f)
+                               .MaxValue(10000.f)
+                               .Delta(0.01f)];
+}
+
 void SKeyRipplePropertiesPanel::OnNumericPropertyChanged(
     const FString& PropertyPath, int32 NewValue) {
     if (!KeyRippleActor.IsValid()) {
@@ -466,6 +519,30 @@ void SKeyRipplePropertiesPanel::OnFilePathChanged(const FString& PropertyPath,
         KeyRipple->IOFilePath = NewFilePath;
     } else if (PropertyPath == TEXT("KeyRippleFilePath")) {
         KeyRipple->AnimationFilePath = NewFilePath;
+    }
+}
+
+void SKeyRipplePropertiesPanel::OnVector3PropertyChanged(
+    const FString& PropertyPath, int32 ComponentIndex, float NewValue) {
+    if (!KeyRippleActor.IsValid()) {
+        return;
+    }
+    AKeyRippleUnreal* KeyRipple = KeyRippleActor.Get();
+    KeyRipple->Modify();
+    if (PropertyPath == TEXT("RightHandOriginalDirection")) {
+        if (ComponentIndex == 0)
+            KeyRipple->RightHandOriginalDirection.X = NewValue;
+        else if (ComponentIndex == 1)
+            KeyRipple->RightHandOriginalDirection.Y = NewValue;
+        else if (ComponentIndex == 2)
+            KeyRipple->RightHandOriginalDirection.Z = NewValue;
+    } else if (PropertyPath == TEXT("LeftHandOriginalDirection")) {
+        if (ComponentIndex == 0)
+            KeyRipple->LeftHandOriginalDirection.X = NewValue;
+        else if (ComponentIndex == 1)
+            KeyRipple->LeftHandOriginalDirection.Y = NewValue;
+        else if (ComponentIndex == 2)
+            KeyRipple->LeftHandOriginalDirection.Z = NewValue;
     }
 }
 

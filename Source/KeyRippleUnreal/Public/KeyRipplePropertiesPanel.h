@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
@@ -33,12 +33,14 @@ private:
 	TSharedRef<SWidget> CreateStringPropertyRow(const FString& PropertyName, const FString& Value, const FString& PropertyPath);
 	TSharedRef<SWidget> CreateEnumPropertyRow(const FString& PropertyName, uint8 Value, const FString& EnumTypeName, const FString& PropertyPath);
 	TSharedRef<SWidget> CreateFilePathPropertyRow(const FString& PropertyName, const FString& FilePath, const FString& PropertyPath, const FString& FileExtension);
+	TSharedRef<SWidget> CreateVector3PropertyRow(const FString& PropertyName, const FVector& Value, const FString& PropertyPath);
 
 	// Property change handlers
 	void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
 	void OnStringPropertyChanged(const FString& PropertyPath, const FText& NewValue);
 	void OnEnumPropertyChanged(const FString& PropertyPath, uint8 NewValue);
 	void OnFilePathChanged(const FString& PropertyPath, const FString& NewFilePath);
+	void OnVector3PropertyChanged(const FString& PropertyPath, int32 ComponentIndex, float NewValue);
 
 	// Initialization operation handlers
 	FReply OnCheckObjectsStatus();

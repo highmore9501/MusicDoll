@@ -574,6 +574,24 @@ static void ProcessImportConfigParameters(AKeyRippleUnreal* KeyRippleActor,
     KeyRippleActor->HandRange =
         ConfigObject->GetIntegerField(TEXT("hand_range"));
 
+    // 新增：读取左右手原始方向
+    if (ConfigObject->HasField(TEXT("right_hand_original_direction"))) {
+        TArray<TSharedPtr<FJsonValue>> RightHandDirArray = ConfigObject->GetArrayField(TEXT("right_hand_original_direction"));
+        if (RightHandDirArray.Num() == 3) {
+            KeyRippleActor->RightHandOriginalDirection.X = RightHandDirArray[0]->AsNumber();
+            KeyRippleActor->RightHandOriginalDirection.Y = RightHandDirArray[1]->AsNumber();
+            KeyRippleActor->RightHandOriginalDirection.Z = RightHandDirArray[2]->AsNumber();
+        }
+    }
+    if (ConfigObject->HasField(TEXT("left_hand_original_direction"))) {
+        TArray<TSharedPtr<FJsonValue>> LeftHandDirArray = ConfigObject->GetArrayField(TEXT("left_hand_original_direction"));
+        if (LeftHandDirArray.Num() == 3) {
+            KeyRippleActor->LeftHandOriginalDirection.X = LeftHandDirArray[0]->AsNumber();
+            KeyRippleActor->LeftHandOriginalDirection.Y = LeftHandDirArray[1]->AsNumber();
+            KeyRippleActor->LeftHandOriginalDirection.Z = LeftHandDirArray[2]->AsNumber();
+        }
+    }
+
     ImportedCount++;  // 计为一个整体导入项
     UE_LOG(LogTemp, Warning, TEXT("  ✓ Config parameters imported"));
 }
@@ -1411,6 +1429,17 @@ void UKeyRippleControlRigProcessor::ExportRecorderInfo(
     ConfigObject->SetNumberField(TEXT("min_key"), KeyRippleActor->MinKey);
     ConfigObject->SetNumberField(TEXT("max_key"), KeyRippleActor->MaxKey);
     ConfigObject->SetNumberField(TEXT("hand_range"), KeyRippleActor->HandRange);
+    // 新增：保存左右手原始方向
+    TArray<TSharedPtr<FJsonValue>> RightHandDirArray;
+    RightHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->RightHandOriginalDirection.X)));
+    RightHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->RightHandOriginalDirection.Y)));
+    RightHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->RightHandOriginalDirection.Z)));
+    ConfigObject->SetArrayField(TEXT("right_hand_original_direction"), RightHandDirArray);
+    TArray<TSharedPtr<FJsonValue>> LeftHandDirArray;
+    LeftHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->LeftHandOriginalDirection.X)));
+    LeftHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->LeftHandOriginalDirection.Y)));
+    LeftHandDirArray.Add(MakeShareable(new FJsonValueNumber(KeyRippleActor->LeftHandOriginalDirection.Z)));
+    ConfigObject->SetArrayField(TEXT("left_hand_original_direction"), LeftHandDirArray);
     JsonObject->SetObjectField(TEXT("config"), ConfigObject);
 
     // 导出各种记录器信息
