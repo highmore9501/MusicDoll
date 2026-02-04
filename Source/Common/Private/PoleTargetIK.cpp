@@ -11,10 +11,6 @@
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(PoleTargetIK)
 
-static void ApplyPoleRotationToChain(TArray<FCCDIKChainLink>& Chain,
-                                     const FQuat& TargetRotation,
-                                     float PoleWeight, int32 PivotIndex);
-
 // 辅助方法：在平面上找到与primary axis垂直的点
 static FVector FindPointOnPlanePerpendicularToAxis(
     const FVector& PointOnPlane,    // 当前关节位置
@@ -46,106 +42,6 @@ static FVector FindPointOnPlanePerpendicularToAxis(
     return PointOnPlane + PerpendicularInPlane * Distance;
 }
 
-// 辅助方法：从三个点构建Transform
-static FTransform BuildTransformFromThreePoints(
-    const FVector& Origin,              // 原点（当前关节位置）
-    const FVector& PrimaryAxisPoint,    // primary axis上的点（下一个关节位置）
-    const FVector& SecondaryAxisPoint)  // secondary axis上的点（平面上的点）
-{
-    // 计算primary axis方向
-    FVector PrimaryDir = (PrimaryAxisPoint - Origin).GetSafeNormal();
-
-    // 计算secondary axis方向（指向平面上的点）
-    FVector SecondaryDir = (SecondaryAxisPoint - Origin).GetSafeNormal();
-
-    // 计算第三个轴（叉积得到）
-    FVector TertiaryDir =
-        FVector::CrossProduct(PrimaryDir, SecondaryDir).GetSafeNormal();
-
-    // 重新正交化secondary axis
-    SecondaryDir =
-        FVector::CrossProduct(TertiaryDir, PrimaryDir).GetSafeNormal();
-
-    // 构建旋转矩阵
-    FMatrix RotationMatrix(
-        FPlane(PrimaryDir.X, PrimaryDir.Y, PrimaryDir.Z, 0),
-        FPlane(SecondaryDir.X, SecondaryDir.Y, SecondaryDir.Z, 0),
-        FPlane(TertiaryDir.X, TertiaryDir.Y, TertiaryDir.Z, 0),
-        FPlane(0, 0, 0, 1));
-
-    FTransform Result;
-    Result.SetLocation(Origin);
-    Result.SetRotation(RotationMatrix.ToQuat());
-
-    return Result;
-}
-
-// 辅助方法：计算骨骼需要绕主轴旋转的角度
-static float CalculateRotationAngleToPlane(const FTransform& BoneTransform,
-                                           const FVector& BonePosition,
-                                           const FVector& PlaneNormal,
-                                           const FVector& PoleTarget,
-                                           const FVector& PrimaryAxisVector,
-                                           const FVector& SecondaryAxisVector,
-                                           float Tolerance = 0.001f) {
-    // 1. 获取骨骼的实际次轴向量
-    FVector BoneSecondaryAxis = SecondaryAxisVector;
-
-    // 2. 计算次轴在参考平面上的投影
-    // 投影 = 向量 - (向量·法线) * 法线
-    float DotWithNormal = FVector::DotProduct(BoneSecondaryAxis, PlaneNormal);
-    FVector ProjectedVector = BoneSecondaryAxis - (DotWithNormal * PlaneNormal);
-
-    // 3. 如果投影太小（次轴几乎垂直于平面），无法确定方向
-    if (ProjectedVector.SizeSquared() < Tolerance * Tolerance) {
-        // 次轴垂直于平面，返回0（不需要旋转）
-        return 0.0f;
-    }
-
-    // 4. 标准化投影向量
-    ProjectedVector.Normalize();
-
-    // 5. 计算从骨骼指向pole target的方向在平面上的投影
-    FVector ToPoleTarget = (PoleTarget - BonePosition).GetSafeNormal();
-    float DotToTargetWithNormal =
-        FVector::DotProduct(ToPoleTarget, PlaneNormal);
-    FVector TargetProjected =
-        ToPoleTarget - (DotToTargetWithNormal * PlaneNormal);
-
-    // 如果投影太小（目标方向几乎垂直于平面）
-    if (TargetProjected.SizeSquared() < Tolerance * Tolerance) {
-        // 使用与平面法线垂直的任意方向
-        // 创建一个在平面内的参考方向
-        FVector ArbitraryVector = FVector(1, 0, 0);
-        if (FMath::Abs(FVector::DotProduct(ArbitraryVector, PlaneNormal)) >
-            0.9f) {
-            ArbitraryVector = FVector(0, 1, 0);
-        }
-
-        // 通过叉积得到平面内的向量
-        TargetProjected = FVector::CrossProduct(PlaneNormal, ArbitraryVector);
-        TargetProjected.Normalize();
-    } else {
-        TargetProjected.Normalize();
-    }
-
-    // 6. 计算投影向量到目标投影向量的角度
-    float DotAngle = FVector::DotProduct(ProjectedVector, TargetProjected);
-    float Angle = FMath::Acos(FMath::Clamp(DotAngle, -1.0f, 1.0f));
-
-    // 7. 确定旋转方向（确保朝向pole target所在的一半平面）
-    // 计算叉积来确定方向
-    FVector CrossResult =
-        FVector::CrossProduct(ProjectedVector, TargetProjected);
-    float DirectionDot = FVector::DotProduct(CrossResult, PlaneNormal);
-
-    // 如果叉积方向与平面法线相反，需要反转角度
-    if (DirectionDot < 0) {
-        Angle = -Angle;
-    }
-
-    return Angle;
-}
 // 辅助方法：计算参考平面法线（基于根、末端和pole target）
 static FVector CalculateReferencePlaneNormal(const FVector& RootPosition,
                                              const FVector& EffectorPosition,
@@ -215,12 +111,14 @@ static FTransform BuildTransformFromAxisDirections(
 
 // 主修正方法
 static void ApplySecondaryAxisCorrection(
-    TArray<FCCDIKChainLink>& Chain, const FVector& RootPosition,
-    const FVector& EffectorPosition, const FVector& PoleTarget,
+    TArray<FCCDIKChainLink>& Chain, const FVector& EffectorPosition,
+    const FVector& PoleTarget,
     const FVector& PrimaryAxis,    // 主轴方向，如(1,0,0)
     const FVector& SecondaryAxis,  // 次轴方向，如(0,1,0)
     float CorrectionWeight = 1.0f, float SecondaryAxisDistance = 50.0f) {
     if (Chain.Num() < 2 || CorrectionWeight < KINDA_SMALL_NUMBER) return;
+
+    FVector RootPosition = Chain[0].Transform.GetLocation();
 
     // 1. 计算参考平面法线
     FVector PlaneNormal = CalculateReferencePlaneNormal(
@@ -348,151 +246,6 @@ static void ApplySecondaryAxisCorrection(
     }
 }
 
-// 改进的方法：直接计算目标旋转
-static void ApplySecondaryAxisCorrectionV2(TArray<FCCDIKChainLink>& Chain,
-                                           const FVector& RootPosition,
-                                           const FVector& EffectorPosition,
-                                           const FVector& PoleTarget,
-                                           const FVector& PrimaryAxisVector,
-                                           const FVector& SecondaryAxisVector,
-                                           float CorrectionWeight = 1.0f) {
-    if (Chain.Num() < 2 || CorrectionWeight < KINDA_SMALL_NUMBER) return;
-
-    // 1. 保存所有关节的原始位置和旋转
-    TArray<FVector> OriginalPositions;
-    TArray<FQuat> OriginalRotations;
-    OriginalPositions.SetNum(Chain.Num());
-    OriginalRotations.SetNum(Chain.Num());
-
-    for (int32 i = 0; i < Chain.Num(); ++i) {
-        OriginalPositions[i] = Chain[i].Transform.GetLocation();
-        OriginalRotations[i] = Chain[i].Transform.GetRotation();
-    }
-
-    // 2. 计算参考平面法线
-    FVector PlaneNormal = CalculateReferencePlaneNormal(
-        RootPosition, EffectorPosition, PoleTarget);
-
-    if (PlaneNormal.IsNearlyZero()) return;
-
-    // 3. 处理根骨骼
-    if (Chain.Num() > 0) {
-        // 计算根骨骼的旋转角度
-        float RootRotationAngle = CalculateRotationAngleToPlane(
-            Chain[0].Transform, OriginalPositions[0], PlaneNormal, PoleTarget,
-            PrimaryAxisVector, SecondaryAxisVector);
-
-        if (FMath::Abs(RootRotationAngle) > KINDA_SMALL_NUMBER) {
-            RootRotationAngle *= CorrectionWeight;
-            FVector RootRotationAxis = PrimaryAxisVector;
-            FQuat RootRotationQuat = FQuat(RootRotationAxis, RootRotationAngle);
-            Chain[0].Transform.SetRotation(
-                (RootRotationQuat * OriginalRotations[0]).GetNormalized());
-            Chain[0].Transform.SetLocation(OriginalPositions[0]);
-        }
-    }
-
-    // 4. 处理其他骨骼
-    for (int32 i = 1; i < Chain.Num(); ++i) {
-        // 方法：在局部空间中计算需要的旋转
-
-        // 先获取父骨骼的当前旋转
-        FQuat ParentRotation = Chain[i - 1].Transform.GetRotation();
-        FQuat InverseParentRotation = ParentRotation.Inverse();
-
-        // 计算当前骨骼在局部空间中的方向
-        FVector LocalDirection =
-            (OriginalPositions[i] - OriginalPositions[i - 1]).GetSafeNormal();
-
-        // 计算当前骨骼的世界空间方向（应用父骨骼旋转）
-        FVector WorldDirection = ParentRotation.RotateVector(LocalDirection);
-
-        // 创建一个临时的变换来计算旋转
-        FTransform TempTransform;
-        TempTransform.SetLocation(OriginalPositions[i - 1]);
-        TempTransform.SetRotation(ParentRotation);
-
-        // 沿着世界方向移动来创建当前骨骼的变换
-        FVector TargetPosition =
-            OriginalPositions[i - 1] + WorldDirection * LocalDirection.Size();
-        FTransform CurrentBoneTransform;
-        CurrentBoneTransform.SetLocation(TargetPosition);
-
-        // 保持当前骨骼与父骨骼的相对旋转
-        CurrentBoneTransform.SetRotation(ParentRotation *
-                                         Chain[i].LocalTransform.GetRotation());
-
-        // 计算需要的旋转角度
-        float RotationAngle = CalculateRotationAngleToPlane(
-            CurrentBoneTransform, TargetPosition, PlaneNormal, PoleTarget,
-            PrimaryAxisVector, SecondaryAxisVector);
-
-        if (FMath::Abs(RotationAngle) > KINDA_SMALL_NUMBER) {
-            RotationAngle *= CorrectionWeight;
-
-            // 在局部空间中应用旋转
-            FVector LocalRotationAxis = PrimaryAxisVector;
-            FQuat LocalRotationQuat = FQuat(LocalRotationAxis, RotationAngle);
-
-            // 计算新的世界旋转
-            FQuat NewWorldRotation =
-                LocalRotationQuat * CurrentBoneTransform.GetRotation();
-
-            // 应用旋转，保持位置不变
-            Chain[i].Transform.SetRotation(NewWorldRotation);
-            Chain[i].Transform.SetLocation(OriginalPositions[i]);
-
-            // 更新局部变换
-            Chain[i].LocalTransform =
-                Chain[i].Transform.GetRelativeTransform(Chain[i - 1].Transform);
-        } else {
-            // 保持原始旋转
-            Chain[i].Transform.SetRotation(OriginalRotations[i]);
-            Chain[i].Transform.SetLocation(OriginalPositions[i]);
-        }
-    }
-}
-
-static void ApplyPoleRotationToChain(
-    TArray<FCCDIKChainLink>& Chain, const FQuat& TargetRotation,
-    float PoleWeight,
-    int32 PivotIndex = 0) {  // 默认以第一个关节为轴
-    if (Chain.Num() == 0 || PoleWeight < KINDA_SMALL_NUMBER) return;
-
-    // 1. 确定旋转中心（通常是根关节或指定的轴关节）
-    int32 RotationCenterIndex = FMath::Clamp(PivotIndex, 0, Chain.Num() - 1);
-    FVector CenterPos = Chain[RotationCenterIndex].Transform.GetLocation();
-
-    // 2. 应用旋转
-    FQuat FinalRotation =
-        FQuat::Slerp(FQuat::Identity, TargetRotation, PoleWeight);
-
-    // 3. 旋转链上旋转中心之后的所有关节
-    for (int32 i = RotationCenterIndex; i < Chain.Num(); ++i) {
-        // 相对于旋转中心的位置
-        FVector LocalPos = Chain[i].Transform.GetLocation() - CenterPos;
-        FVector RotatedPos = FinalRotation.RotateVector(LocalPos);
-        Chain[i].Transform.SetLocation(CenterPos + RotatedPos);
-
-        // 更新旋转
-        if (i == RotationCenterIndex) {
-            // 旋转中心关节直接应用
-            Chain[i].Transform.SetRotation(
-                (FinalRotation * Chain[i].Transform.GetRotation())
-                    .GetNormalized());
-        } else {
-            // 子关节：保持相对于父关节的局部旋转
-            // 这确保关节链保持相对角度不变
-            const FTransform& ParentTransform = Chain[i - 1].Transform;
-            const FTransform& LocalTransform = Chain[i].LocalTransform;
-
-            Chain[i].Transform.SetRotation(
-                (ParentTransform.GetRotation() * LocalTransform.GetRotation())
-                    .GetNormalized());
-        }
-    }
-}
-
 FRigUnit_IKWithPole_Execute() {
     URigHierarchy* Hierarchy = ExecuteContext.Hierarchy;
     if (!Hierarchy) {
@@ -555,40 +308,11 @@ FRigUnit_IKWithPole_Execute() {
     for (int32 i = 0; i < NumChainLinks; ++i) {
         BonePositions[i] = CCDIKChain[i].Transform.GetLocation();
     }
-    // CCD IK后，pole target平面修正
-    FVector RootPosition = BonePositions[0];
-    FVector PlaneNormal =
-        FVector::CrossProduct(EffectorTransform.GetLocation() - RootPosition,
-                              PoleTarget - RootPosition)
-            .GetSafeNormal();
-    if (PlaneNormal.IsZero()) {
-        FVector BaseVector =
-            (EffectorTransform.GetLocation() - RootPosition).GetSafeNormal();
-        if (FMath::Abs(BaseVector.Z) < 0.9f) {
-            PlaneNormal = FVector::CrossProduct(BaseVector, FVector(0, 0, 1))
-                              .GetSafeNormal();
-        } else {
-            PlaneNormal = FVector::CrossProduct(BaseVector, FVector(1, 0, 0))
-                              .GetSafeNormal();
-        }
-    }
-
-    int MiddleIndex = NumChainLinks / 2;
-    FVector MiddlePosition = BonePositions[MiddleIndex];
-    FVector CunrrentPlaneNormal =
-        FVector::CrossProduct(EffectorTransform.GetLocation() - RootPosition,
-                              MiddlePosition - RootPosition)
-            .GetSafeNormal();
-
-    FQuat TargetRotator =
-        FQuat::FindBetweenNormals(CunrrentPlaneNormal, PlaneNormal);
-
-    ApplyPoleRotationToChain(CCDIKChain, TargetRotator, 1.0, 0);
 
     if (bUseSecondaryAxisCorrection) {
-        ApplySecondaryAxisCorrection(CCDIKChain, RootPosition,
-                                     EffectorTransform.GetLocation(), PoleTarget,
-                                     PrimaryAxis, SecondAxis, Weight);
+        ApplySecondaryAxisCorrection(
+            CCDIKChain, EffectorTransform.GetLocation(), PoleTarget,
+            PrimaryAxis, SecondAxis, Weight);
     }
 
     // 写回Hierarchy

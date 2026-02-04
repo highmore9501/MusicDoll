@@ -1,4 +1,4 @@
-using UnrealBuildTool;
+﻿using UnrealBuildTool;
 
 public class Common : ModuleRules
 {
@@ -6,11 +6,12 @@ public class Common : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PublicDependencyModuleNames.AddRange(new string[] { 
-            "Core", 
-            "CoreUObject", 
-            "Engine", 
+        PublicDependencyModuleNames.AddRange(new string[] {
+            "Core",
+            "CoreUObject",
+            "Engine",
             "AnimationCore",
+            "AutomationController",
             "RigVM",      // Rig Unit需依赖RigVM模块
             "ControlRig"  // Control Rig模块
         });
