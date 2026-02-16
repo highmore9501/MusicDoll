@@ -1,72 +1,34 @@
 ﻿#include "KeyRipplePropertiesPanel.h"
 
-#include "DesktopPlatformModule.h"
+#include "CommonPropertiesPanelUtility.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "KeyRippleOperationsPanel.h"
 #include "KeyRippleUnreal.h"
 #include "Misc/MessageDialog.h"
-#include "Styling/StyleColors.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Input/SSpinBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SToolTip.h"
 #include "Widgets/Text/STextBlock.h"
 
 #define LOCTEXT_NAMESPACE "SKeyRipplePropertiesPanel"
 
 void SKeyRipplePropertiesPanel::Construct(const FArguments& InArgs) {
-    ActiveTab = EActiveTab::Properties;
+    InitializeTabPanel(LOCTEXT("PropertiesTabLabel", "Properties"),
+                       LOCTEXT("OperationsTabLabel", "Operations"));
 
-    ChildSlot
-        [SNew(SVerticalBox)
-         // Tab Buttons
-         +
-         SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-             [SNew(SHorizontalBox) +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
-                  [SNew(SButton)
-                       .Text(this,
-                             &SKeyRipplePropertiesPanel::GetPropertiesTabLabel)
-                       .OnClicked(this, &SKeyRipplePropertiesPanel::
-                                            OnPropertiesTabClicked)
-                       .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
-                       .ForegroundColor_Lambda(
-                           [this]() { return GetTabButtonTextColor(true); })] +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
-                  [SNew(SButton)
-                       .Text(this,
-                             &SKeyRipplePropertiesPanel::GetOperationsTabLabel)
-                       .OnClicked(this, &SKeyRipplePropertiesPanel::
-                                            OnOperationsTabClicked)
-                       .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
-                       .ForegroundColor_Lambda(
-                           [this]() { return GetTabButtonTextColor(false); })]]
-         // Content Container
-         + SVerticalBox::Slot().FillHeight(1.0f).Padding(
-               5.0f)[SAssignNew(ContentContainer, SVerticalBox)]];
-
-    // Create both panels
-    TSharedPtr<SVerticalBox> PropertiesPanel =
-        SNew(SVerticalBox) +
-        SVerticalBox::Slot().AutoHeight().Padding(
-            5.0f)[SNew(STextBlock)
-                      .Text(LOCTEXT("PropertiesLabel", "KeyRipple Properties:"))
-                      .Font(FAppStyle::GetFontStyle(
-                          "DetailsView.CategoryFont"))] +
-        SVerticalBox::Slot().FillHeight(1.0f).Padding(
-            5.0f)[SNew(SScrollBox) + SScrollBox::Slot()[SAssignNew(
-                                         PropertiesContainer, SVerticalBox)]];
-
+    // Create operations panel
     OperationsPanel = SNew(SKeyRippleOperationsPanel);
 
-    // Set initial content to properties panel
-    if (ContentContainer.IsValid()) {
-        ContentContainer->AddSlot().FillHeight(
-            1.0f)[PropertiesPanel.ToSharedRef()];
+    // Set the operations panel as the operations content
+    // Note: The operations panel (SKeyRippleOperationsPanel) has its own
+    // internal structure and will handle its content via SetActor callback
+    if (OperationsPanel.IsValid()) {
+        SetOperationsContent(OperationsPanel.ToSharedRef());
     }
+
+    RefreshPropertyList();
 }
 
 TSharedPtr<SWidget> SKeyRipplePropertiesPanel::GetWidget() {
@@ -77,7 +39,6 @@ void SKeyRipplePropertiesPanel::SetActor(AActor* InActor) {
     KeyRippleActor = Cast<AKeyRippleUnreal>(InActor);
     RefreshPropertyList();
 
-    // 同时将 Actor 传递给操作面板
     if (OperationsPanel.IsValid()) {
         OperationsPanel->SetActor(InActor);
     }
@@ -88,14 +49,15 @@ bool SKeyRipplePropertiesPanel::CanHandleActor(const AActor* InActor) const {
 }
 
 void SKeyRipplePropertiesPanel::RefreshPropertyList() {
-    if (!PropertiesContainer.IsValid()) {
+    auto Container = GetPropertiesContainer();
+    if (!Container.IsValid()) {
         return;
     }
 
-    PropertiesContainer->ClearChildren();
+    Container->ClearChildren();
 
     if (!KeyRippleActor.IsValid()) {
-        PropertiesContainer->AddSlot().AutoHeight().Padding(
+        Container->AddSlot().AutoHeight().Padding(
             5.0f)[SNew(STextBlock)
                       .Text(LOCTEXT("NoActorSelected",
                                     "No KeyRipple Actor Selected"))
@@ -106,83 +68,128 @@ void SKeyRipplePropertiesPanel::RefreshPropertyList() {
     AKeyRippleUnreal* KeyRipple = KeyRippleActor.Get();
 
     // Numeric properties
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("OneHandFingerNumber"),
-                                       KeyRipple->OneHandFingerNumber,
-                                       TEXT("OneHandFingerNumber"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("OneHandFingerNumber"), KeyRipple->OneHandFingerNumber,
+        TEXT("OneHandFingerNumber"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("LeftestPosition"),
-                                       KeyRipple->LeftestPosition,
-                                       TEXT("LeftestPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("LeftestPosition"), KeyRipple->LeftestPosition,
+        TEXT("LeftestPosition"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(
-        TEXT("LeftPosition"), KeyRipple->LeftPosition, TEXT("LeftPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("LeftPosition"), KeyRipple->LeftPosition, TEXT("LeftPosition"),
+        FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("MiddleLeftPosition"),
-                                       KeyRipple->MiddleLeftPosition,
-                                       TEXT("MiddleLeftPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("MiddleLeftPosition"), KeyRipple->MiddleLeftPosition,
+        TEXT("MiddleLeftPosition"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("MiddleRightPosition"),
-                                       KeyRipple->MiddleRightPosition,
-                                       TEXT("MiddleRightPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("MiddleRightPosition"), KeyRipple->MiddleRightPosition,
+        TEXT("MiddleRightPosition"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("RightPosition"),
-                                       KeyRipple->RightPosition,
-                                       TEXT("RightPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("RightPosition"), KeyRipple->RightPosition, TEXT("RightPosition"),
+        FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("RightestPosition"),
-                                       KeyRipple->RightestPosition,
-                                       TEXT("RightestPosition"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("RightestPosition"), KeyRipple->RightestPosition,
+        TEXT("RightestPosition"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("MinKey"), KeyRipple->MinKey,
-                                       TEXT("MinKey"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("MinKey"), KeyRipple->MinKey, TEXT("MinKey"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("MaxKey"), KeyRipple->MaxKey,
-                                       TEXT("MaxKey"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("MaxKey"), KeyRipple->MaxKey, TEXT("MaxKey"), FSimpleDelegate())];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateNumericPropertyRow(TEXT("HandRange"), KeyRipple->HandRange,
-                                       TEXT("HandRange"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateNumericPropertyRow(
+        TEXT("HandRange"), KeyRipple->HandRange, TEXT("HandRange"),
+        FSimpleDelegate())];
 
-    // Vector3 properties for hand original directions (moved here)
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateVector3PropertyRow(TEXT("RightHandOriginalDirection"),
-                                       KeyRipple->RightHandOriginalDirection,
-                                       TEXT("RightHandOriginalDirection"))];
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateVector3PropertyRow(TEXT("LeftHandOriginalDirection"),
-                                       KeyRipple->LeftHandOriginalDirection,
-                                       TEXT("LeftHandOriginalDirection"))];
+    // Vector3 properties for hand original directions
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateVector3PropertyRow(
+        TEXT("RightHandOriginalDirection"),
+        KeyRipple->RightHandOriginalDirection,
+        TEXT("RightHandOriginalDirection"), FSimpleDelegate())];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPropertiesPanelUtility::CreateVector3PropertyRow(
+        TEXT("LeftHandOriginalDirection"), KeyRipple->LeftHandOriginalDirection,
+        TEXT("LeftHandOriginalDirection"), FSimpleDelegate())];
 
     // File path properties with specific extensions
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
-        5.0f)[CreateFilePathPropertyRow(TEXT("IOFilePath"),
-                                        KeyRipple->IOFilePath,
-                                        TEXT("IOFilePath"), TEXT(".avatar"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f,
+        5.0f)[FCommonPropertiesPanelUtility::CreateSectionHeader(
+        TEXT("File Paths"))];
+
+    TSharedPtr<SEditableTextBox> IOFilePathTextBox;
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SHorizontalBox) +
+         SHorizontalBox::Slot().AutoWidth().Padding(
+             5.0f)[SNew(STextBlock)
+                       .Text(FText::FromString(TEXT("IOFilePath")))
+                       .MinDesiredWidth(150.0f)] +
+         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
+             [SAssignNew(IOFilePathTextBox, SEditableTextBox)
+                  .Text(FText::FromString(KeyRipple->IOFilePath))
+                  .OnTextCommitted_Lambda([this](const FText& InText,
+                                                 ETextCommit::Type CommitType) {
+                      if (CommitType == ETextCommit::OnEnter ||
+                          CommitType == ETextCommit::OnUserMovedFocus) {
+                          if (KeyRippleActor.IsValid()) {
+                              KeyRippleActor->IOFilePath = InText.ToString();
+                              KeyRippleActor->Modify();
+                          }
+                      }
+                  })] +
+         SHorizontalBox::Slot().AutoWidth().Padding(
+             5.0f, 0.0f, 0.0f,
+             0.0f)[SNew(SButton)
+                       .Text(FText::FromString(TEXT("Browse")))
+                       .OnClicked_Lambda([this, IOFilePathTextBox]() -> FReply {
+                           if (!KeyRippleActor.IsValid()) {
+                               return FReply::Handled();
+                           }
+
+                           FString OutFilePath;
+                           if (FCommonPropertiesPanelUtility::BrowseForFile(
+                                   TEXT(".avatar"), OutFilePath, true)) {
+                               if (IOFilePathTextBox.IsValid()) {
+                                   IOFilePathTextBox->SetText(
+                                       FText::FromString(OutFilePath));
+                                   KeyRippleActor->IOFilePath = OutFilePath;
+                                   KeyRippleActor->Modify();
+                               }
+                           }
+                           return FReply::Handled();
+                       })]];
 
     // Initialization Operations Section
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
+    Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f,
-        5.0f)[SNew(STextBlock)
-                  .Text(LOCTEXT("InitializationLabel", "Initialization:"))
-                  .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFont"))];
+        5.0f)[FCommonPropertiesPanelUtility::CreateSectionHeader(
+        TEXT("Initialization"))];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(5.0f)
+    Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
              .Text(LOCTEXT("CheckObjectsStatusButton", "Check Objects Status"))
              .OnClicked(this, &SKeyRipplePropertiesPanel::OnCheckObjectsStatus)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
+    Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
                   .Text(LOCTEXT("SetupAllObjectsButton", "Setup All Objects"))
                   .OnClicked(this,
@@ -191,67 +198,24 @@ void SKeyRipplePropertiesPanel::RefreshPropertyList() {
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     // Import/Export Section
-    PropertiesContainer->AddSlot().AutoHeight().Padding(
+    Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f,
-        5.0f)[SNew(STextBlock)
-                  .Text(LOCTEXT("ImportExportLabel", "Import/Export:"))
-                  .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFont"))];
+        5.0f)[FCommonPropertiesPanelUtility::CreateSectionHeader(
+        TEXT("Import/Export"))];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(5.0f)
+    Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
              .Text(LOCTEXT("ExportRecorderInfoButton", "Export Recorder Info"))
              .OnClicked(this, &SKeyRipplePropertiesPanel::OnExportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
-    PropertiesContainer->AddSlot().AutoHeight().Padding(5.0f)
+    Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
              .Text(LOCTEXT("ImportRecorderInfoButton", "Import Recorder Info"))
              .OnClicked(this, &SKeyRipplePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
-}
-
-TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateNumericPropertyRow(
-    const FString& PropertyName, int32 Value, const FString& PropertyPath) {
-    return SNew(SHorizontalBox) +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f)[SNew(STextBlock)
-                         .Text(FText::FromString(PropertyName))
-                         .MinDesiredWidth(150.0f)] +
-           SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-               5.0f, 0.0f)[SNew(SSpinBox<int32>)
-                               .Value(Value)
-                               .OnValueChanged_Lambda(
-                                   [this, PropertyPath](int32 NewValue) {
-                                       OnNumericPropertyChanged(PropertyPath,
-                                                                NewValue);
-                                   })
-                               .MinValue(-10000)
-                               .MaxValue(10000)
-                               .Delta(1)];
-}
-
-TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateStringPropertyRow(
-    const FString& PropertyName, const FString& Value,
-    const FString& PropertyPath) {
-    return SNew(SHorizontalBox) +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f)[SNew(STextBlock)
-                         .Text(FText::FromString(PropertyName))
-                         .MinDesiredWidth(150.0f)] +
-           SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-               5.0f, 0.0f)[SNew(SEditableTextBox)
-                               .Text(FText::FromString(Value))
-                               .OnTextCommitted_Lambda(
-                                   [this, PropertyPath](
-                                       const FText& InText,
-                                       ETextCommit::Type CommitType) {
-                                       if (CommitType == ETextCommit::OnEnter) {
-                                           OnStringPropertyChanged(PropertyPath,
-                                                                   InText);
-                                       }
-                                   })];
 }
 
 TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
@@ -312,14 +276,12 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
                                     else if (*NewSelection == TEXT("LOW"))
                                         NewValue = 1;
                                     else
-                                        NewValue = 2;  // MIDDLE
+                                        NewValue = 2;
                                 }
 
                                 OnEnumPropertyChanged(PropertyPath, NewValue);
                             }
                         })[SNew(STextBlock)
-                               // ? 修复：使用 Lambda
-                               // 动态获取当前值而不是固定的初始值
                                .Text_Lambda([this, PropertyPath, EnumTypeName,
                                              OptionStrings]() -> FText {
                                    if (!KeyRippleActor.IsValid()) {
@@ -330,7 +292,6 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
                                        KeyRippleActor.Get();
                                    uint8 CurrentValue = 0;
 
-                                   // 根据 PropertyPath 获取当前的 enum 值
                                    if (PropertyPath ==
                                        TEXT("LeftHandKeyType")) {
                                        CurrentValue = static_cast<uint8>(
@@ -349,7 +310,6 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
                                            KeyRipple->RightHandPositionType);
                                    }
 
-                                   // 返回对应的显示文本
                                    if (OptionStrings->IsValidIndex(
                                            CurrentValue)) {
                                        return FText::FromString(
@@ -359,85 +319,6 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
 
                                    return FText::FromString(TEXT("Unknown"));
                                })]];
-}
-
-TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateFilePathPropertyRow(
-    const FString& PropertyName, const FString& FilePath,
-    const FString& PropertyPath, const FString& FileExtension) {
-    return SNew(SHorizontalBox) +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f)[SNew(STextBlock)
-                         .Text(FText::FromString(PropertyName))
-                         .MinDesiredWidth(150.0f)] +
-           SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-               5.0f, 0.0f)[SNew(SEditableTextBox)
-                               .Text(FText::FromString(FilePath))
-                               .OnTextCommitted_Lambda(
-                                   [this, PropertyPath](
-                                       const FText& InText,
-                                       ETextCommit::Type CommitType) {
-                                       if (CommitType == ETextCommit::OnEnter) {
-                                           OnFilePathChanged(PropertyPath,
-                                                             InText.ToString());
-                                       }
-                                   })] +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f, 0.0f, 0.0f,
-               0.0f)[SNew(SButton)
-                         .Text(LOCTEXT("BrowseButton", "Browse"))
-                         .OnClicked_Lambda(
-                             [this, PropertyPath, FileExtension]() -> FReply {
-                                 FString FilePath;
-                                 if (BrowseForFile(FileExtension, FilePath)) {
-                                     OnFilePathChanged(PropertyPath, FilePath);
-                                     // Refresh to show new path
-                                     RefreshPropertyList();
-                                 }
-                                 return FReply::Handled();
-                             })];
-}
-
-TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateVector3PropertyRow(
-    const FString& PropertyName, const FVector& Value,
-    const FString& PropertyPath) {
-    return SNew(SHorizontalBox) +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f)[SNew(STextBlock)
-                         .Text(FText::FromString(PropertyName))
-                         .MinDesiredWidth(150.0f)] +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f, 0.0f)[SNew(SSpinBox<float>)
-                               .Value(Value.X)
-                               .OnValueChanged_Lambda(
-                                   [this, PropertyPath, &Value](float NewX) {
-                                       OnVector3PropertyChanged(PropertyPath, 0,
-                                                                NewX);
-                                   })
-                               .MinValue(-10000.f)
-                               .MaxValue(10000.f)
-                               .Delta(0.01f)] +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f, 0.0f)[SNew(SSpinBox<float>)
-                               .Value(Value.Y)
-                               .OnValueChanged_Lambda(
-                                   [this, PropertyPath, &Value](float NewY) {
-                                       OnVector3PropertyChanged(PropertyPath, 1,
-                                                                NewY);
-                                   })
-                               .MinValue(-10000.f)
-                               .MaxValue(10000.f)
-                               .Delta(0.01f)] +
-           SHorizontalBox::Slot().AutoWidth().Padding(
-               5.0f, 0.0f)[SNew(SSpinBox<float>)
-                               .Value(Value.Z)
-                               .OnValueChanged_Lambda(
-                                   [this, PropertyPath, &Value](float NewZ) {
-                                       OnVector3PropertyChanged(PropertyPath, 2,
-                                                                NewZ);
-                                   })
-                               .MinValue(-10000.f)
-                               .MaxValue(10000.f)
-                               .Delta(0.01f)];
 }
 
 void SKeyRipplePropertiesPanel::OnNumericPropertyChanged(
@@ -527,8 +408,10 @@ void SKeyRipplePropertiesPanel::OnVector3PropertyChanged(
     if (!KeyRippleActor.IsValid()) {
         return;
     }
+
     AKeyRippleUnreal* KeyRipple = KeyRippleActor.Get();
     KeyRipple->Modify();
+
     if (PropertyPath == TEXT("RightHandOriginalDirection")) {
         if (ComponentIndex == 0)
             KeyRipple->RightHandOriginalDirection.X = NewValue;
@@ -544,101 +427,6 @@ void SKeyRipplePropertiesPanel::OnVector3PropertyChanged(
         else if (ComponentIndex == 2)
             KeyRipple->LeftHandOriginalDirection.Z = NewValue;
     }
-}
-
-bool SKeyRipplePropertiesPanel::BrowseForFile(const FString& FileExtension,
-                                              FString& OutFilePath) {
-    IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-    if (!DesktopPlatform) {
-        return false;
-    }
-
-    FString FileFilter =
-        FString::Printf(TEXT("Files (*%s)|*%s|All Files (*.*)|*.*"),
-                        *FileExtension, *FileExtension);
-    FString DefaultPath = FPaths::ProjectDir();
-
-    TArray<FString> OutFilenames;
-    bool bOpened = DesktopPlatform->OpenFileDialog(
-        nullptr, FString::Printf(TEXT("Select %s File"), *FileExtension),
-        DefaultPath, TEXT(""), FileFilter, EFileDialogFlags::None,
-        OutFilenames);
-
-    if (bOpened && OutFilenames.Num() > 0) {
-        OutFilePath = OutFilenames[0];
-        return true;
-    }
-
-    return false;
-}
-
-FSlateColor SKeyRipplePropertiesPanel::GetTabButtonColor(
-    bool bIsPropertiesTab) const {
-    // 由于我们不再使用ButtonColorAndOpacity，这里返回默认颜色
-    return FSlateColor::UseForeground();
-}
-
-FLinearColor SKeyRipplePropertiesPanel::GetTabButtonTextColor(
-    bool bIsPropertiesTab) const {
-    bool bIsActive =
-        (bIsPropertiesTab && ActiveTab == EActiveTab::Properties) ||
-        (!bIsPropertiesTab && ActiveTab == EActiveTab::Operations);
-
-    if (bIsActive) {
-        // 返回激活状态的颜色（蓝色）
-        return FLinearColor(0.0f, 112.0f / 255.0f, 220.0f / 255.0f, 1.0f);
-    } else {
-        // 返回非激活状态的颜色（灰色）
-        return FLinearColor(0.7f, 0.7f, 0.7f, 1.0f);
-    }
-}
-
-FReply SKeyRipplePropertiesPanel::OnPropertiesTabClicked() {
-    if (ActiveTab == EActiveTab::Properties) {
-        return FReply::Handled();
-    }
-
-    ActiveTab = EActiveTab::Properties;
-
-    if (ContentContainer.IsValid()) {
-        ContentContainer->ClearChildren();
-        ContentContainer->AddSlot().FillHeight(1.0f)
-            [SNew(SVerticalBox) +
-             SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                 [SNew(STextBlock)
-                      .Text(LOCTEXT("PropertiesLabel", "KeyRipple Properties:"))
-                      .Font(FAppStyle::GetFontStyle(
-                          "DetailsView.CategoryFont"))] +
-             SVerticalBox::Slot().FillHeight(1.0f).Padding(
-                 5.0f)[SNew(SScrollBox) +
-                       SScrollBox::Slot()[PropertiesContainer.ToSharedRef()]]];
-    }
-
-    return FReply::Handled();
-}
-
-FReply SKeyRipplePropertiesPanel::OnOperationsTabClicked() {
-    if (ActiveTab == EActiveTab::Operations) {
-        return FReply::Handled();
-    }
-
-    ActiveTab = EActiveTab::Operations;
-
-    if (ContentContainer.IsValid()) {
-        ContentContainer->ClearChildren();
-        ContentContainer->AddSlot().FillHeight(
-            1.0f)[OperationsPanel.ToSharedRef()];
-    }
-
-    return FReply::Handled();
-}
-
-FText SKeyRipplePropertiesPanel::GetPropertiesTabLabel() const {
-    return LOCTEXT("PropertiesTabLabel", "Properties");
-}
-
-FText SKeyRipplePropertiesPanel::GetOperationsTabLabel() const {
-    return LOCTEXT("OperationsTabLabel", "Operations");
 }
 
 FReply SKeyRipplePropertiesPanel::OnCheckObjectsStatus() {
@@ -664,7 +452,6 @@ FReply SKeyRipplePropertiesPanel::OnExportRecorderInfo() {
         return FReply::Handled();
     }
 
-    // Show confirmation dialog
     EAppReturnType::Type UserConfirm = FMessageDialog::Open(
         EAppMsgType::YesNo,
         FText::FromString(
@@ -672,7 +459,7 @@ FReply SKeyRipplePropertiesPanel::OnExportRecorderInfo() {
                  "information?\n\nThis will overwrite existing data.")));
 
     if (UserConfirm == EAppReturnType::Yes) {
-        UKeyRippleControlRigProcessor::ExportRecorderInfo(KeyRippleActor.Get());
+        KeyRippleActor->ExportRecorderInfo();
     }
 
     return FReply::Handled();
@@ -683,7 +470,6 @@ FReply SKeyRipplePropertiesPanel::OnImportRecorderInfo() {
         return FReply::Handled();
     }
 
-    // Show confirmation dialog
     EAppReturnType::Type UserConfirm = FMessageDialog::Open(
         EAppMsgType::YesNo,
         FText::FromString(TEXT(
@@ -691,9 +477,10 @@ FReply SKeyRipplePropertiesPanel::OnImportRecorderInfo() {
             "will overwrite existing actor properties.")));
 
     if (UserConfirm == EAppReturnType::Yes) {
-        UKeyRippleControlRigProcessor::ImportRecorderInfo(KeyRippleActor.Get());
+        KeyRippleActor->ImportRecorderInfo();
     }
 
     return FReply::Handled();
 }
+
 #undef LOCTEXT_NAMESPACE

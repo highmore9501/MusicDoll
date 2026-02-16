@@ -302,9 +302,13 @@ void SKeyRippleOperationsPanel::Construct(const FArguments& InArgs) {
                                  .OnTextCommitted_Lambda(
                                      [this](const FText& InText,
                                             ETextCommit::Type CommitType) {
-                                         if (!KeyRippleActor.IsValid()) return;
-                                         KeyRippleActor->AnimationFilePath =
-                                             InText.ToString();
+                                         if (CommitType == ETextCommit::OnEnter || CommitType == ETextCommit::OnUserMovedFocus)
+                                         {
+                                             if (!KeyRippleActor.IsValid()) return;
+                                             KeyRippleActor->AnimationFilePath =
+                                                 InText.ToString();
+                                             KeyRippleActor->Modify();
+                                         }
                                      })
                                  .ForegroundColor(
                                      FSlateColor::UseForeground())] +
@@ -492,7 +496,7 @@ FReply SKeyRippleOperationsPanel::OnGeneratePianoKeyAnimation() {
 
     // Use the new Level Sequencer method instead of the old animation asset
     // method
-    UKeyRipplePianoProcessor::GenerateMorphTargetAnimationInLevelSequencer(
+    UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
         KeyRippleActor.Get(), KeyAnimationPath);
     LastStatusMessage =
         TEXT("Generating piano key animation in Level Sequencer...");

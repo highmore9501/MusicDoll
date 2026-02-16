@@ -1,11 +1,11 @@
 ﻿#pragma once
 
-#include "CoreMinimal.h"
-#include "KeyRippleAnimationProcessor.h"  // 包含动画处理函数
 #include "Animation/SkeletalMeshActor.h"  // 包含SkeletalMeshActor定义
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigSequencerEditorLibrary.h"
+#include "CoreMinimal.h"
+#include "KeyRippleAnimationProcessor.h"  // 包含动画处理函数
 #include "KeyRippleUnreal.h"  // 引入原类的定义
 #include "LevelSequence.h"
 #include "MovieScene.h"
@@ -56,21 +56,6 @@ class KEYRIPPLEUNREAL_API UKeyRippleControlRigProcessor : public UObject {
     static void LoadState(AKeyRippleUnreal* KeyRippleActor);
 
     /**
-     * 导出记录器信息
-     * @param KeyRippleActor KeyRippleUnreal 实例
-     */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
-    static void ExportRecorderInfo(AKeyRippleUnreal* KeyRippleActor);
-
-    /**
-     * 导入记录器信息
-     * @param KeyRippleActor KeyRippleUnreal 实例
-     * @return 是否成功导入
-     */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
-    static bool ImportRecorderInfo(AKeyRippleUnreal* KeyRippleActor);
-
-    /**
      * 从Recorder名字中提取Control名字
      * @param RecorderName 录制器名字
      * @return 对应的Control名字
@@ -81,13 +66,11 @@ class KEYRIPPLEUNREAL_API UKeyRippleControlRigProcessor : public UObject {
      * 创建控制器
      * @param KeyRippleActor KeyRippleUnreal 实例
      * @param ControllerName 控制器名称
-     * @param bIsRotation 是否为旋转控制器
      * @return 创建的Actor实例
      */
     UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
     static AActor* CreateController(AKeyRippleUnreal* KeyRippleActor,
                                     const FString& ControllerName,
-                                    bool bIsRotation,
                                     const FString& ParentControllerName = "");
 
     /**
@@ -112,13 +95,6 @@ class KEYRIPPLEUNREAL_API UKeyRippleControlRigProcessor : public UObject {
      */
     UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
     static void SetupControllers(AKeyRippleUnreal* KeyRippleActor);
-
-    /**
-     * 设置记录器
-     * @param KeyRippleActor KeyRippleUnreal 实例
-     */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
-    static void SetupRecorders(AKeyRippleUnreal* KeyRippleActor);
 
     /**
      * 通过SkeletalMeshActor获取Control Rig Instance和Blueprint

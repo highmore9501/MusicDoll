@@ -5,6 +5,9 @@
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.generated.h"
 
+// 前置声明
+class FInstrumentControlRigUtility;
+
 /**
  * 乐器通用基类，用于统一处理各种乐器相关的功能
  */

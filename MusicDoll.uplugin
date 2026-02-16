@@ -36,6 +36,12 @@
       "BlacklistFolders": [ ".vshistory" ]
     },
     {
+      "Name": "StringFlowUnreal",
+      "Type": "Editor",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
       "Name": "MusicDollUI",
       "Type": "Editor",
       "LoadingPhase": "PostEngineInit",

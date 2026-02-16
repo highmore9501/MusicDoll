@@ -1,5 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
-
+﻿
 #include "PoleTargetIK.h"
 
 #include "AnimationCore.h"
@@ -43,9 +42,9 @@ static FVector FindPointOnPlanePerpendicularToAxis(
 }
 
 // 辅助方法：计算参考平面法线（基于根、末端和pole target）
-static FVector CalculateReferencePlaneNormal(const FVector& RootPosition,
-                                             const FVector& EffectorPosition,
-                                             const FVector& PoleTarget) {
+static FVector CalculateReferencePlaneNormalOld(const FVector& RootPosition,
+                                                const FVector& EffectorPosition,
+                                                const FVector& PoleTarget) {
     // 计算平面法线： (末端-根) × (pole target-根)
     FVector PlaneNormal =
         FVector::CrossProduct((EffectorPosition - RootPosition).GetSafeNormal(),
@@ -121,7 +120,7 @@ static void ApplySecondaryAxisCorrection(
     FVector RootPosition = Chain[0].Transform.GetLocation();
 
     // 1. 计算参考平面法线
-    FVector PlaneNormal = CalculateReferencePlaneNormal(
+    FVector PlaneNormal = CalculateReferencePlaneNormalOld(
         RootPosition, EffectorPosition, PoleTarget);
 
     if (PlaneNormal.IsNearlyZero()) return;

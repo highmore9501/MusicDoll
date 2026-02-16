@@ -1,58 +1,41 @@
 ﻿#pragma once
 
-#include "CoreMinimal.h"
-#include "Animation/SkeletalMeshActor.h"  // 包含SkeletalMeshActor定义
+#include "Animation/SkeletalMeshActor.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigSequencerEditorLibrary.h"
-#include "KeyRippleUnreal.h"  // 引入原类的定义
+#include "CoreMinimal.h"
+#include "KeyRippleUnreal.h"
 #include "LevelSequence.h"
 #include "MovieScene.h"
 #include "KeyRippleAnimationProcessor.generated.h"
 
-// 前置声明
-class UControlRig;
-class AActor;
-
-class UMovieSceneTrack;
-class UMovieSceneSection;
-
 /**
- * 动画处理器类，用于处理与动画生成相关的操作
+ * KeyRipple 动画处理器
+ * 用于处理 KeyRipple 的动画生成
+ *
+ * 通过继承 Common 模块的通用方法，大幅降低代码重复
+ * 仅保留 KeyRipple 特定的逻辑（配置文件解析、特殊控制器处理）
  */
 UCLASS()
-
 class KEYRIPPLEUNREAL_API UKeyRippleAnimationProcessor : public UObject {
     GENERATED_BODY()
 
    public:
     /**
-     * 制作动画
+     * 生成演奏动画（通过解析配置文件）
+     * @param KeyRippleActor KeyRippleUnreal 实例
+     */
+    UFUNCTION(BlueprintCallable, Category = "KeyRipple Animation Processor")
+    static void GeneratePerformerAnimation(AKeyRippleUnreal* KeyRippleActor);
+
+    /**
+     * 生成演奏动画（直接处理动画文件）
      * @param KeyRippleActor KeyRippleUnreal 实例
      * @param AnimationFilePath 动画文件路径
      */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Animation Processor")
-    static void MakeAnimation(AKeyRippleUnreal* KeyRippleActor,
-                              const FString& AnimationFilePath);
-
-    /**
-     * 批量插入Control Rig关键帧
-     * @param LevelSequence Level Sequence实例
-     * @param ControlRigInstance Control Rig实例
-     * @param ControlKeyframeData 关键帧数据
-     */
-    static void BatchInsertControlRigKeys(
-        ULevelSequence* LevelSequence, UControlRig* ControlRigInstance,
-        const TMap<FString, TArray<FControlKeyframe>>& ControlKeyframeData);
-
-    /**
-     * 查找Float通道
-     * @param Section Section实例
-     * @param ChannelName 通道名称
-     * @return 找到的Float通道，如果没找到返回nullptr
-     */
-    static FMovieSceneFloatChannel* FindFloatChannel(
-        UMovieSceneSection* Section, const FString& ChannelName);
+    static void GeneratePerformerAnimationDirect(AKeyRippleUnreal* KeyRippleActor,
+                                             const FString& AnimationFilePath);
 
     /**
      * 从KeyRipple文件中解析动画路径
@@ -64,13 +47,6 @@ class KEYRIPPLEUNREAL_API UKeyRippleAnimationProcessor : public UObject {
     static bool ParseKeyRippleFile(AKeyRippleUnreal* KeyRippleActor,
                                    FString& OutAnimationPath,
                                    FString& OutKeyAnimationPath);
-
-    /**
-     * 生成演奏动画
-     * @param KeyRippleActor KeyRippleUnreal 实例
-     */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Animation Processor")
-    static void GeneratePerformerAnimation(AKeyRippleUnreal* KeyRippleActor);
 
     /**
      * 生成钢琴键动画
@@ -97,4 +73,15 @@ class KEYRIPPLEUNREAL_API UKeyRippleAnimationProcessor : public UObject {
     static void ClearControlRigKeyframes(ULevelSequence* LevelSequence,
                                          UControlRig* ControlRigInstance,
                                          AKeyRippleUnreal* KeyRippleActor);
+
+    // ===== 向后兼容性包装方法 =====
+    // 以下方法现在直接调用 Common 模块的通用方法，仅用于向后兼容
+
+    /**
+     * 批量插入Control Rig关键帧
+     * 已弃用：请使用 UInstrumentAnimationUtility::BatchInsertControlRigKeys()
+     */
+    static void BatchInsertControlRigKeys(
+        ULevelSequence* LevelSequence, UControlRig* ControlRigInstance,
+        const TMap<FString, TArray<FControlKeyframe>>& ControlKeyframeData);
 };

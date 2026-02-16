@@ -1,4 +1,4 @@
-// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -30,7 +30,20 @@ public class MusicDollUI : ModuleRules
             new string[]
             {
                 "KeyRippleUnreal",
+                "StringFlowUnreal",
             }
         );
+
+        // Add Resources directory for custom icons
+        if (Target.Type == TargetType.Editor)
+        {
+            PrivateIncludePathModuleNames.AddRange(
+                new string[]
+                {
+                    "Slate",
+                    "SlateCore"
+                }
+            );
+        }
     }
 }

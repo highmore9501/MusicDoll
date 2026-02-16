@@ -1,8 +1,9 @@
-#include "MusicDollWindow.h"
+﻿#include "MusicDollWindow.h"
 
 #include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
 #include "MusicDollMainPanel.h"
+#include "MusicDollStyle.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SBoxPanel.h"
@@ -105,8 +106,7 @@ void FMusicDollWindow::RegisterWindow() {
         .SetDisplayName(LOCTEXT("MusicDollTabLabel", "Music Doll"))
         .SetTooltipText(
             LOCTEXT("MusicDollTabTooltip", "Open Music Doll editing panel"))
-        .SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(),
-                            "LevelEditor.Tabs.Details"))
+        .SetIcon(FSlateIcon(FMusicDollStyle::GetStyleSetName(), "MusicDoll.Icon"))
         .SetGroup(WorkspaceMenu::GetMenuStructure().GetLevelEditorCategory());
 
     bWindowRegistered = true;

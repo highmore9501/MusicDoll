@@ -1,7 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
+#include "CommonPropertiesPanelBase.h"
 #include "KeyRippleDisplayPanelInterface.h"
 
 class AKeyRippleUnreal;
@@ -10,7 +10,7 @@ class AKeyRippleUnreal;
  * Properties panel for KeyRippleUnreal actor
  * Displays and edits KeyRipple configuration properties
  */
-class KEYRIPPLEUNREAL_API SKeyRipplePropertiesPanel : public SCompoundWidget, public IKeyRippleDisplayPanel
+class KEYRIPPLEUNREAL_API SKeyRipplePropertiesPanel : public SCommonPropertiesPanelBase, public IKeyRippleDisplayPanel
 {
 public:
 	SLATE_BEGIN_ARGS(SKeyRipplePropertiesPanel)
@@ -25,15 +25,17 @@ public:
 	virtual void SetActor(AActor* InActor) override;
 	virtual bool CanHandleActor(const AActor* InActor) const override;
 
+	TSharedPtr<class SKeyRippleOperationsPanel> GetOperationsPanel() const { return OperationsPanel; }
+
 private:
-	void RefreshPropertyList();
+	virtual void RefreshPropertyList() override;
 
 	// Create editable property row widgets
-	TSharedRef<SWidget> CreateNumericPropertyRow(const FString& PropertyName, int32 Value, const FString& PropertyPath);
-	TSharedRef<SWidget> CreateStringPropertyRow(const FString& PropertyName, const FString& Value, const FString& PropertyPath);
-	TSharedRef<SWidget> CreateEnumPropertyRow(const FString& PropertyName, uint8 Value, const FString& EnumTypeName, const FString& PropertyPath);
-	TSharedRef<SWidget> CreateFilePathPropertyRow(const FString& PropertyName, const FString& FilePath, const FString& PropertyPath, const FString& FileExtension);
-	TSharedRef<SWidget> CreateVector3PropertyRow(const FString& PropertyName, const FVector& Value, const FString& PropertyPath);
+	TSharedRef<SWidget> CreateEnumPropertyRow(
+		const FString& PropertyName,
+		uint8 Value,
+		const FString& EnumTypeName,
+		const FString& PropertyPath);
 
 	// Property change handlers
 	void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
@@ -48,38 +50,9 @@ private:
 	FReply OnExportRecorderInfo();
 	FReply OnImportRecorderInfo();
 
-	// File picker helper
-	bool BrowseForFile(const FString& FileExtension, FString& OutFilePath);
-
-	// Tab switching
-	FReply OnPropertiesTabClicked();
-	FReply OnOperationsTabClicked();
-	FText GetPropertiesTabLabel() const;
-	FText GetOperationsTabLabel() const;
-	FSlateColor GetTabButtonColor(bool bIsActive) const;
-	FLinearColor GetTabButtonTextColor(bool bIsActive) const;
-
 	// Currently displayed actor
 	TWeakObjectPtr<AKeyRippleUnreal> KeyRippleActor;
 
-	// Properties container
-	TSharedPtr<SVerticalBox> PropertiesContainer;
-
-	// Tab management
-	TSharedPtr<SVerticalBox> ContentContainer;
-	enum class EActiveTab
-	{
-		Properties,
-		Operations
-	};
-	EActiveTab ActiveTab;
-
 	// Operations panel
 	TSharedPtr<class SKeyRippleOperationsPanel> OperationsPanel;
-
-public:
-	/**
-	 * Get the operations panel (used for sharing actor to sub-panels)
-	 */
-	TSharedPtr<class SKeyRippleOperationsPanel> GetOperationsPanel() const { return OperationsPanel; }
 };

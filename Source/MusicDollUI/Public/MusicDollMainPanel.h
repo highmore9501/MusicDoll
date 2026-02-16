@@ -1,86 +1,93 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "Widgets/SCompoundWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Widgets/SCompoundWidget.h"
 
 class ASkeletalMeshActor;
 class AActor;
 class AInstrumentBase;
 class IKeyRippleDisplayPanel;
+class IStringFlowDisplayPanel;
+class SStringFlowPropertiesPanel;
+class AStringFlowUnreal;
 
 // Forward declarations for subpanels
 class SActorSelectorPanel;
 
 /**
  * Main panel for Music Doll UI
- * Displays actor selector and uses generic properties panel from selected actor type
+ * Displays actor selector and uses generic properties panel from selected actor
+ * type
  */
-class MUSICDOLLUI_API SMusicDollMainPanel : public SCompoundWidget
-{
-public:
-	SLATE_BEGIN_ARGS(SMusicDollMainPanel)
-	{
-	}
-	SLATE_END_ARGS()
+class MUSICDOLLUI_API SMusicDollMainPanel : public SCompoundWidget {
+   public:
+    SLATE_BEGIN_ARGS(SMusicDollMainPanel) {}
+    SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs);
+    void Construct(const FArguments& InArgs);
 
-	virtual ~SMusicDollMainPanel();
+    virtual ~SMusicDollMainPanel();
 
-	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+    virtual void Tick(const FGeometry& AllottedGeometry,
+                      const double InCurrentTime,
+                      const float InDeltaTime) override;
 
-private:
-	FText GetPanelTitle() const;
-	
-	// Called when user selects an InstrumentBase actor
-	void OnActorSelected(AInstrumentBase* InActor);
+   private:
+    // Called when user selects an InstrumentBase actor
+    void OnActorSelected(AInstrumentBase* InActor);
 
-	// References to subpanels
-	TSharedPtr<SActorSelectorPanel> ActorSelectorPanel;
-	TSharedPtr<SVerticalBox> PropertiesPanelWidget;
+    // 获取当前选中Actor的类型标签（用图标替换emoji）
+    FText GetSelectedActorTypeLabel() const;
 
-	// Current selected actor - Use TWeakObjectPtr since UObjects are GC-managed
-	TWeakObjectPtr<AInstrumentBase> SelectedInstrumentActor;
-	TSharedPtr<IKeyRippleDisplayPanel> CurrentPropertiesPanel;
+    // 获取当前选中Actor对应的图标
+    const FSlateBrush* GetSelectedActorIcon() const;
+
+    // References to subpanels
+    TSharedPtr<SActorSelectorPanel> ActorSelectorPanel;
+    TSharedPtr<SVerticalBox> PropertiesPanelWidget;
+
+    // Current selected actor - Use TWeakObjectPtr since UObjects are GC-managed
+    TWeakObjectPtr<AInstrumentBase> SelectedInstrumentActor;
+    TSharedPtr<IKeyRippleDisplayPanel> CurrentKeyRipplePanel;
+    TSharedPtr<IStringFlowDisplayPanel> CurrentStringFlowPanel;
 };
 
 /**
  * Subpanel for selecting InstrumentBase actors from scene
  */
-class MUSICDOLLUI_API SActorSelectorPanel : public SCompoundWidget
-{
-public:
-	DECLARE_DELEGATE(FOnActorSelected);
+class MUSICDOLLUI_API SActorSelectorPanel : public SCompoundWidget {
+   public:
+    DECLARE_DELEGATE(FOnActorSelected);
 
-	SLATE_BEGIN_ARGS(SActorSelectorPanel)
-	{
-	}
-	SLATE_ARGUMENT(TWeakObjectPtr<AInstrumentBase>, SelectedActor)
-	SLATE_EVENT(FOnActorSelected, OnActorSelected)
-	SLATE_END_ARGS()
+    SLATE_BEGIN_ARGS(SActorSelectorPanel) {}
+    SLATE_ARGUMENT(TWeakObjectPtr<AInstrumentBase>, SelectedActor)
+    SLATE_EVENT(FOnActorSelected, OnActorSelected)
+    SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs);
+    void Construct(const FArguments& InArgs);
 
-	AInstrumentBase* GetSelectedActor() const;
+    AInstrumentBase* GetSelectedActor() const;
 
-private:
-	void RefreshActorList();
-	FReply OnRefreshActorList();
-	
-	TSharedRef<SWidget> GenerateActorComboItem(TWeakObjectPtr<AInstrumentBase> InActor) const;
-	void OnActorComboSelectionChanged(TWeakObjectPtr<AInstrumentBase> InActor, ESelectInfo::Type SelectInfo);
+   private:
+    void RefreshActorList();
+    FReply OnRefreshActorList();
 
-	FText GetSelectedActorName() const;
+    TSharedRef<SWidget> GenerateActorComboItem(
+        TWeakObjectPtr<AInstrumentBase> InActor) const;
+    void OnActorComboSelectionChanged(TWeakObjectPtr<AInstrumentBase> InActor,
+                                      ESelectInfo::Type SelectInfo);
 
-	// Actors list - Use TWeakObjectPtr for UObject references
-	// UObjects are managed by the garbage collector, not by TSharedPtr
-	TArray<TWeakObjectPtr<AInstrumentBase>> SceneActors;
-	TSharedPtr<SComboBox<TWeakObjectPtr<AInstrumentBase>>> ActorComboBox;
+    FText GetSelectedActorName() const;
 
-	// Selected actor - Use TWeakObjectPtr to avoid interfering with GC
-	TWeakObjectPtr<AInstrumentBase> SelectedActor;
+    // Actors list - Use TWeakObjectPtr for UObject references
+    // UObjects are managed by the garbage collector, not by TSharedPtr
+    TArray<TWeakObjectPtr<AInstrumentBase>> SceneActors;
+    TSharedPtr<SComboBox<TWeakObjectPtr<AInstrumentBase>>> ActorComboBox;
 
-	// Delegate
-	FOnActorSelected OnActorSelectedDelegate;
+    // Selected actor - Use TWeakObjectPtr to avoid interfering with GC
+    TWeakObjectPtr<AInstrumentBase> SelectedActor;
+
+    // Delegate
+    FOnActorSelected OnActorSelectedDelegate;
 };

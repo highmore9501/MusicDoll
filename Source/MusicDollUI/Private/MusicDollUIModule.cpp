@@ -1,8 +1,9 @@
-#include "MusicDollUIModule.h"
+﻿#include "MusicDollUIModule.h"
 
 #include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
 #include "MusicDollWindow.h"
+#include "MusicDollStyle.h"
 
 #define LOCTEXT_NAMESPACE "MusicDollUIModule"
 
@@ -35,6 +36,9 @@ static FAutoConsoleCommand MusicDollRegisterWindowCmd(
 
 void FMusicDollUIModule::StartupModule() {
     UE_LOG(LogTemp, Warning, TEXT("MusicDollUI Module Startup"));
+
+    // Initialize custom style
+    FMusicDollStyle::Initialize();
 
     // Guard against multiple module initialization
     if (bStartupComplete) {
@@ -106,6 +110,9 @@ void FMusicDollUIModule::ShutdownModule() {
     GInstance = nullptr;
     bStartupComplete = false;
     bWindowRegistrationAttempted = false;
+
+    // Shutdown custom style
+    FMusicDollStyle::Shutdown();
 
     UE_LOG(LogTemp, Warning, TEXT("MusicDollUI Module Shutdown Complete"));
 }

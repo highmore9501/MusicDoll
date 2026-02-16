@@ -4,6 +4,7 @@
 #include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "InstrumentAnimationUtility.h"  // Include for FAnimationKeyframe
 #include "InstrumentBase.h" 
 #include "KeyRippleUnreal.generated.h"
 
@@ -97,20 +98,13 @@ struct FRecorderTransform {
     }
 };
 
-// 定义控制关键帧数据结构
-struct FControlKeyframe {
-    int32 FrameNumber;
-    FVector Translation;
-    FQuat Rotation; 
-
-    // 辅助函数：将四元数转换为欧拉角
-    FRotator GetEulerRotation() const {
-        return Rotation.Rotator();
-    }
-};
+// ========== 向后兼容性别名 ==========
+// 为了保持与现有代码的兼容性，定义FControlKeyframe为FAnimationKeyframe的别名
+// 这样现有的KeyRipple代码可以继续使用FControlKeyframe，但实际使用的是通用的FAnimationKeyframe
+typedef FAnimationKeyframe FControlKeyframe;
 
 UCLASS(Blueprintable, BlueprintType)
-class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {  // 修改继承自InstrumentBase
+class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
     GENERATED_BODY()
 
    public:
@@ -281,4 +275,17 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {  // 修改
     /** 生成的钢琴材质 */
     UPROPERTY()
     TMap<FString, class UMaterialInstanceConstant*> GeneratedPianoMaterials;
+
+    /**
+     * 导出记录器信息
+     */
+    UFUNCTION(BlueprintCallable, Category = "KeyRipple")
+    void ExportRecorderInfo();
+
+    /**
+     * 导入记录器信息
+     * @return 是否成功导入
+     */
+    UFUNCTION(BlueprintCallable, Category = "KeyRipple")
+    bool ImportRecorderInfo();
 };
