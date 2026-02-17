@@ -1,11 +1,11 @@
-README.md
-
 # MusicDoll
 
 MusicDoll是一个系列软件的统称，它们连接Midi文件与虚拟乐手，让虚拟乐手能根据Midi单轨生成播放动作，从而实现虚拟乐手的自动演奏。
 本仓库并不是任何一个MusicDoll软件的源码，而是MusicDoll系列软件的Unreal Engine 插件的源码。
 Unreal插件的作用是连接Unreal Engine与MusicDoll软件所生成的数据文件，从而让虚拟乐手能在Unreal Engine中演奏。
 MusicDoll将由多个乐器类型组成，目前已上线钢琴版本和小提琴版本，也就是KeyRippleUnreal和StringFlowUnreal，其它乐器版本还在开发中。
+
+免责声明：本项目中的文档均由AI编写，如果有不准确的地方理所当然。因为作者也没那么多时间去仔细完善文档，真有问题还是联系作者吧。
 
 ## KeyRippleUnreal
 

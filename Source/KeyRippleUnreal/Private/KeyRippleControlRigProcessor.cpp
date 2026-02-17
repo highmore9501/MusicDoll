@@ -1,17 +1,11 @@
 ﻿#include "KeyRippleControlRigProcessor.h"
 
+#include "Common/Public/InstrumentControlRigUtility.h"
 #include "ControlRigCreationUtility.h"
-#include "Dom/JsonObject.h"  // 包含FJsonObject
-#include "Dom/JsonValue.h"   // 包含FJsonValue
-#include "ISequencer.h"
-#include "InstrumentControlRigUtility.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "KeyRipplePianoProcessor.h"
-#include "LevelEditor.h"
-#include "LevelEditorSequencerIntegration.h"
 #include "Rigs/RigHierarchyController.h"
-#include "Serialization/JsonReader.h"      // 包含TJsonReader
-#include "Serialization/JsonSerializer.h"  // 包含FJsonSerializer
-#include "Serialization/JsonWriter.h"      // 包含TJsonWriter
 
 #define LOCTEXT_NAMESPACE "KeyRippleControlRigProcessor"
 

@@ -41,12 +41,47 @@ bool UStringFlowTransformSyncProcessor::SyncStringInstrumentTransform(
         return false;
     }
 
-    // 使用通用的 ParentBetweenControlRig 方法建立父子关系
-    // 人物的 controller_root 作为父 Control
-    // 乐器的 violin_root 作为子 Control
-    return FInstrumentControlRigUtility::ParentBetweenControlRig(
+    // ========== 检测初始化值是否改变 =========
+    TArray<FTransform> NewValues;
+    bool bValuesChanged = FInstrumentControlRigUtility::HasInitializationValuesChanged(
         StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
-        StringFlowActor->StringInstrument, TEXT("violin_root"));
+        StringFlowActor->StringInstrument, TEXT("violin_root"),
+        StringFlowActor->CachedInitializationValues, NewValues);
+
+    // 如果初始化值改变，标记需要重新初始化
+    if (bValuesChanged) {
+        StringFlowActor->bStringInstrumentRelativeTransformInitialized = false;
+        StringFlowActor->CachedInitializationValues = NewValues;
+        UE_LOG(LogTemp, Warning,
+               TEXT("SyncStringInstrumentTransform: Initialization values "
+                    "changed, will reinitialize cache"));
+    }
+
+    // ========== 第一次初始化或值改变后重新初始化：计算并缓存相对变换矩阵 =========
+    if (!StringFlowActor->bStringInstrumentRelativeTransformInitialized) {
+        if (!FInstrumentControlRigUtility::InitializeControlRelationship(
+                StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
+                StringFlowActor->StringInstrument, TEXT("violin_root"),
+                StringFlowActor->CachedStringInstrumentRelativeTransform)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("SyncStringInstrumentTransform: Failed to initialize "
+                        "control relationship"));
+            return false;
+        }
+
+        // 更新缓存的初始化值
+        StringFlowActor->CachedInitializationValues = NewValues;
+        StringFlowActor->bStringInstrumentRelativeTransformInitialized = true;
+        UE_LOG(LogTemp, Warning,
+               TEXT("SyncStringInstrumentTransform: Control relationship "
+                    "initialized and cached"));
+    }
+
+    // ========== 每帧更新：使用缓存的相对变换矩阵快速更新 =========
+    return FInstrumentControlRigUtility::UpdateChildControlFromParent(
+        StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
+        StringFlowActor->StringInstrument, TEXT("violin_root"),
+        StringFlowActor->CachedStringInstrumentRelativeTransform);
 }
 
 bool UStringFlowTransformSyncProcessor::SyncBowTransform(
@@ -68,7 +103,7 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
 
     // 从人物身上获取琴弓位置源：bow_controller
     FTransform BowControllerTransform;
-    if (!FInstrumentControlRigUtility::GetControlRigControlTransform(
+    if (!FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
             StringFlowActor->SkeletalMeshActor, TEXT("bow_controller"),
             BowControllerTransform)) {
         UE_LOG(
@@ -81,7 +116,7 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
 
     // 从人物身上获取琴弓朝向源：string_touch_point
     FTransform StringTouchPointTransform;
-    if (!FInstrumentControlRigUtility::GetControlRigControlTransform(
+    if (!FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
             StringFlowActor->SkeletalMeshActor, TEXT("string_touch_point"),
             StringTouchPointTransform)) {
         UE_LOG(LogTemp, Warning,
@@ -130,7 +165,7 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
                                   FVector(1.0f, 1.0f, 1.0f));
 
     // 变换已变化，更新琴弓：应用位置和旋转
-    if (!FInstrumentControlRigUtility::SetControllerTransform(
+    if (!FInstrumentControlRigUtility::SetControlRigWorldTransform(
             StringFlowActor->Bow, TEXT("bow_ctrl"), BowPosition,
             TargetRotation)) {
         UE_LOG(LogTemp, Warning,

@@ -5,37 +5,21 @@
 #include "Common/Public/InstrumentControlRigUtility.h"
 #include "Common/Public/InstrumentMaterialUtility.h"
 #include "Common/Public/InstrumentMorphTargetUtility.h"
-#include "Components/MeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
-#include "ControlRigSequencerEditorLibrary.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-#include "ISequencer.h"
 #include "Json.h"
 #include "JsonUtilities.h"
-#include "LevelEditorSequencerIntegration.h"
-#include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
-#include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceConstant.h"
-#include "MovieScene.h"
-#include "MovieSceneSection.h"
-#include "MovieSceneTrack.h"
-#include "Rigs/RigHierarchyController.h"
+#include "Misc/FileHelper.h"
 #include "Sections/MovieSceneComponentMaterialParameterSection.h"
-#include "Sequencer/ControlRigSequencerHelpers.h"
-#include "Sequencer/MovieSceneControlRigParameterTrack.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "StringFlowAnimationProcessor.h"
-#include "StringFlowControlRigProcessor.h"
 #include "StringFlowUnreal.h"
-#include "Tracks/MovieSceneMaterialTrack.h"
-#include "Tracks/MovieScenePrimitiveMaterialTrack.h"
-#include "UObject/Package.h"
 
 #define LOCTEXT_NAMESPACE "StringFlowMusicInstrumentProcessor"
 
@@ -103,6 +87,13 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
         return;
     }
 
+    // 验证骨骼网格组件是否有有效的材质
+    if (SkeletalMeshComp->GetNumMaterials() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("SkeletalMeshComponent has no materials"));
+        return;
+    }
+
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringMaterials Started =========="));
 
@@ -114,6 +105,14 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
     Settings.MaterialSelector = [StringFlowActor, SkeletalMeshComp](
                                     const FString& SlotName,
                                     int32 SlotIndex) -> UMaterialInterface* {
+        // 验证索引范围
+        if (SlotIndex < 0 || SlotIndex >= SkeletalMeshComp->GetNumMaterials()) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Material slot index %d is out of bounds (total: %d)"),
+                   SlotIndex, SkeletalMeshComp->GetNumMaterials());
+            return nullptr;
+        }
+
         // 构建材质名称和路径
         FString StringIndexStr = FString::FromInt(SlotIndex);
         FString TargetMaterialName =
@@ -124,6 +123,8 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
         UMaterialInterface* CurrentMaterial =
             SkeletalMeshComp->GetMaterial(SlotIndex);
         if (!CurrentMaterial) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("No material at slot %d"), SlotIndex);
             return nullptr;
         }
 
@@ -363,18 +364,44 @@ void UStringFlowMusicInstrumentProcessor::
         TEXT("Creating vibration animation channels for %d channel names..."),
         ChannelNamesToCreate.Num());
 
-    // 使用Common模块的通用方法：确保Root Control存在
+    // 使用Common模块的通用方法：检查Root Control是否存在
     if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
             ControlRigBlueprint, TEXT("violin_root"))) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to ensure Root Control 'violin_root' exists"));
+               TEXT("====== INITIALIZATION FAILED ======"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Root Control 'violin_root' does not exist in Control Rig Blueprint"));
+        UE_LOG(LogTemp, Error,
+               TEXT(""));
+        UE_LOG(LogTemp, Error,
+               TEXT("Please manually create the Root Control 'violin_root' in your Control Rig Blueprint:"));
+        UE_LOG(LogTemp, Error,
+               TEXT("  1. Open the Control Rig Blueprint"));
+        UE_LOG(LogTemp, Error,
+               TEXT("  2. Go to the Hierarchy panel"));
+        UE_LOG(LogTemp, Error,
+               TEXT("  3. Right-click and create a new Control named 'violin_root'"));
+        UE_LOG(LogTemp, Error,
+               TEXT("  4. Set the Control Type to 'Transform'"));
+        UE_LOG(LogTemp, Error,
+               TEXT("  5. Save the Blueprint and try again"));
+        UE_LOG(LogTemp, Error,
+               TEXT("====== END OF ERROR REPORT ======"));
         return;
     }
 
+    // 获取Root Control的Key用于后续操作
+    FRigElementKey RootControlKey(TEXT("violin_root"), ERigElementType::Control);
+
     // 使用Common模块的通用方法：批量添加动画通道
-    FRigElementKey ParentKey(TEXT("violin_root"), ERigElementType::Control);
+    if (ChannelNamesToCreate.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ChannelNamesToCreate is empty"));
+        return;
+    }
+
     int32 ChannelsAdded = UInstrumentMorphTargetUtility::AddAnimationChannels(
-        ControlRigBlueprint, ParentKey, ChannelNamesToCreate);
+        ControlRigBlueprint, RootControlKey, ChannelNamesToCreate);
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringVibrationAnimationChannels "
@@ -430,9 +457,6 @@ bool UStringFlowMusicInstrumentProcessor::
                 "=========="));
 
 #if WITH_EDITOR
-    // 使用Common模块解析JSON数据
-    TArray<FMorphTargetKeyframeData> KeyframeData;
-
     // 使用Common模块的方法获取LevelSequence和Sequencer
     ULevelSequence* LevelSequence = nullptr;
     TSharedPtr<ISequencer> Sequencer = nullptr;
@@ -452,12 +476,44 @@ bool UStringFlowMusicInstrumentProcessor::
     FFrameRate TickResolution = MovieScene->GetTickResolution();
     FFrameRate DisplayRate = MovieScene->GetDisplayRate();
 
-    // 使用Common模块方法解析JSON
-    if (!UInstrumentMorphTargetUtility::ParseMorphTargetJSON(
-            StringVibrationDataPath, KeyframeData, TickResolution,
-            DisplayRate)) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to parse vibration JSON file: %s"),
+    // ========== String Vibration专用的JSON读取逻辑 ==========
+    // 读取JSON文件
+    FString JsonContent;
+    if (!FFileHelper::LoadFileToString(JsonContent, *StringVibrationDataPath)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[StringFlowMusicInstrumentProcessor] Failed to load JSON "
+                    "file: %s"),
                *StringVibrationDataPath);
+        return false;
+    }
+
+    // 解析JSON获得KeyDataArray
+    TArray<TSharedPtr<FJsonValue>> KeyDataArray;
+    TSharedPtr<FJsonObject> RootObject;
+    TSharedRef<TJsonReader<>> Reader =
+        TJsonReaderFactory<>::Create(JsonContent);
+
+    if (!FJsonSerializer::Deserialize(Reader, RootObject) ||
+        !RootObject.IsValid()) {
+        return false;
+    }
+
+    // StringFlow特定：寻找"strings"字段
+    if (!RootObject->HasField(TEXT("strings"))) {
+        return false;
+    }
+
+    KeyDataArray = RootObject->GetArrayField(TEXT("strings"));
+
+    if (KeyDataArray.Num() == 0) {
+        return false;
+    }
+
+    // ========== 使用通用方法处理关键帧数据 ==========
+    TArray<FMorphTargetKeyframeData> KeyframeData;
+    if (!UInstrumentMorphTargetUtility::ProcessMorphTargetKeyframeData(
+            KeyDataArray, KeyframeData, TickResolution, DisplayRate)) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to process vibration data"));
         return false;
     }
 
@@ -469,154 +525,33 @@ bool UStringFlowMusicInstrumentProcessor::
     UE_LOG(LogTemp, Warning, TEXT("Loaded %d vibration entries from JSON"),
            KeyframeData.Num());
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
-
-    // 使用Common模块的通用方法获取Control Rig
-    if (!FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-            StringFlowActor->StringInstrument, ControlRigInstance,
-            ControlRigBlueprint)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig from StringInstrument"));
-        return false;
-    }
-
-    if (!ControlRigInstance || !ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error,
-               TEXT("ControlRig Instance or Blueprint is null"));
-        return false;
-    }
-
-    URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
-    if (!RigHierarchy) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get hierarchy from ControlRig"));
-        return false;
-    }
-
-    // 查找或创建 Control Rig 轨道
-    UMovieSceneControlRigParameterTrack* ControlRigTrack =
-        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
-                                                         ControlRigInstance);
-
-    if (!ControlRigTrack) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to find Control Rig track"));
-        return false;
-    }
-
-    // 删除所有现有 sections
-    TArray<UMovieSceneSection*> AllExistingSections =
-        ControlRigTrack->GetAllSections();
-
-    if (AllExistingSections.Num() > 0) {
-        for (UMovieSceneSection* ExistingSection : AllExistingSections) {
-            if (ExistingSection) {
-                ControlRigTrack->RemoveSection(*ExistingSection);
-            }
-        }
-    }
-
-    // 创建新的 section
-    UMovieSceneSection* Section = ControlRigTrack->CreateNewSection();
-    if (Section) {
-        ControlRigTrack->AddSection(*Section);
-    } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to create new section for vibration animation"));
-        return false;
-    }
-
-    // 收集 frame 范围信息
-    FFrameNumber MinFrame(MAX_int32);
-    FFrameNumber MaxFrame(MIN_int32);
-    bool bHasFrames = false;
-
-    UE_LOG(LogTemp, Warning, TEXT("Processing vibration data from JSON..."));
-
-    // 使用Common模块解析后的数据
-    for (const FMorphTargetKeyframeData& MorphData : KeyframeData) {
-        // 从MorphTarget名称中提取弦索引
-        FString ChannelName = MorphData.MorphTargetName;
-
-        // 转换FrameNumbers和Values格式
-        TArray<FFrameNumber> FrameNumbers = MorphData.FrameNumbers;
-        TArray<FMovieSceneFloatValue> FrameValues;
-        FrameValues.Reserve(MorphData.Values.Num());
-
-        for (float Value : MorphData.Values) {
-            FrameValues.Add(FMovieSceneFloatValue(Value));
-        }
-
-        if (FrameNumbers.Num() > 0) {
-            // 更新帧范围
-            for (const FFrameNumber& FrameNum : FrameNumbers) {
-                if (FrameNum < MinFrame) {
-                    MinFrame = FrameNum;
-                }
-                if (FrameNum > MaxFrame) {
-                    MaxFrame = FrameNum;
-                }
-                bHasFrames = true;
-            }
-
-            if (OutVibrationKeyframeData.Contains(ChannelName)) {
-                auto& ExistingPair = OutVibrationKeyframeData[ChannelName];
-                ExistingPair.Get<0>().Append(FrameNumbers);
-                ExistingPair.Get<1>().Append(FrameValues);
-            } else {
-                OutVibrationKeyframeData.Add(
-                    ChannelName,
-                    TTuple<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>(
-                        FrameNumbers, FrameValues));
-            }
-        }
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Collected %d unique vibration channels"),
-           OutVibrationKeyframeData.Num());
-
-    // 使用Common模块方法批量写入关键帧
-    TArray<FMorphTargetKeyframeData> MorphTargetData;
-    MorphTargetData.Reserve(OutVibrationKeyframeData.Num());
-
-    // 转换数据格式
-    for (const auto& VibrationPair : OutVibrationKeyframeData) {
-        const FString& ChannelName = VibrationPair.Key;
-        const TArray<FFrameNumber>& FrameNumbers = VibrationPair.Value.Get<0>();
-        const TArray<FMovieSceneFloatValue>& FrameValues =
-            VibrationPair.Value.Get<1>();
-
-        FMorphTargetKeyframeData Data(ChannelName);
-        Data.FrameNumbers = FrameNumbers;
-
-        // 转换FMovieSceneFloatValue到float
-        Data.Values.Reserve(FrameValues.Num());
-        for (const FMovieSceneFloatValue& FloatValue : FrameValues) {
-            Data.Values.Add(FloatValue.Value);
-        }
-
-        MorphTargetData.Add(Data);
-    }
-
-    // 使用Common模块方法写入关键帧
+    // ========== 使用通用方法写入Morph Target动画 ==========
     int32 WrittenTargets =
-        UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(
-            Section, MorphTargetData);
+        UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
+            StringFlowActor->StringInstrument, KeyframeData, LevelSequence,
+            TEXT("violin_root"));
+
+    if (WrittenTargets == 0) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to write morph target animations"));
+        return false;
+    }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("  ✓ Successfully wrote keyframes for %d channels"),
+           TEXT("✓ Successfully wrote keyframes for %d channels"),
            WrittenTargets);
 
-    // 更新 section 范围
-    if (bHasFrames) {
-        Section->SetRange(TRange<FFrameNumber>(MinFrame, MaxFrame + 1));
+    // ========== 转换数据格式供Material动画使用 ==========
+    for (const FMorphTargetKeyframeData& Data : KeyframeData) {
+        TArray<FMovieSceneFloatValue> FloatValues;
+        FloatValues.Reserve(Data.Values.Num());
+        for (float Value : Data.Values) {
+            FloatValues.Add(FMovieSceneFloatValue(Value));
+        }
+        OutVibrationKeyframeData.Add(
+            Data.MorphTargetName,
+            TTuple<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>(
+                Data.FrameNumbers, FloatValues));
     }
-
-    MovieScene->Modify();
-    LevelSequence->MarkPackageDirty();
-
-#if WITH_EDITOR
-    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
-#endif
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== LoadAndGenerateStringVibrationAnimation Completed "

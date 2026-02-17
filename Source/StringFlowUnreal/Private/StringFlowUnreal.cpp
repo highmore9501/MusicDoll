@@ -34,6 +34,15 @@ AStringFlowUnreal::AStringFlowUnreal() {
     BowUpAxis = FVector(0.0f, 0.0f, 1.0f);            // Default: Z axis (up)
     bEnableRealtimeSync = true;
 
+    CachedStringInstrumentRelativeTransform = FTransform::Identity;
+    bStringInstrumentRelativeTransformInitialized = false;
+
+    // 初始化缓存的初始化值数组，共4个元素
+    CachedInitializationValues.SetNum(4);
+    for (int32 i = 0; i < 4; ++i) {
+        CachedInitializationValues[i] = FTransform::Identity;
+    }
+
     InitializeControllersAndRecorders();
 }
 

@@ -383,6 +383,32 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
     UPROPERTY()
     TMap<FString, class UMaterialInstanceConstant*> GeneratedMaterials;
 
+    // ========== 缓存的父子关系变换存储 ==========
+
+    /**
+     * 小提琴相对于演奏者的相对变换矩阵
+     * 在第一次同步时初始化，然后每帧复用此矩阵进行快速更新
+     */
+    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
+    FTransform CachedStringInstrumentRelativeTransform;
+
+    /**
+     * 标记小提琴相对变换是否已初始化
+     */
+    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
+    bool bStringInstrumentRelativeTransformInitialized;
+
+    /**
+     * 用于检测初始化值是否改变的缓存数组
+     * 存储顺序: [0] ParentInitGlobalTransform
+     *           [1] ChildInitGlobalTransform
+     *           [2] ParentActorWorldTransform
+     *           [3] ChildActorWorldTransform
+     * 当这些值发生变化时，需要重新初始化相对变换矩阵
+     */
+    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
+    TArray<FTransform> CachedInitializationValues;
+
     // ========== FTickableGameObject 接口实现 ==========
 
     /**

@@ -1,17 +1,10 @@
 ﻿#include "KeyRippleAnimationProcessor.h"
 
+#include "Common/Public/InstrumentAnimationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-#include "Engine/World.h"
-#include "ISequencer.h"
-#include "ISequencerModule.h"
-#include "InstrumentAnimationUtility.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "KeyRipplePianoProcessor.h"
-#include "LevelEditorSequencerIntegration.h"
-#include "LevelSequenceEditorBlueprintLibrary.h"
-#include "Sequencer/ControlRigSequencerHelpers.h"
-#include "Sequencer/MovieSceneControlRigParameterTrack.h"
 
 #define LOCTEXT_NAMESPACE "KeyRippleAnimationProcessor"
 

@@ -156,127 +156,68 @@ bool FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
     return false;
 }
 
-bool FInstrumentControlRigUtility::GetControlRigControlTransform(
+bool FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
     ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
     FTransform& OutTransform) {
-    if (!InSkeletalMeshActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlTransform: "
-                    "InSkeletalMeshActor is null"));
-        return false;
-    }
-
-    // 获取 Control Rig 实例
+    // 获取 Control Rig 实例和 Control 索引
     UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    int32 ControlIndex = INDEX_NONE;
 
-    if (!GetControlRigFromSkeletalMeshActor(InSkeletalMeshActor,
-                                            ControlRigInstance,
-                                            ControlRigBlueprint)) {
+    if (!GetControlRigAndIndex(InSkeletalMeshActor, ControlName,
+                               ControlRigInstance, ControlIndex)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlTransform: "
-                    "Failed to get ControlRig from SkeletalMeshActor"));
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlWorldTransform: "
+                    "Failed to get Control Rig instance or Control index"));
         return false;
     }
 
-    if (!ControlRigInstance) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlTransform: "
-                    "ControlRigInstance is null"));
-        return false;
-    }
-
-    // 获取 Control 在 Control Rig 中的索引
-    int32 ControlIndex = ControlRigInstance->GetHierarchy()->GetIndex(
-        FRigElementKey(*ControlName, ERigElementType::Control));
-
-    if (ControlIndex == INDEX_NONE) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlTransform: "
-                    "Control '%s' not found in ControlRig"),
-               *ControlName);
-        return false;
-    }
-
-    // ========== 坐标系转换：Control Rig内部全局 → 真实世界 ==========
     // 获取 Control 在 Hierarchy 中的全局变换（Control Rig 内部坐标系）
-    FTransform ControlGlobalTransform = ControlRigInstance->GetHierarchy()->GetGlobalTransform(ControlIndex);
-    
+    FTransform ControlGlobalTransform =
+        ControlRigInstance->GetHierarchy()->GetGlobalTransform(ControlIndex);
+
     // SkeletalMeshActor 的世界变换
     FTransform ActorWorldTransform = InSkeletalMeshActor->GetActorTransform();
-    
+
     // 真实世界坐标 = Control Rig 内部全局变换 × Actor 的世界变换
     OutTransform = ControlGlobalTransform * ActorWorldTransform;
 
     return true;
 }
 
-bool FInstrumentControlRigUtility::SetControllerTransform(
+bool FInstrumentControlRigUtility::SetControlRigLocalTransform(
     ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
     const FVector& NewLocation, const FQuat& NewRotation) {
-    if (!InSkeletalMeshActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::SetControllerTransform: "
-                    "InSkeletalMeshActor is null"));
-        return false;
-    }
-
-    // 获取 Control Rig 实例
+    // 获取 Control Rig 实例和 Control 索引
     UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    int32 ControlIndex = INDEX_NONE;
 
-    if (!GetControlRigFromSkeletalMeshActor(InSkeletalMeshActor,
-                                            ControlRigInstance,
-                                            ControlRigBlueprint)) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::SetControllerTransform: "
-                    "Failed to get ControlRig from SkeletalMeshActor"));
-        return false;
-    }
-
-    if (!ControlRigInstance) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::SetControllerTransform: "
-                    "ControlRigInstance is null"));
+    if (!GetControlRigAndIndex(InSkeletalMeshActor, ControlName,
+                               ControlRigInstance, ControlIndex)) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("FInstrumentControlRigUtility::SetControlRigLocalTransform: "
+                 "Failed to get Control Rig instance or Control index"));
         return false;
     }
 
     URigHierarchy* Hierarchy = ControlRigInstance->GetHierarchy();
     if (!Hierarchy) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::SetControllerTransform: "
-                    "Hierarchy is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("FInstrumentControlRigUtility::SetControlRigLocalTransform: "
+                 "Hierarchy is null"));
         return false;
     }
 
-    // 获取 Control 在 Control Rig 中的索引
-    int32 ControlIndex = Hierarchy->GetIndex(
-        FRigElementKey(*ControlName, ERigElementType::Control));
+    // 直接构建局部变换，无需任何坐标系转换
+    FTransform NewLocalTransform(NewRotation, NewLocation,
+                                 FVector(1.0f, 1.0f, 1.0f));
 
-    if (ControlIndex == INDEX_NONE) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::SetControllerTransform: "
-                    "Control '%s' not found in ControlRig"),
-               *ControlName);
-        return false;
-    }
-
-    // 构建期望的世界变换
-    FTransform DesiredWorldTransform(NewRotation, NewLocation,
-                                     FVector(1.0f, 1.0f, 1.0f));
-
-    // ========== 核心逻辑：将世界变换转换为局部变换 ==========
-    // 根元素的世界变换 = SkeletalMeshActor 的世界变换
-    FTransform RootWorldTransform = InSkeletalMeshActor->GetActorTransform();
-
-    // 局部变换 = 根元素的世界变换的逆 × 世界变换
-    FTransform NewLocalTransform = DesiredWorldTransform.GetRelativeTransform(RootWorldTransform);
-
-    // 设置 Control 的局部变换（而不是世界变换）
+    // 设置 Control 的局部变换
     Hierarchy->SetLocalTransform(ControlIndex, NewLocalTransform);
 
-    // ========== 通知 Control Rig 系统更新 ========= =
-    
+    // 通知 Control Rig 系统更新
     // 1. 重新评估 Control Rig 以应用变换更改
     ControlRigInstance->Evaluate_AnyThread();
 
@@ -291,243 +232,438 @@ bool FInstrumentControlRigUtility::SetControllerTransform(
     return true;
 }
 
-bool FInstrumentControlRigUtility::SyncControlTransform(
-    ASkeletalMeshActor* SourceSkeletalMeshActor,
-    const FString& SourceControlName,
-    ASkeletalMeshActor* TargetSkeletalMeshActor,
-    const FString& TargetControlName) {
-    if (!SourceSkeletalMeshActor || !TargetSkeletalMeshActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::SyncControlTransform: "
-                    "Source or Target SkeletalMeshActor is null"));
-        return false;
-    }
-
-    // 1. 获取源 Control 的世界变换
-    FTransform SourceWorldTransform;
-    if (!GetControlRigControlTransform(SourceSkeletalMeshActor,
-                                       SourceControlName,
-                                       SourceWorldTransform)) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::SyncControlTransform: "
-                    "Failed to get source control '%s' transform"),
-               *SourceControlName);
-        return false;
-    }
-
-    // 2. 获取目标 Control 的世界变换（用于计算父变换）
-    FTransform TargetCurrentWorldTransform;
-    if (!GetControlRigControlTransform(TargetSkeletalMeshActor,
-                                       TargetControlName,
-                                       TargetCurrentWorldTransform)) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::SyncControlTransform: "
-                    "Failed to get target control '%s' current transform"),
-               *TargetControlName);
-        return false;
-    }
-
-    // 3. 计算目标 Control 相对于其父的变换
-    // 需要获取目标 Control 的父信息以计算相对变换
-    // 目前简化处理：直接设置世界变换
-    // 完整实现需要访问 Control Rig Hierarchy 来获取父子关系
-    
-    if (!SetControllerTransform(TargetSkeletalMeshActor,
-                                TargetControlName,
-                                SourceWorldTransform.GetLocation(),
-                                SourceWorldTransform.Rotator().Quaternion())) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::SyncControlTransform: "
-                    "Failed to set target control '%s' transform"),
-               *TargetControlName);
-        return false;
-    }
-
-    UE_LOG(LogTemp, Log,
-           TEXT("FInstrumentControlRigUtility::SyncControlTransform: "
-                "Successfully synced '%s' from '%s' to '%s'"),
-           *SourceControlName, *SourceSkeletalMeshActor->GetName(),
-           *TargetSkeletalMeshActor->GetName());
-
-    return true;
-}
-
-bool FInstrumentControlRigUtility::AreTransformsEqual(
-    const FTransform& TransformA, const FTransform& TransformB,
-    float LocationTolerance, float RotationTolerance) {
-    // ========== 位置比较 ==========
-    FVector LocationDiff = TransformA.GetLocation() - TransformB.GetLocation();
-    float LocationDistance = LocationDiff.Length();
-    
-    if (LocationDistance > LocationTolerance) {
-        return false;
-    }
-
-    // ========== 旋转比较 ==========
-    FQuat RotationA = TransformA.GetRotation();
-    FQuat RotationB = TransformB.GetRotation();
-    
-    // 四元数的点积：值越接近1，表示两个旋转越接近
-    // 注意：q 和 -q 表示相同的旋转，所以取绝对值
-    float RotationDotProduct = FMath::Abs(RotationA | RotationB);
-    
-    // 当点积接近1时，表示旋转相同
-    // 1.0f - DotProduct 近似等于旋转角度（弧度），在小角度时
-    float RotationAngleDiff = FMath::Acos(FMath::Clamp(RotationDotProduct, -1.0f, 1.0f));
-    
-    if (RotationAngleDiff > RotationTolerance) {
-        return false;
-    }
-
-    return true;
-}
-
-bool FInstrumentControlRigUtility::GetControlRigControlInitTransform(
+bool FInstrumentControlRigUtility::SetControlRigWorldTransform(
     ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
-    FTransform& OutInitTransform) {
+    const FVector& NewWorldLocation, const FQuat& NewWorldRotation) {
+    // 构建期望的世界变换
+    FTransform DesiredWorldTransform(NewWorldRotation, NewWorldLocation,
+                                     FVector(1.0f, 1.0f, 1.0f));
+
+    if (!InSkeletalMeshActor) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("FInstrumentControlRigUtility::SetControlRigWorldTransform: "
+                 "InSkeletalMeshActor is null"));
+        return false;
+    }
+
+    // 获取 SkeletalMeshActor 的世界变换
+    FTransform RootWorldTransform = InSkeletalMeshActor->GetActorTransform();
+
+    // 计算相对于 Actor 的局部变换
+    // 局部变换 = 根元素的世界变换的逆 × 世界变换
+    FTransform LocalTransform =
+        DesiredWorldTransform.GetRelativeTransform(RootWorldTransform);
+
+    // 调用低级的局部变换应用方法
+    return SetControlRigLocalTransform(InSkeletalMeshActor, ControlName,
+                                       LocalTransform.GetLocation(),
+                                       LocalTransform.Rotator().Quaternion());
+}
+
+// ========== 私有辅助方法实现 =========
+
+bool FInstrumentControlRigUtility::GetControlRigControlGlobalInitTransform(
+    ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
+    FTransform& OutGlobalInitTransform) {
     if (!InSkeletalMeshActor) {
         UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlInitTransform: "
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlGlobalInitTransform: "
                     "InSkeletalMeshActor is null"));
         return false;
     }
 
-    // 获取 Control Rig 实例和蓝图
+    // 获取 Control Rig 蓝图
     UControlRig* ControlRigInstance = nullptr;
     UControlRigBlueprint* ControlRigBlueprint = nullptr;
 
-    if (!GetControlRigFromSkeletalMeshActor(InSkeletalMeshActor,
-                                            ControlRigInstance,
-                                            ControlRigBlueprint)) {
+    if (!GetControlRigFromSkeletalMeshActor(
+            InSkeletalMeshActor, ControlRigInstance, ControlRigBlueprint)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlInitTransform: "
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlGlobalInitTransform: "
                     "Failed to get ControlRig from SkeletalMeshActor"));
         return false;
     }
 
     if (!ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlInitTransform: "
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlGlobalInitTransform: "
                     "ControlRigBlueprint is null"));
         return false;
     }
 
-    // 获取蓝图的 Hierarchy
     URigHierarchy* BlueprintHierarchy = ControlRigBlueprint->Hierarchy;
     if (!BlueprintHierarchy) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlInitTransform: "
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlGlobalInitTransform: "
                     "Blueprint Hierarchy is null"));
         return false;
     }
 
-    // 在蓝图的 Hierarchy 中查找同名的 Control
-    int32 BlueprintControlIndex = BlueprintHierarchy->GetIndex(
+    // 获取 Control 的索引
+    int32 ControlIndex = BlueprintHierarchy->GetIndex(
         FRigElementKey(*ControlName, ERigElementType::Control));
 
-    if (BlueprintControlIndex == INDEX_NONE) {
+    if (ControlIndex == INDEX_NONE) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::GetControlRigControlInitTransform: "
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlGlobalInitTransform: "
                     "Control '%s' not found in Blueprint Hierarchy"),
                *ControlName);
         return false;
     }
 
-    // 获取蓝图中定义的初始化变换
-    // 使用 GetInitialLocalTransform 获取相对于父级的初始化变换
-    OutInitTransform = BlueprintHierarchy->GetInitialLocalTransform(BlueprintControlIndex);
+    // 使用 URigHierarchy::GetInitialGlobalTransform 获取相对于 Control Rig
+    // 根的全局初始化变换 这个方法已经在 URigHierarchy
+    // 中实现，能高效地计算完整的初始化全局变换
+    OutGlobalInitTransform =
+        BlueprintHierarchy->GetInitialGlobalTransform(ControlIndex);
 
     return true;
 }
 
-bool FInstrumentControlRigUtility::ParentBetweenControlRig(
-    ASkeletalMeshActor* ParentControlRig,
-    const FString& ParentControlName,
-    ASkeletalMeshActor* ChildControlRig,
-    const FString& ChildControlName) {
-    
-    // ========== 参数验证 =========
-    if (!ParentControlRig) {
+bool FInstrumentControlRigUtility::GetControlRigControlCurrentGlobalTransform(
+    ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
+    FTransform& OutGlobalTransform) {
+    if (!InSkeletalMeshActor) {
         UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "ParentControlRig is null"));
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlCurrentGlobalTransform: "
+                    "InSkeletalMeshActor is null"));
         return false;
     }
 
-    if (!ChildControlRig) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "ChildControlRig is null"));
-        return false;
-    }
+    // 获取 Control Rig 实例和索引
+    UControlRig* ControlRigInstance = nullptr;
+    int32 ControlIndex = INDEX_NONE;
 
-    if (ParentControlName.IsEmpty()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "ParentControlName is empty"));
-        return false;
-    }
-
-    if (ChildControlName.IsEmpty()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "ChildControlName is empty"));
-        return false;
-    }
-
-    // ========== 获取父 Control 的初始化变换 =========
-    FTransform ParentInitTransform;
-    if (!GetControlRigControlInitTransform(ParentControlRig, ParentControlName,
-                                           ParentInitTransform)) {
+    if (!GetControlRigAndIndex(InSkeletalMeshActor, ControlName,
+                               ControlRigInstance, ControlIndex)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "Failed to get parent '%s' init transform"),
+               TEXT("FInstrumentControlRigUtility::"
+                    "GetControlRigControlCurrentGlobalTransform: "
+                    "Failed to get Control Rig instance or Control index"));
+        return false;
+    }
+
+    // 直接使用 GetGlobalTransform 获取当前全局变换（Control Rig 内部坐标系）
+    OutGlobalTransform =
+        ControlRigInstance->GetHierarchy()->GetGlobalTransform(ControlIndex);
+
+    return true;
+}
+
+bool FInstrumentControlRigUtility::GetControlRigAndIndex(
+    ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
+    UControlRig*& OutControlRigInstance, int32& OutControlIndex) {
+    OutControlRigInstance = nullptr;
+    OutControlIndex = INDEX_NONE;
+
+    if (!InSkeletalMeshActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "InSkeletalMeshActor is null"));
+        return false;
+    }
+
+    if (ControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "ControlName is empty"));
+        return false;
+    }
+
+    // 获取 Control Rig 实例
+    UControlRig* ControlRigInstance = nullptr;
+    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+
+    if (!GetControlRigFromSkeletalMeshActor(
+            InSkeletalMeshActor, ControlRigInstance, ControlRigBlueprint)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "Failed to get ControlRig from SkeletalMeshActor"));
+        return false;
+    }
+
+    if (!ControlRigInstance) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "ControlRigInstance is null"));
+        return false;
+    }
+
+    // 获取 Control 索引
+    URigHierarchy* Hierarchy = ControlRigInstance->GetHierarchy();
+    if (!Hierarchy) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "Hierarchy is null"));
+        return false;
+    }
+
+    OutControlIndex = Hierarchy->GetIndex(
+        FRigElementKey(*ControlName, ERigElementType::Control));
+
+    if (OutControlIndex == INDEX_NONE) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("FInstrumentControlRigUtility::GetControlRigAndIndex: "
+                    "Control '%s' not found in Hierarchy"),
+               *ControlName);
+        return false;
+    }
+
+    OutControlRigInstance = ControlRigInstance;
+    return true;
+}
+
+bool FInstrumentControlRigUtility::InitializeControlRelationship(
+    ASkeletalMeshActor* ParentControlRig, const FString& ParentControlName,
+    ASkeletalMeshActor* ChildControlRig, const FString& ChildControlName,
+    FTransform& OutRelativeTransform) {
+    OutRelativeTransform = FTransform::Identity;
+
+    if (!ParentControlRig || !ChildControlRig || ParentControlName.IsEmpty() ||
+        ChildControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeControlRelationship: Invalid parameters"));
+        return false;
+    }
+
+    // ========== 步骤1：获取父 Control 的初始化全局变换 =========
+    FTransform ParentInitGlobalTransform;
+    if (!GetControlRigControlGlobalInitTransform(
+            ParentControlRig, ParentControlName, ParentInitGlobalTransform)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InitializeControlRelationship: Failed to get parent '%s' "
+                    "init transform"),
                *ParentControlName);
         return false;
     }
 
-    // ========== 获取父 Control 的当前变换 =========
-    FTransform ParentCurrentTransform;
-    if (!GetControlRigControlTransform(ParentControlRig, ParentControlName,
-                                       ParentCurrentTransform)) {
+    // ========== 步骤2：获取子 Control 的初始化全局变换 =========
+    FTransform ChildInitGlobalTransform;
+    if (!GetControlRigControlGlobalInitTransform(
+            ChildControlRig, ChildControlName, ChildInitGlobalTransform)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "Failed to get parent '%s' current transform"),
+               TEXT("InitializeControlRelationship: Failed to get child '%s' "
+                    "init transform"),
+               *ChildControlName);
+        return false;
+    }
+
+    // ========== 步骤3：获取 Actor 的世界变换 =========
+    FTransform ParentActorWorldTransform =
+        ParentControlRig->GetActorTransform();
+    FTransform ChildActorWorldTransform = ChildControlRig->GetActorTransform();
+
+    // ========== 步骤4：计算初始的世界坐标下的变换 =========
+    // 父 Control 的初始世界变换
+    FTransform ParentInitWorldTransform =
+        ParentInitGlobalTransform * ParentActorWorldTransform;
+    // 子 Control 的初始世界变换
+    FTransform ChildInitWorldTransform =
+        ChildInitGlobalTransform * ChildActorWorldTransform;
+
+    // ========== 步骤5：计算相对变换矩阵 =========
+    // 相对变换 = Child 初始世界变换 × (Parent 初始世界变换 的逆)
+    // 含义：从 Parent 的初始位置和旋转到 Child 的初始位置和旋转的变换
+    // 这个变换在整个生命周期中保持不变
+    OutRelativeTransform =
+        ChildInitWorldTransform.GetRelativeTransform(ParentInitWorldTransform);
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("InitializeControlRelationship: Successfully initialized "
+                "relative transform for '%s' relative to '%s'"),
+           *ChildControlName, *ParentControlName);
+
+    return true;
+}
+
+bool FInstrumentControlRigUtility::UpdateChildControlFromParent(
+    ASkeletalMeshActor* ParentControlRig, const FString& ParentControlName,
+    ASkeletalMeshActor* ChildControlRig, const FString& ChildControlName,
+    const FTransform& RelativeTransform) {
+    if (!ParentControlRig || !ChildControlRig || ParentControlName.IsEmpty() ||
+        ChildControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("UpdateChildControlFromParent: Invalid parameters"));
+        return false;
+    }
+
+    // ========== 步骤1：获取父 Control 的初始化全局变换 =========
+    FTransform ParentInitGlobalTransform;
+    if (!GetControlRigControlGlobalInitTransform(
+            ParentControlRig, ParentControlName, ParentInitGlobalTransform)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("UpdateChildControlFromParent: Failed to get parent '%s' "
+                    "init transform"),
                *ParentControlName);
         return false;
     }
 
-    // ========== 计算父 Control 的 offset 矩阵 =========
-    // offset = ParentInitTransform^(-1) × ParentCurrentTransform
-    // 这个 offset 表示父 Control 相对于其初始化位置的偏移
-    FTransform ParentOffsetTransform = ParentInitTransform.Inverse() * ParentCurrentTransform;
-
-    // ========== 获取子 Control 的初始化变换 =========
-    FTransform ChildInitTransform;
-    if (!GetControlRigControlInitTransform(ChildControlRig, ChildControlName,
-                                           ChildInitTransform)) {
+    // ========== 步骤2：获取父 Control 的当前全局变换 =========
+    FTransform ParentCurrentGlobalTransform;
+    if (!GetControlRigControlCurrentGlobalTransform(
+            ParentControlRig, ParentControlName,
+            ParentCurrentGlobalTransform)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "Failed to get child '%s' init transform"),
-               *ChildControlName);
+               TEXT("UpdateChildControlFromParent: Failed to get parent '%s' "
+                    "current transform"),
+               *ParentControlName);
         return false;
     }
 
-    // ========== 计算子 Control 的新变换 =========
-    // 新变换 = 子初始化变换 × 父offset矩阵
-    // 这样子 Control 就会跟随父 Control 的偏移而运动
-    FTransform ChildTargetTransform = ChildInitTransform * ParentOffsetTransform;
+    // ========== 步骤3：获取 Actor 的世界变换 =========
+    FTransform ParentActorWorldTransform =
+        ParentControlRig->GetActorTransform();
+    FTransform ChildActorWorldTransform = ChildControlRig->GetActorTransform();
 
-    // ========== 应用到子 Control =========
-    if (!SetControllerTransform(ChildControlRig, ChildControlName,
-                               ChildTargetTransform.GetLocation(),
-                               ChildTargetTransform.Rotator().Quaternion())) {
+    // ========== 步骤4：计算父 Control 的当前世界变换 =========
+    FTransform ParentInitWorldTransform =
+        ParentInitGlobalTransform * ParentActorWorldTransform;
+    FTransform ParentCurrentWorldTransform =
+        ParentCurrentGlobalTransform * ParentActorWorldTransform;
+
+    // ========== 步骤5：计算子 Control 的新世界变换 =========
+    // ChildNewWorldTransform = RelativeTransform × ParentCurrentWorldTransform
+    // 这样 Child 就会保持相对于 Parent 初始位置的相对关系，
+    // 但会跟随 Parent 当前位置的变化
+    FTransform ChildNewWorldTransform =
+        RelativeTransform * ParentCurrentWorldTransform;
+
+    // ========== 步骤6：将世界坐标转换回 Child 的 Control Rig 坐标系 =========
+    // 子 Control 的新全局变换（相对于 Child Control Rig 根）
+    FTransform ChildNewGlobalTransform =
+        ChildNewWorldTransform.GetRelativeTransform(ChildActorWorldTransform);
+
+    // ========== 步骤7：应用变换 =========
+    // 获取子 Control Rig 实例
+    UControlRig* ChildControlRigInstance = nullptr;
+    int32 ChildControlIndex = INDEX_NONE;
+
+    if (!GetControlRigAndIndex(ChildControlRig, ChildControlName,
+                               ChildControlRigInstance, ChildControlIndex)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::ParentBetweenControlRig: "
-                    "Failed to set child '%s' transform"),
-               *ChildControlName);
+               TEXT("UpdateChildControlFromParent: Failed to get child ControlRig "
+                    "or Control index"));
         return false;
+    }
+
+    URigHierarchy* ChildHierarchy = ChildControlRigInstance->GetHierarchy();
+    if (!ChildHierarchy) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("UpdateChildControlFromParent: Child Hierarchy is null"));
+        return false;
+    }
+
+    // 设置 Child Control 的全局变换
+    ChildHierarchy->SetGlobalTransform(
+        FRigElementKey(*ChildControlName, ERigElementType::Control),
+        ChildNewGlobalTransform);
+
+    // 重新评估 Control Rig 以应用变换更改
+    ChildControlRigInstance->Evaluate_AnyThread();
+
+    // 强制更新骨骼网格组件
+    if (USkeletalMeshComponent* SkelMeshComp =
+            ChildControlRig->GetSkeletalMeshComponent()) {
+        SkelMeshComp->RefreshBoneTransforms();
+        SkelMeshComp->MarkRenderTransformDirty();
+        SkelMeshComp->MarkRenderStateDirty();
     }
 
     return true;
+}
+
+bool FInstrumentControlRigUtility::HasInitializationValuesChanged(
+    ASkeletalMeshActor* ParentControlRig,
+    const FString& ParentControlName,
+    ASkeletalMeshActor* ChildControlRig,
+    const FString& ChildControlName,
+    const TArray<FTransform>& CachedValues,
+    TArray<FTransform>& OutNewValues) {
+    OutNewValues.SetNum(4);
+
+    if (!ParentControlRig || !ChildControlRig || ParentControlName.IsEmpty() ||
+        ChildControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("HasInitializationValuesChanged: Invalid parameters"));
+        return false;
+    }
+
+    if (CachedValues.Num() != 4) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("HasInitializationValuesChanged: CachedValues array size is "
+                    "not 4"));
+        return true;  // 如果缓存大小不对，认为值已改变
+    }
+
+    // ========== 获取当前的四个初始化值 =========
+    // [0] ParentInitGlobalTransform
+    if (!GetControlRigControlGlobalInitTransform(
+            ParentControlRig, ParentControlName, OutNewValues[0])) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("HasInitializationValuesChanged: Failed to get parent init "
+                    "transform"));
+        return true;
+    }
+
+    // [1] ChildInitGlobalTransform
+    if (!GetControlRigControlGlobalInitTransform(
+            ChildControlRig, ChildControlName, OutNewValues[1])) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("HasInitializationValuesChanged: Failed to get child init "
+                    "transform"));
+        return true;
+    }
+
+    // [2] ParentActorWorldTransform
+    OutNewValues[2] = ParentControlRig->GetActorTransform();
+
+    // [3] ChildActorWorldTransform
+    OutNewValues[3] = ChildControlRig->GetActorTransform();
+
+    // ========== 检测是否有任何值发生变化 =========
+    bool bChanged = false;
+
+    for (int32 i = 0; i < 4; ++i) {
+        // 比较位置
+        if (!OutNewValues[i].GetLocation().Equals(CachedValues[i].GetLocation(),
+                                                   1.0f)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("HasInitializationValuesChanged: Value [%d] location "
+                        "changed"),
+                   i);
+            bChanged = true;
+            break;
+        }
+
+        // 比较旋转
+        if (!OutNewValues[i].GetRotation().Equals(
+                CachedValues[i].GetRotation(), 0.01f)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("HasInitializationValuesChanged: Value [%d] rotation "
+                        "changed"),
+                   i);
+            bChanged = true;
+            break;
+        }
+
+        // 比较缩放
+        if (!OutNewValues[i].GetScale3D().Equals(CachedValues[i].GetScale3D(),
+                                                  0.01f)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("HasInitializationValuesChanged: Value [%d] scale "
+                        "changed"),
+                   i);
+            bChanged = true;
+            break;
+        }
+    }
+
+    return bChanged;
 }

@@ -5,32 +5,18 @@
 #include "Common/Public/InstrumentControlRigUtility.h"
 #include "Common/Public/InstrumentMaterialUtility.h"
 #include "Common/Public/InstrumentMorphTargetUtility.h"
-#include "Components/MeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
-#include "Engine/World.h"
-#include "EntitySystem/MovieSceneSharedPlaybackState.h"
-#include "ISequencer.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "LevelEditorSequencerIntegration.h"
-#include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
-#include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceConstant.h"
-#include "Misc/PackageName.h"
-#include "MovieScene.h"
-#include "MovieSceneSection.h"
-#include "MovieSceneTrack.h"
-#include "Rigs/RigHierarchyController.h"
+#include "Misc/FileHelper.h"
 #include "Sections/MovieSceneComponentMaterialParameterSection.h"
-#include "Sequencer/ControlRigSequencerHelpers.h"
-#include "Sequencer/MovieSceneControlRigParameterTrack.h"
-#include "Tracks/MovieSceneMaterialTrack.h"
-#include "Tracks/MovieScenePrimitiveMaterialTrack.h"
-#include "Tracks/MovieSceneSkeletalAnimationTrack.h"
-#include "UObject/Package.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 #define LOCTEXT_NAMESPACE "KeyRipplePianoProcessor"
 
@@ -188,15 +174,49 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("========== GenerateInstrumentAnimation "
-                "Started =========="));
+           TEXT("========== GenerateInstrumentAnimation Started =========="));
 
 #if WITH_EDITOR
-    //===== Step 1: Read and parse JSON animation file using Common utility
-    //=====
-    TArray<FMorphTargetKeyframeData> KeyframeData;
+    // ========== Piano特定的JSON读取逻辑 ==========
+    FString JsonContent;
+    if (!FFileHelper::LoadFileToString(JsonContent, *PianoKeyAnimationPath)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[KeyRipplePianoProcessor] Failed to load JSON file: %s"),
+               *PianoKeyAnimationPath);
+        return;
+    }
 
-    // 使用Common模块的通用方法获取LevelSequence和Sequencer
+    // 解析JSON获得KeyDataArray
+    TArray<TSharedPtr<FJsonValue>> KeyDataArray;
+    TSharedPtr<FJsonObject> RootObject;
+    TSharedRef<TJsonReader<>> Reader =
+        TJsonReaderFactory<>::Create(JsonContent);
+
+    if (!FJsonSerializer::Deserialize(Reader, RootObject) ||
+        !RootObject.IsValid()) {
+        // 尝试作为数组解析
+        TArray<TSharedPtr<FJsonValue>> RootArray;
+        TSharedRef<TJsonReader<>> ArrayReader =
+            TJsonReaderFactory<>::Create(JsonContent);
+        if (!FJsonSerializer::Deserialize(ArrayReader, RootArray)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("[KeyRipplePianoProcessor] Failed to parse JSON"));
+            return;
+        }
+        KeyDataArray = RootArray;
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("[KeyRipplePianoProcessor] No keys found in JSON"));
+        return;
+    }
+
+    if (KeyDataArray.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[KeyRipplePianoProcessor] No key data found"));
+        return;
+    }
+
+    // ========== 使用通用方法处理关键帧数据 ==========
     ULevelSequence* LevelSequence = nullptr;
     TSharedPtr<ISequencer> Sequencer = nullptr;
 
@@ -214,11 +234,12 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     FFrameRate TickResolution = MovieScene->GetTickResolution();
     FFrameRate DisplayRate = MovieScene->GetDisplayRate();
 
-    if (!UInstrumentMorphTargetUtility::ParseMorphTargetJSON(
-            PianoKeyAnimationPath, KeyframeData, TickResolution, DisplayRate)) {
+    // 使用通用处理方法处理KeyDataArray
+    TArray<FMorphTargetKeyframeData> KeyframeData;
+    if (!UInstrumentMorphTargetUtility::ProcessMorphTargetKeyframeData(
+            KeyDataArray, KeyframeData, TickResolution, DisplayRate)) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to parse morph target JSON file: %s"),
-               *PianoKeyAnimationPath);
+               TEXT("Failed to process morph target data from JSON"));
         return;
     }
 
@@ -230,205 +251,25 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     UE_LOG(LogTemp, Warning, TEXT("Loaded %d morph target entries from JSON"),
            KeyframeData.Num());
 
-    //===== Step 2: Get Piano's Control Rig Instance =====
-
-    //===== Step 2.1: Get unique ObjectBindingID for this piano instance using
-    // Common utility =====
-    FGuid PianoBindingID =
-        UInstrumentAnimationUtility::FindSkeletalMeshActorBinding(
-            Sequencer, LevelSequence, KeyRippleActor->Piano);
-
-    if (!PianoBindingID.IsValid()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get ObjectBindingID for Piano instance!"));
-        return;
-    }
-
-    // 输出当前piano实例的ObjectBindingID
-    UE_LOG(LogTemp, Warning,
-           TEXT("Current Piano SkeletalMeshActor binding ID: %s"),
-           *PianoBindingID.ToString());
-
-    //===== Step 3: Get Piano's Control Rig Instance =====
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
-
-    if (!FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-            KeyRippleActor->Piano, ControlRigInstance, ControlRigBlueprint)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig from Piano SkeletalMeshActor"));
-        return;
-    }
-
-    if (!ControlRigInstance || !ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error,
-               TEXT("ControlRig Instance or Blueprint is null"));
-        return;
-    }
-
-    URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
-    if (!RigHierarchy) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get hierarchy from ControlRig"));
-        return;
-    }
-
-    //===== Step 4: Find root control (piano_key_root) =====
-    FRigElementKey RootControlKey(TEXT("piano_key_root"),
-                                  ERigElementType::Control);
-    if (!RigHierarchy->Contains(RootControlKey)) {
-        UE_LOG(LogTemp, Error, TEXT("Root control 'piano_key_root' not found"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Found root control: piano_key_root"));
-
-    //===== Step 5: Find or create Control Rig track (must match this ControlRig
-    // instance) =====
-    UMovieSceneControlRigParameterTrack* ControlRigTrack =
-        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
-                                                         ControlRigInstance);
-
-    if (!ControlRigTrack) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to find Control Rig track"));
-        return;
-    }
-
-    // 校验轨道归属（可选，增强健壮性）
-    if (ControlRigTrack->GetControlRig() != ControlRigInstance) {
-        UE_LOG(LogTemp, Error,
-               TEXT("ControlRigTrack does not match current Piano's ControlRig "
-                    "instance!"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Found Control Rig track"));
-
-    //===== Step 6: Get or create Section =====
-    TArray<UMovieSceneSection*> Sections = ControlRigTrack->GetAllSections();
-    UMovieSceneSection* Section = nullptr;
-
-    if (Sections.Num() > 0) {
-        Section = Sections[0];
-    } else {
-        Section = ControlRigTrack->CreateNewSection();
-        if (Section) {
-            ControlRigTrack->AddSection(*Section);
-        }
-    }
-
-    if (!Section) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get or create Section"));
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Working with Section"));
-
-    //===== Step 7: Clear all sections and create new one before batch
-    TArray<UMovieSceneSection*> AllExistingSections =
-        ControlRigTrack->GetAllSections();
-
-    if (AllExistingSections.Num() > 0) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("Removing %d sections from Piano Control Rig track before "
-                    "adding new keyframes"),
-               AllExistingSections.Num());
-
-        // 删除所有现有sections
-        for (UMovieSceneSection* ExistingSection : AllExistingSections) {
-            if (ExistingSection) {
-                ControlRigTrack->RemoveSection(*ExistingSection);
-            }
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("All existing sections removed"));
-    }
-
-    // 创建一个新的空section
-    Section = ControlRigTrack->CreateNewSection();
-    if (Section) {
-        ControlRigTrack->AddSection(*Section);
-        UE_LOG(LogTemp, Warning,
-               TEXT("Created new empty section for piano morph targets"));
-    } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to create new section for piano morph targets"));
-        return;
-    }
-
-    //===== Step 8: Calculate frame range from parsed data =====
-    FFrameNumber seqStart, seqEnd;
-    TRange<FFrameNumber> seqrange = MovieScene->GetPlaybackRange();
-    seqStart = seqrange.GetLowerBoundValue();
-    seqEnd = seqrange.GetUpperBoundValue();
-    UE_LOG(LogTemp, Warning, TEXT("MovieScene Playback Range: %d - %d"),
-           seqStart.Value, seqEnd.Value);
-
-    // 初始化 MinFrame 和 MaxFrame
-    FFrameNumber MinFrame(MAX_int32);
-    FFrameNumber MaxFrame(MIN_int32);
-    bool bHasFrames = false;
-
-    // 从已解析的数据中计算帧数范围
-    for (const FMorphTargetKeyframeData& Data : KeyframeData) {
-        for (const FFrameNumber& FrameNumber : Data.FrameNumbers) {
-            if (FrameNumber < MinFrame) {
-                MinFrame = FrameNumber;
-            }
-            if (FrameNumber > MaxFrame) {
-                MaxFrame = FrameNumber;
-            }
-            bHasFrames = true;
-        }
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Processing morph target data from JSON..."));
-
-    //===== Step 8: Write keyframes using Common utility =====
+    // ========== 使用通用方法写入Morph Target动画 ==========
     int32 WrittenTargets =
-        UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(Section,
-                                                                 KeyframeData);
+        UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
+            KeyRippleActor->Piano, KeyframeData, LevelSequence,
+            TEXT("piano_key_root"));
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("Successfully wrote keyframes for %d morph targets"),
-           WrittenTargets);
-
-    // Log the actual min/max frames we collected
-    if (bHasFrames) {
-        UE_LOG(LogTemp, Warning, TEXT("Collected Frame Range: %d - %d"),
-               MinFrame.Value, MaxFrame.Value);
-    }
-
-    //===== Step 9: Update section range =====
-    if (bHasFrames) {
-        Section->SetRange(TRange<FFrameNumber>(MinFrame, MaxFrame));
+    if (WrittenTargets > 0) {
         UE_LOG(LogTemp, Warning,
-               TEXT("Set section range to [%d, %d) to include all frames from "
-                    "%d to %d"),
-               MinFrame.Value, (MaxFrame + 1).Value, MinFrame.Value,
-               MaxFrame.Value);
+               TEXT("✓ Successfully wrote %d morph target animations"),
+               WrittenTargets);
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("✗ Failed to write morph target animations"));
+        return;
     }
 
-    //===== Step 10: Mark as modified and refresh =====
-    MovieScene->Modify();
-    LevelSequence->MarkPackageDirty();
-
-#if WITH_EDITOR
-    // 如果在编辑器中，可能需要刷新Sequencer UI
-    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
-#endif
-
-    // 🔧 ADD: 材质参数关键帧报告
+    // ========== 生成材质参数动画 ==========
     UE_LOG(LogTemp, Warning,
-           TEXT("========== Instrument Animation Report =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Successfully processed %d morph targets"),
-           KeyframeData.Num());
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== Instrument Animation Completed =========="));
-
-    //===== Step 11: Generate material parameter animation =====
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== Step 11: Generating material parameter animation "
-                "=========="));
+           TEXT("========== Generating material parameter animation =========="));
 
     // 转换KeyframeData为MorphTargetKeyframeData格式
     TMap<FString, TPair<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>>
@@ -445,23 +286,36 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
                 Data.FrameNumbers, FloatValues));
     }
 
-    int32 MaterialAnimationResult = GenerateInstrumentMaterialAnimation(
-        KeyRippleActor, LevelSequence, MorphTargetKeyframeData, MinFrame,
-        MaxFrame);
+    // 计算帧范围
+    FFrameNumber MinFrame(MAX_int32);
+    FFrameNumber MaxFrame(MIN_int32);
 
-    if (MaterialAnimationResult > 0) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("✓ Material parameter animation generated successfully for "
-                    "%d material tracks"),
-               MaterialAnimationResult);
-    } else {
-        UE_LOG(LogTemp, Warning,
-               TEXT("✗ No material parameter animation was generated"));
+    for (const auto& Pair : MorphTargetKeyframeData) {
+        const TArray<FFrameNumber>& FrameNumbers = Pair.Value.Key;
+        if (FrameNumbers.Num() > 0) {
+            MinFrame = FMath::Min(MinFrame, FrameNumbers[0]);
+            MaxFrame = FMath::Max(MaxFrame, FrameNumbers.Last());
+        }
+    }
+
+    if (MinFrame.Value != MAX_int32 && MaxFrame.Value != MIN_int32) {
+        int32 MaterialAnimationResult = GenerateInstrumentMaterialAnimation(
+            KeyRippleActor, LevelSequence, MorphTargetKeyframeData, MinFrame,
+            MaxFrame);
+
+        if (MaterialAnimationResult > 0) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✓ Material parameter animation generated successfully "
+                        "for %d material tracks"),
+                   MaterialAnimationResult);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✗ No material parameter animation was generated"));
+        }
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("========== GenerateInstrumentAnimation "
-                "Completed =========="));
+           TEXT("========== GenerateInstrumentAnimation Completed =========="));
 #endif
 }
 
@@ -986,7 +840,8 @@ void UKeyRipplePianoProcessor::CleanupExistingPianoAnimations(
     AKeyRippleUnreal* KeyRippleActor) {
     if (!KeyRippleActor || !KeyRippleActor->Piano) {
         UE_LOG(LogTemp, Warning,
-               TEXT("Invalid KeyRippleActor or Piano in CleanupExistingPianoAnimations"));
+               TEXT("Invalid KeyRippleActor or Piano in "
+                    "CleanupExistingPianoAnimations"));
         return;
     }
 
