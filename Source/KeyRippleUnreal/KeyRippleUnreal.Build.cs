@@ -1,5 +1,4 @@
-﻿
-using UnrealBuildTool;
+﻿using UnrealBuildTool;
 
 public class KeyRippleUnreal : ModuleRules
 {

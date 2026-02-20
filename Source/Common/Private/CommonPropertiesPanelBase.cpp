@@ -13,6 +13,7 @@ void SCommonPropertiesPanelBase::InitializeTabPanel(
 {
 	PropertiesTabLabel = InPropertiesLabel;
 	OperationsTabLabel = InOperationsLabel;
+	ThirdTabLabel = FText();
 	ActiveTab = EActiveTab::Properties;
 
 	ChildSlot
@@ -26,7 +27,7 @@ void SCommonPropertiesPanelBase::InitializeTabPanel(
 							.OnClicked(this, &SCommonPropertiesPanelBase::OnPropertiesTabClicked)
 							.ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
 							.ForegroundColor_Lambda([this]() { 
-								return GetTabButtonTextColor(true); 
+								return GetTabButtonTextColor(EActiveTab::Properties); 
 							})]
 					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
 						[SNew(SButton)
@@ -34,7 +35,7 @@ void SCommonPropertiesPanelBase::InitializeTabPanel(
 							.OnClicked(this, &SCommonPropertiesPanelBase::OnOperationsTabClicked)
 							.ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
 							.ForegroundColor_Lambda([this]() { 
-								return GetTabButtonTextColor(false); 
+								return GetTabButtonTextColor(EActiveTab::Operations); 
 							})]]
 			// Content Container
 			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(5.0f)
@@ -43,6 +44,64 @@ void SCommonPropertiesPanelBase::InitializeTabPanel(
 	// Create properties container
 	PropertiesContainer = SNew(SVerticalBox);
 	OperationsContainer = SNew(SVerticalBox);
+
+	// Set initial content to properties panel
+	if (ContentContainer.IsValid())
+	{
+		ContentContainer->AddSlot().FillHeight(1.0f)
+			[SNew(SScrollBox)
+				+ SScrollBox::Slot()
+					[PropertiesContainer.ToSharedRef()]];
+	}
+}
+
+void SCommonPropertiesPanelBase::InitializeTabPanel(
+	const FText& InPropertiesLabel,
+	const FText& InOperationsLabel,
+	const FText& InThirdTabLabel)
+{
+	PropertiesTabLabel = InPropertiesLabel;
+	OperationsTabLabel = InOperationsLabel;
+	ThirdTabLabel = InThirdTabLabel;
+	ActiveTab = EActiveTab::Properties;
+
+	ChildSlot
+		[SNew(SVerticalBox)
+			// Tab Buttons
+			+ SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+				[SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
+						[SNew(SButton)
+							.Text(InPropertiesLabel)
+							.OnClicked(this, &SCommonPropertiesPanelBase::OnPropertiesTabClicked)
+							.ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
+							.ForegroundColor_Lambda([this]() { 
+								return GetTabButtonTextColor(EActiveTab::Properties); 
+							})]
+					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
+						[SNew(SButton)
+							.Text(InOperationsLabel)
+							.OnClicked(this, &SCommonPropertiesPanelBase::OnOperationsTabClicked)
+							.ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
+							.ForegroundColor_Lambda([this]() { 
+								return GetTabButtonTextColor(EActiveTab::Operations); 
+							})]
+					+ SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.5f, 0.0f)
+						[SNew(SButton)
+							.Text(InThirdTabLabel)
+							.OnClicked(this, &SCommonPropertiesPanelBase::OnThirdTabClicked)
+							.ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
+							.ForegroundColor_Lambda([this]() { 
+								return GetTabButtonTextColor(EActiveTab::ThirdTab); 
+							})]]
+			// Content Container
+			+ SVerticalBox::Slot().FillHeight(1.0f).Padding(5.0f)
+				[SAssignNew(ContentContainer, SVerticalBox)]];
+
+	// Create properties container
+	PropertiesContainer = SNew(SVerticalBox);
+	OperationsContainer = SNew(SVerticalBox);
+	ThirdTabContainer = SNew(SVerticalBox);
 
 	// Set initial content to properties panel
 	if (ContentContainer.IsValid())
@@ -70,6 +129,16 @@ void SCommonPropertiesPanelBase::SetOperationsContent(TSharedRef<SWidget> InCont
 	{
 		OperationsContainer->ClearChildren();
 		OperationsContainer->AddSlot().FillHeight(1.0f)
+			[InContent];
+	}
+}
+
+void SCommonPropertiesPanelBase::SetThirdTabContent(TSharedRef<SWidget> InContent)
+{
+	if (ThirdTabContainer.IsValid())
+	{
+		ThirdTabContainer->ClearChildren();
+		ThirdTabContainer->AddSlot().FillHeight(1.0f)
 			[InContent];
 	}
 }
@@ -111,6 +180,25 @@ void SCommonPropertiesPanelBase::ShowOperationsTab()
 	}
 }
 
+void SCommonPropertiesPanelBase::ShowThirdTab()
+{
+	if (ActiveTab == EActiveTab::ThirdTab)
+	{
+		return;
+	}
+
+	ActiveTab = EActiveTab::ThirdTab;
+
+	if (ContentContainer.IsValid())
+	{
+		ContentContainer->ClearChildren();
+		ContentContainer->AddSlot().FillHeight(1.0f)
+			[SNew(SScrollBox)
+				+ SScrollBox::Slot()
+					[ThirdTabContainer.ToSharedRef()]];
+	}
+}
+
 FReply SCommonPropertiesPanelBase::OnPropertiesTabClicked()
 {
 	ShowPropertiesTab();
@@ -123,11 +211,14 @@ FReply SCommonPropertiesPanelBase::OnOperationsTabClicked()
 	return FReply::Handled();
 }
 
-FLinearColor SCommonPropertiesPanelBase::GetTabButtonTextColor(bool bIsPropertiesTab) const
+FReply SCommonPropertiesPanelBase::OnThirdTabClicked()
 {
-	bool bIsActive =
-		(bIsPropertiesTab && ActiveTab == EActiveTab::Properties) ||
-		(!bIsPropertiesTab && ActiveTab == EActiveTab::Operations);
+	ShowThirdTab();
+	return FReply::Handled();
+}
 
+FLinearColor SCommonPropertiesPanelBase::GetTabButtonTextColor(EActiveTab InTab) const
+{
+	bool bIsActive = (ActiveTab == InTab);
 	return FCommonPropertiesPanelUtility::GetTabButtonTextColor(bIsActive);
 }

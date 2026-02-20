@@ -1,6 +1,7 @@
 ﻿#include "KeyRipplePropertiesPanel.h"
 
 #include "CommonPropertiesPanelUtility.h"
+#include "Details/SBoneControlMappingEditPanel.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "KeyRippleOperationsPanel.h"
 #include "KeyRippleUnreal.h"
@@ -16,7 +17,8 @@
 
 void SKeyRipplePropertiesPanel::Construct(const FArguments& InArgs) {
     InitializeTabPanel(LOCTEXT("PropertiesTabLabel", "Properties"),
-                       LOCTEXT("OperationsTabLabel", "Operations"));
+                       LOCTEXT("OperationsTabLabel", "Operations"),
+                       LOCTEXT("BoneControlMappingTabLabel", "Bone Control Mapping"));
 
     // Create operations panel
     OperationsPanel = SNew(SKeyRippleOperationsPanel);
@@ -26,6 +28,12 @@ void SKeyRipplePropertiesPanel::Construct(const FArguments& InArgs) {
     // internal structure and will handle its content via SetActor callback
     if (OperationsPanel.IsValid()) {
         SetOperationsContent(OperationsPanel.ToSharedRef());
+    }
+
+    // Create Bone Control Mapping panel
+    BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
+    if (BoneControlMappingPanel.IsValid()) {
+        SetThirdTabContent(BoneControlMappingPanel.ToSharedRef());
     }
 
     RefreshPropertyList();
@@ -41,6 +49,10 @@ void SKeyRipplePropertiesPanel::SetActor(AActor* InActor) {
 
     if (OperationsPanel.IsValid()) {
         OperationsPanel->SetActor(InActor);
+    }
+
+    if (BoneControlMappingPanel.IsValid()) {
+        BoneControlMappingPanel->SetActor(InActor);
     }
 }
 
@@ -270,6 +282,7 @@ TSharedRef<SWidget> SKeyRipplePropertiesPanel::CreateEnumPropertyRow(
                                                    ? 0
                                                    : 1;
                                 } else if (EnumTypeName ==
+// ... existing code ...
                                            TEXT("EPositionType")) {
                                     if (*NewSelection == TEXT("HIGH"))
                                         NewValue = 0;

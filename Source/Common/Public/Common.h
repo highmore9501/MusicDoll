@@ -1,7 +1,9 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
+#include "BoneControlPair.h"
+#include "BoneControlMappingUtility.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogCommon, Log, All);
 

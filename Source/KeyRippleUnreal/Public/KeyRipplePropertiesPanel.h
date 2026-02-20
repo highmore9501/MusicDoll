@@ -5,6 +5,7 @@
 #include "KeyRippleDisplayPanelInterface.h"
 
 class AKeyRippleUnreal;
+class SBoneControlMappingEditPanel;
 
 /**
  * Properties panel for KeyRippleUnreal actor
@@ -55,4 +56,7 @@ private:
 
 	// Operations panel
 	TSharedPtr<class SKeyRippleOperationsPanel> OperationsPanel;
+
+	// Bone Control Mapping panel
+	TSharedPtr<class SBoneControlMappingEditPanel> BoneControlMappingPanel;
 };

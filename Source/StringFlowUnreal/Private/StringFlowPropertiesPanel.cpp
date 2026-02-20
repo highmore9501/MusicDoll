@@ -3,6 +3,7 @@
 #include "StringFlowControlRigProcessor.h"
 #include "StringFlowOperationsPanel.h"
 #include "StringFlowUnreal.h"
+#include "Details/SBoneControlMappingEditPanel.h"
 #include "Misc/MessageDialog.h"
 #include "CommonPropertiesPanelUtility.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -17,7 +18,8 @@ void SStringFlowPropertiesPanel::Construct(const FArguments& InArgs)
 {
 	InitializeTabPanel(
 		LOCTEXT("PropertiesTabLabel", "Properties"),
-		LOCTEXT("OperationsTabLabel", "Operations")
+		LOCTEXT("OperationsTabLabel", "Operations"),
+		LOCTEXT("BoneControlMappingTabLabel", "Bone Control Mapping")
 	);
 
 	// Create operations panel
@@ -27,6 +29,13 @@ void SStringFlowPropertiesPanel::Construct(const FArguments& InArgs)
 	if (OperationsPanel.IsValid())
 	{
 		SetOperationsContent(OperationsPanel.ToSharedRef());
+	}
+
+	// Create Bone Control Mapping panel
+	BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
+	if (BoneControlMappingPanel.IsValid())
+	{
+		SetThirdTabContent(BoneControlMappingPanel.ToSharedRef());
 	}
 
 	RefreshPropertyList();
@@ -45,6 +54,11 @@ void SStringFlowPropertiesPanel::SetActor(AActor* InActor)
 	if (OperationsPanel.IsValid())
 	{
 		OperationsPanel->SetActor(InActor);
+	}
+
+	if (BoneControlMappingPanel.IsValid())
+	{
+		BoneControlMappingPanel->SetActor(InActor);
 	}
 }
 

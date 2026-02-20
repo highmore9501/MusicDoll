@@ -45,4 +45,7 @@ private:
 
 	// Operations panel
 	TSharedPtr<class SStringFlowOperationsPanel> OperationsPanel;
+
+	// Bone Control Mapping panel
+	TSharedPtr<class SBoneControlMappingEditPanel> BoneControlMappingPanel;
 };

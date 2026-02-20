@@ -1,12 +1,15 @@
 ﻿#include "StringFlowControlRigProcessor.h"
 
 #include "Animation/SkeletalMeshActor.h"
+#include "Common/Public/BoneControlMappingUtility.h"
 #include "Common/Public/InstrumentControlRigUtility.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Rigs/RigHierarchyController.h"
 
 #define LOCTEXT_NAMESPACE "StringFlowControlRigProcessor"
@@ -916,6 +919,13 @@ void UStringFlowControlRigProcessor::SetupAllObjects(
     }
 
     SetupControllers(StringFlowActor);
+
+    // 添加Bone Control Mapping变量
+    if (ControlRigBlueprint) {
+        FBoneControlMappingUtility::AddBoneControlMappingVariable(
+            ControlRigBlueprint, StringFlowActor);
+    }
+
     FStringFlowControlRigHelpers::InitializeRecorderTransforms(StringFlowActor);
 
     UE_LOG(LogTemp, Warning, TEXT("All StringFlow objects have been set up"));
@@ -1214,18 +1224,9 @@ void UStringFlowControlRigProcessor::SaveState(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     UE_LOG(LogTemp, Warning,
-           TEXT("========== StringFlow SaveState Summary =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Playing State -> String: %d, Fret: %d"),
-           CurrentStringNum, CurrentFretNum);
-    UE_LOG(LogTemp, Warning, TEXT("Successfully updated: %d transforms"),
-           SavedCount);
-    UE_LOG(LogTemp, Warning, TEXT("Failed: %d transforms"), FailedCount);
-    UE_LOG(LogTemp, Warning,
            TEXT("========== StringFlow SaveState Completed =========="));
-
-    if (StringFlowActor) {
-        StringFlowActor->MarkPackageDirty();
-    }
+    UE_LOG(LogTemp, Warning, TEXT("成功保存控制器数量: %d"), SavedCount);
+    UE_LOG(LogTemp, Warning, TEXT("失败保存控制器数量: %d"), FailedCount);
 }
 
 void UStringFlowControlRigProcessor::SaveLeft(

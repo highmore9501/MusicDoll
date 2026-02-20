@@ -1,10 +1,12 @@
 ﻿#include "KeyRippleControlRigProcessor.h"
 
+#include "Common/Public/BoneControlMappingUtility.h"
 #include "Common/Public/InstrumentControlRigUtility.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "KeyRipplePianoProcessor.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Rigs/RigHierarchyController.h"
 
 #define LOCTEXT_NAMESPACE "KeyRippleControlRigProcessor"
@@ -140,7 +142,8 @@ struct FKeyRippleControlRigHelpers {
         for (EPositionType PositionType :
              {EPositionType::HIGH, EPositionType::LOW, EPositionType::MIDDLE}) {
             for (EKeyType KeyType : {EKeyType::WHITE, EKeyType::BLACK}) {
-                FString PositionStr = KeyRippleActor->GetPositionTypeString(PositionType);
+                FString PositionStr =
+                    KeyRippleActor->GetPositionTypeString(PositionType);
                 FString KeyStr = KeyRippleActor->GetKeyTypeString(KeyType);
 
                 FString RecorderName = FString::Printf(
@@ -614,6 +617,13 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
     }
 
     SetupControllers(KeyRippleActor);
+
+    // 添加Bone Control Mapping变量
+    if (ControlRigBlueprint) {
+        FBoneControlMappingUtility::AddBoneControlMappingVariable(
+            ControlRigBlueprint, KeyRippleActor);
+    }
+
     FKeyRippleControlRigHelpers::InitializeRecorderTransforms(KeyRippleActor);
 
     UE_LOG(LogTemp, Warning, TEXT("All KeyRipple objects have been set up"));
