@@ -64,9 +64,9 @@ FRigUnit_ArcDistributedIK_Execute() {
             Data.TotalChainLength = 0.0f;
 
             for (int32 i = 0; i < Chain.Num() - 1; ++i) {
-                float Length = CalculateBoneLength(
-                    Chain[i].Transform.GetLocation(),
-                    Chain[i + 1].Transform.GetLocation());
+                float Length =
+                    CalculateBoneLength(Chain[i].Transform.GetLocation(),
+                                        Chain[i + 1].Transform.GetLocation());
                 Data.BoneLengths[i] = Length;
                 Data.TotalChainLength += Length;
             }
@@ -138,10 +138,8 @@ FRigUnit_ArcDistributedIK_Execute() {
                                              const FVector& RotationAxis,
                                              float Angle) {
             FVector RelativePos = Position - PivotPoint;
-            FQuat RotationQuat =
-                FQuat(RotationAxis.GetSafeNormal(), Angle);
-            FVector RotatedRelativePos =
-                RotationQuat.RotateVector(RelativePos);
+            FQuat RotationQuat = FQuat(RotationAxis.GetSafeNormal(), Angle);
+            FVector RotatedRelativePos = RotationQuat.RotateVector(RelativePos);
             return PivotPoint + RotatedRelativePos;
         }
 
@@ -168,8 +166,7 @@ FRigUnit_ArcDistributedIK_Execute() {
             FVector DirectionToEffector =
                 (EffectorPosition - RootPosition).GetSafeNormal();
 
-            StretchChainAlongDirection(Chain, BoneLengths,
-                                       DirectionToEffector);
+            StretchChainAlongDirection(Chain, BoneLengths, DirectionToEffector);
         }
 
         // ========================================
@@ -187,8 +184,7 @@ FRigUnit_ArcDistributedIK_Execute() {
             FVector DirectionToEffector =
                 (EffectorPosition - RootPosition).GetSafeNormal();
 
-            StretchChainAlongDirection(Chain, BoneLengths,
-                                       DirectionToEffector);
+            StretchChainAlongDirection(Chain, BoneLengths, DirectionToEffector);
 
             return CalculateEffectorDistance(Chain, EffectorPosition);
         }
@@ -202,9 +198,8 @@ FRigUnit_ArcDistributedIK_Execute() {
             const FVector& PrimaryDirection, const FVector& MiddlePosition,
             const FVector& PoleTarget, bool bUseMiddlePosition,
             float Distance) {
-            FVector PerpendicularInPlane =
-                FVector::CrossProduct(PlaneNormal,
-                                      PrimaryDirection.GetSafeNormal());
+            FVector PerpendicularInPlane = FVector::CrossProduct(
+                PlaneNormal, PrimaryDirection.GetSafeNormal());
 
             if (PerpendicularInPlane.IsNearlyZero()) {
                 if (FMath::Abs(PrimaryDirection.X) < 0.9f) {
@@ -226,8 +221,8 @@ FRigUnit_ArcDistributedIK_Execute() {
 
                 if (ToReference.Length() > KINDA_SMALL_NUMBER) {
                     ToReference = ToReference.GetSafeNormal();
-                    float DotWithReference = FVector::DotProduct(
-                        PerpendicularInPlane, ToReference);
+                    float DotWithReference =
+                        FVector::DotProduct(PerpendicularInPlane, ToReference);
 
                     if (DotWithReference < 0) {
                         PerpendicularInPlane = -PerpendicularInPlane;
@@ -238,10 +233,11 @@ FRigUnit_ArcDistributedIK_Execute() {
             return CurrentPosition + PerpendicularInPlane * Distance;
         }
 
-        static FQuat BuildRotationFromTwoAxes(
-            const FVector& PrimaryDir, const FVector& SecondaryDir,
-            const FVector& LocalPrimaryAxis,
-            const FVector& LocalSecondaryAxis, const FVector& PlaneNormal) {
+        static FQuat BuildRotationFromTwoAxes(const FVector& PrimaryDir,
+                                              const FVector& SecondaryDir,
+                                              const FVector& LocalPrimaryAxis,
+                                              const FVector& LocalSecondaryAxis,
+                                              const FVector& PlaneNormal) {
             FVector WorldX = PrimaryDir.GetSafeNormal();
             FVector WorldY = SecondaryDir.GetSafeNormal();
             FVector WorldZ = PlaneNormal.GetSafeNormal();
@@ -273,8 +269,7 @@ FRigUnit_ArcDistributedIK_Execute() {
             const FVector& CurrentPosition, const FVector& NextPosition,
             const FVector& PlaneNormal, const FVector& PrimaryAxis,
             const FVector& SecondaryAxis, const FVector& MiddlePosition,
-            const FVector& PoleTarget, int32 AlgorithmType,
-            bool bIsLastBone) {
+            const FVector& PoleTarget, int32 AlgorithmType, bool bIsLastBone) {
             FVector WorldPrimaryDir =
                 (NextPosition - CurrentPosition).GetSafeNormal();
 
@@ -327,8 +322,7 @@ FRigUnit_ArcDistributedIK_Execute() {
                     NextPosition = Chain[i + 1].Transform.GetLocation();
                 } else {
                     FVector PrevToCurrent =
-                        (CurrentPosition -
-                         Chain[i - 1].Transform.GetLocation())
+                        (CurrentPosition - Chain[i - 1].Transform.GetLocation())
                             .GetSafeNormal();
                     NextPosition = CurrentPosition + PrevToCurrent * 50.0f;
                 }
@@ -349,9 +343,19 @@ FRigUnit_ArcDistributedIK_Execute() {
         static void ApplyFABRIKSolver(TArray<FCCDIKChainLink>& Chain,
                                       const TArray<float>& BoneLengths,
                                       const FVector& EffectorPosition,
-                                      float Precision, int32 MaxIterations) {
+                                      float Precision, int32 MaxIterations,
+                                      bool bUseDebug) {
             if (Chain.Num() < 2) {
                 return;
+            }
+
+            if (bUseDebug) {
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[ApplyFABRIKSolver] Started with Precision=%.6f, "
+                            "MaxIterations=%d, TargetEffectorPos=(%.2f, %.2f, "
+                            "%.2f)"),
+                       Precision, MaxIterations, EffectorPosition.X,
+                       EffectorPosition.Y, EffectorPosition.Z);
             }
 
             FVector RootPosition = Chain[0].Transform.GetLocation();
@@ -361,6 +365,13 @@ FRigUnit_ArcDistributedIK_Execute() {
                 float CurrentDistance =
                     CalculateEffectorDistance(Chain, EffectorPosition);
                 if (CurrentDistance < Precision) {
+                    if (bUseDebug) {
+                        UE_LOG(
+                            LogControlRig, Warning,
+                            TEXT("[ApplyFABRIKSolver] Converged at iteration "
+                                 "%d with distance %.6f < precision %.6f"),
+                            Iter, CurrentDistance, Precision);
+                    }
                     return;
                 }
 
@@ -368,11 +379,9 @@ FRigUnit_ArcDistributedIK_Execute() {
 
                 for (int32 i = LastLinkIndex - 1; i >= 0; --i) {
                     FVector CurrentPos = Chain[i].Transform.GetLocation();
-                    FVector NextPos =
-                        Chain[i + 1].Transform.GetLocation();
+                    FVector NextPos = Chain[i + 1].Transform.GetLocation();
                     FVector Direction = (CurrentPos - NextPos).GetSafeNormal();
-                    FVector NewPos =
-                        NextPos + Direction * BoneLengths[i];
+                    FVector NewPos = NextPos + Direction * BoneLengths[i];
                     Chain[i].Transform.SetLocation(NewPos);
                 }
 
@@ -380,23 +389,44 @@ FRigUnit_ArcDistributedIK_Execute() {
 
                 for (int32 i = 0; i < LastLinkIndex; ++i) {
                     FVector CurrentPos = Chain[i].Transform.GetLocation();
-                    FVector NextPos =
-                        Chain[i + 1].Transform.GetLocation();
+                    FVector NextPos = Chain[i + 1].Transform.GetLocation();
                     FVector Direction = (NextPos - CurrentPos).GetSafeNormal();
-                    FVector NewPos =
-                        CurrentPos + Direction * BoneLengths[i];
+                    FVector NewPos = CurrentPos + Direction * BoneLengths[i];
                     Chain[i + 1].Transform.SetLocation(NewPos);
                 }
+
+                if (bUseDebug && (Iter % 5 == 0 || Iter == MaxIterations - 1)) {
+                    float FinalEffectorDist =
+                        CalculateEffectorDistance(Chain, EffectorPosition);
+                    UE_LOG(LogControlRig, Warning,
+                           TEXT("[ApplyFABRIKSolver] Iteration %d: "
+                                "CurrentDistance=%.6f"),
+                           Iter, FinalEffectorDist);
+                }
+            }
+
+            if (bUseDebug) {
+                float FinalDistance =
+                    CalculateEffectorDistance(Chain, EffectorPosition);
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[ApplyFABRIKSolver] Max iterations reached. Final "
+                            "distance: %.6f"),
+                       FinalDistance);
             }
         }
 
-        static void IterativePhaseFABRIK(
-            TArray<FCCDIKChainLink>& Chain,
-            const TArray<float>& BoneLengths,
-            const FVector& EffectorPosition, const FVector& PoleTarget,
-            const FVector& ReferencePlaneNormal, float Precision,
-            int32 MaxIterations) {
+        static void IterativePhaseFABRIK(TArray<FCCDIKChainLink>& Chain,
+                                         const TArray<float>& BoneLengths,
+                                         const FVector& EffectorPosition,
+                                         const FVector& PoleTarget,
+                                         const FVector& ReferencePlaneNormal,
+                                         float Precision, int32 MaxIterations,
+                                         bool bUseDebug) {
             if (Chain.Num() < 1) {
+                if (bUseDebug) {
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[IterativePhaseFABRIK] Invalid chain"));
+                }
                 return;
             }
 
@@ -407,8 +437,18 @@ FRigUnit_ArcDistributedIK_Execute() {
             RotateChainAroundAxis(Chain, RootPosition, RotationAxis,
                                   RotationAngle);
 
+            if (bUseDebug) {
+                FVector EffectorAfterRotate =
+                    Chain[Chain.Num() - 1].Transform.GetLocation();
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[IterativePhaseFABRIK] After rotation, "
+                            "EndEffector at: (%.2f, %.2f, %.2f)"),
+                       EffectorAfterRotate.X, EffectorAfterRotate.Y,
+                       EffectorAfterRotate.Z);
+            }
+
             ApplyFABRIKSolver(Chain, BoneLengths, EffectorPosition, Precision,
-                              MaxIterations);
+                              MaxIterations, bUseDebug);
         }
 
         // ========================================
@@ -418,20 +458,54 @@ FRigUnit_ArcDistributedIK_Execute() {
         static void WriteChainToHierarchy(
             FControlRigExecuteContext& ExecuteContext,
             const TArray<FCachedRigElement>& CachedItems,
-            const TArray<FCCDIKChainLink>& Chain,
-            bool bPropagateToChildren) {
+            const TArray<FCCDIKChainLink>& Chain, bool bPropagateToChildren,
+            bool bUseDebug) {
             URigHierarchy* Hierarchy = ExecuteContext.Hierarchy;
             if (!Hierarchy || CachedItems.Num() != Chain.Num()) {
+                if (bUseDebug && (!Hierarchy)) {
+                    UE_LOG(LogControlRig, Error,
+                           TEXT("[WriteChainToHierarchy] Hierarchy is null"));
+                }
+                if (bUseDebug && (CachedItems.Num() != Chain.Num())) {
+                    UE_LOG(LogControlRig, Error,
+                           TEXT("[WriteChainToHierarchy] Item count mismatch. "
+                                "CachedItems=%d, Chain=%d"),
+                           CachedItems.Num(), Chain.Num());
+                }
                 return;
+            }
+
+            if (bUseDebug) {
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[WriteChainToHierarchy] Writing %d items to "
+                            "hierarchy"),
+                       CachedItems.Num());
             }
 
             for (int32 i = 0; i < CachedItems.Num(); ++i) {
                 const FCachedRigElement& CachedBone = CachedItems[i];
                 if (CachedBone.IsValid()) {
-                    Hierarchy->SetGlobalTransform(
-                        CachedBone.GetKey(), Chain[i].Transform, false,
-                        bPropagateToChildren, false);
+                    FVector OldPos =
+                        Hierarchy->GetGlobalTransform(CachedBone.GetKey())
+                            .GetLocation();
+                    Hierarchy->SetGlobalTransform(CachedBone.GetKey(),
+                                                  Chain[i].Transform, false,
+                                                  bPropagateToChildren, false);
+                    FVector NewPos = Chain[i].Transform.GetLocation();
+
+                    if (bUseDebug && i < 3) {
+                        UE_LOG(LogControlRig, Warning,
+                               TEXT("[WriteChainToHierarchy] Bone %d: (%.2f, "
+                                    "%.2f, %.2f) -> (%.2f, %.2f, %.2f)"),
+                               i, OldPos.X, OldPos.Y, OldPos.Z, NewPos.X,
+                               NewPos.Y, NewPos.Z);
+                    }
                 }
+            }
+
+            if (bUseDebug) {
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[WriteChainToHierarchy] Write complete"));
             }
         }
     };
@@ -441,13 +515,31 @@ FRigUnit_ArcDistributedIK_Execute() {
     // ============================================================================
 
     URigHierarchy* Hierarchy = ExecuteContext.Hierarchy;
+
     if (!Hierarchy) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error, TEXT("Hierarchy is null."));
+        }
         return;
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Execution Started - bUseDebug=true"));
     }
 
     WorkData.CachedItems.Empty();
     if (Items.Num() < 2) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("Items is empty. Items.Num() = %d"), Items.Num());
+        }
         return;
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Items.Num() = %d"), Items.Num());
     }
 
     WorkData.CachedItems.Reserve(Items.Num());
@@ -455,6 +547,9 @@ FRigUnit_ArcDistributedIK_Execute() {
         const FRigElementKey& Key = Items[i];
         FRigBoneElement* Bone = Hierarchy->Find<FRigBoneElement>(Key);
         if (!Bone) {
+            if (bUseDebug) {
+                UE_LOG(LogControlRig, Error, TEXT("Item %d is not a bone."), i);
+            }
             return;
         }
         FCachedRigElement CachedBone(Key, Hierarchy, true);
@@ -463,7 +558,17 @@ FRigUnit_ArcDistributedIK_Execute() {
 
     int32 NumChainLinks = WorkData.CachedItems.Num();
     if (NumChainLinks < 2) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("Items is too short. NumChainLinks = %d"),
+                   NumChainLinks);
+        }
         return;
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] NumChainLinks = %d"), NumChainLinks);
     }
 
     FTransform RootParentTransform = FTransform::Identity;
@@ -497,18 +602,71 @@ FRigUnit_ArcDistributedIK_Execute() {
         Chain[i].CurrentAngleDelta = 0.0;
     }
 
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Chain initialized. Root: (%.2f, %.2f, "
+                    "%.2f), End: (%.2f, %.2f, %.2f)"),
+               Chain[0].Transform.GetLocation().X,
+               Chain[0].Transform.GetLocation().Y,
+               Chain[0].Transform.GetLocation().Z,
+               Chain[NumChainLinks - 1].Transform.GetLocation().X,
+               Chain[NumChainLinks - 1].Transform.GetLocation().Y,
+               Chain[NumChainLinks - 1].Transform.GetLocation().Z);
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Input - EffectorTransform: (%.2f, "
+                    "%.2f, %.2f), PoleTarget: (%.2f, %.2f, %.2f), PrimaryAxis: "
+                    "(%.2f, %.2f, %.2f), SecondAxis: (%.2f, %.2f, %.2f)"),
+               EffectorTransform.GetLocation().X,
+               EffectorTransform.GetLocation().Y,
+               EffectorTransform.GetLocation().Z, PoleTarget.X, PoleTarget.Y,
+               PoleTarget.Z, PrimaryAxis.X, PrimaryAxis.Y, PrimaryAxis.Z,
+               SecondAxis.X, SecondAxis.Y, SecondAxis.Z);
+    }
+
     // Phase 1: Data gathering
     FArcDistributedIKData Data = Local::GatherChainData(
         Chain, EffectorTransform.GetLocation(), PoleTarget);
 
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Phase 1 - Data Gathering Complete. "
+                    "TotalChainLength: %.2f, RootPos: (%.2f, %.2f, %.2f), "
+                    "EffectorPos: (%.2f, %.2f, %.2f)"),
+               Data.TotalChainLength, Data.RootPosition.X, Data.RootPosition.Y,
+               Data.RootPosition.Z, EffectorTransform.GetLocation().X,
+               EffectorTransform.GetLocation().Y,
+               EffectorTransform.GetLocation().Z);
+    }
+
     if (Data.ReferencePlaneNormal.IsNearlyZero()) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("Reference plane normal is zero. Please check the pole "
+                        "target and effector position."));
+        }
         return;
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Reference Plane Normal: (%.2f, %.2f, "
+                    "%.2f), PoleTarget: (%.2f, %.2f, %.2f)"),
+               Data.ReferencePlaneNormal.X, Data.ReferencePlaneNormal.Y,
+               Data.ReferencePlaneNormal.Z, PoleTarget.X, PoleTarget.Y,
+               PoleTarget.Z);
     }
 
     // Phase 2: Algorithm branching
     int32 AlgorithmType = 0;
     float EffectorDistance =
         FVector::Dist(Data.RootPosition, EffectorTransform.GetLocation());
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Phase 2 - Algorithm Branching. "
+                    "EffectorDistance: %.2f, TotalChainLength: %.2f"),
+               EffectorDistance, Data.TotalChainLength);
+    }
 
     bool bEffectorTooClose = false;
     if (Chain.Num() >= 2 && Data.BoneLengths.Num() >= 2) {
@@ -520,39 +678,171 @@ FRigUnit_ArcDistributedIK_Execute() {
         float OtherBonesLength = Data.TotalChainLength - MaxBoneLength;
         float MinReachableDistance = MaxBoneLength - OtherBonesLength;
         bEffectorTooClose = (EffectorDistance < MinReachableDistance);
+
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[ArcDistributedIK] MaxBoneLength: %.2f, "
+                        "MinReachableDistance: %.2f, bEffectorTooClose: %s"),
+                   MaxBoneLength, MinReachableDistance,
+                   bEffectorTooClose ? TEXT("true") : TEXT("false"));
+        }
     }
 
     if (bEffectorTooClose) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("Effector is too close to the root bone. Please adjust "
+                        "the effector position."));
+        }
         return;
     }
 
     if (!Local::DetermineAlgorithmBranch(Data.TotalChainLength,
                                          EffectorDistance, AlgorithmType)) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("Failed to determine algorithm branch."));
+        }
         return;
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] AlgorithmType: %d (1=EffectorTooFar, "
+                    "2=Normal)"),
+               AlgorithmType);
     }
 
     // Phase 3: Position calculation
     if (AlgorithmType == 1) {
+        if (bUseDebug) {
+            UE_LOG(
+                LogControlRig, Warning,
+                TEXT("[ArcDistributedIK] Entering Phase 3 - HandleTooFarCase"));
+        }
         Local::HandleTooFarCase(Chain, Data.BoneLengths,
                                 EffectorTransform.GetLocation());
     } else if (AlgorithmType == 2) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[ArcDistributedIK] Entering Phase 3 - "
+                        "PreparePhaseStretchChain"));
+        }
         float InitialDistance = Local::PreparePhaseStretchChain(
             Chain, Data.BoneLengths, EffectorTransform.GetLocation());
+
+        if (bUseDebug) {
+            UE_LOG(
+                LogControlRig, Warning,
+                TEXT("[ArcDistributedIK] After PreparePhase, InitialDistance: "
+                     "%.2f, Precision: %.4f, MaxIterations: %d"),
+                InitialDistance, Precision > 0.f ? Precision : 0.001f,
+                MaxIterations > 0 ? MaxIterations : 10);
+        }
 
         Local::IterativePhaseFABRIK(
             Chain, Data.BoneLengths, EffectorTransform.GetLocation(),
             PoleTarget, Data.ReferencePlaneNormal,
             Precision > 0.f ? Precision : 0.001f,
-            MaxIterations > 0 ? MaxIterations : 10);
+            MaxIterations > 0 ? MaxIterations : 10, bUseDebug);
+
+        if (bUseDebug) {
+            float FinalDistance = Local::CalculateEffectorDistance(
+                Chain, EffectorTransform.GetLocation());
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[ArcDistributedIK] After IterativePhaseFABRIK, "
+                        "FinalEffectorDistance: %.2f"),
+                   FinalDistance);
+        }
     }
 
     // Phase 4: Rotation rebuild
-    Local::RebuildRotationsForChain(Chain, Data.BoneLengths,
-                                    Data.ReferencePlaneNormal, PrimaryAxis,
-                                    SecondAxis, PoleTarget,
-                                    RootParentTransform, AlgorithmType);
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Entering Phase 4 - "
+                    "RebuildRotationsForChain"));
+    }
+    Local::RebuildRotationsForChain(
+        Chain, Data.BoneLengths, Data.ReferencePlaneNormal, PrimaryAxis,
+        SecondAxis, PoleTarget, RootParentTransform, AlgorithmType);
 
     // Phase 5: Write to hierarchy
+    if (bUseDebug) {
+        UE_LOG(
+            LogControlRig, Warning,
+            TEXT(
+                "[ArcDistributedIK] Entering Phase 5 - WriteChainToHierarchy"));
+    }
+
+    // Verify chain validity and check if positions have actually changed
+    bool bChainValid = true;
+    bool bPositionsChanged = false;
+    
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Validating chain before writing to hierarchy"));
+    }
+
+    for (int32 i = 0; i < Chain.Num(); ++i) {
+        if (Chain[i].Transform.ContainsNaN()) {
+            if (bUseDebug) {
+                UE_LOG(LogControlRig, Error,
+                       TEXT("[ArcDistributedIK] Chain[%d] contains NaN values!"),
+                       i);
+            }
+            bChainValid = false;
+            break;
+        }
+
+        // Check if position has changed from original
+        FVector OriginalPos = Hierarchy->GetGlobalTransform(
+            WorkData.CachedItems[i].GetKey()).GetLocation();
+        FVector NewPos = Chain[i].Transform.GetLocation();
+        
+        if (!OriginalPos.Equals(NewPos, 0.01f)) {
+            bPositionsChanged = true;
+            if (bUseDebug && i < 3) {
+                UE_LOG(LogControlRig, Warning,
+                       TEXT("[ArcDistributedIK] Position changed for bone %d: "
+                            "(%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f)"),
+                       i, OriginalPos.X, OriginalPos.Y, OriginalPos.Z,
+                       NewPos.X, NewPos.Y, NewPos.Z);
+            }
+        }
+    }
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Chain validation result: bChainValid=%s, "
+                    "bPositionsChanged=%s"),
+               bChainValid ? TEXT("true") : TEXT("false"),
+               bPositionsChanged ? TEXT("true") : TEXT("false"));
+    }
+
+    if (!bChainValid) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Error,
+                   TEXT("[ArcDistributedIK] Chain contains invalid data. "
+                        "Aborting write to hierarchy."));
+        }
+        return;
+    }
+
+    if (!bPositionsChanged) {
+        if (bUseDebug) {
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[ArcDistributedIK] No position changes detected. "
+                        "Skipping hierarchy update."));
+        }
+        return;
+    }
+
     Local::WriteChainToHierarchy(ExecuteContext, WorkData.CachedItems, Chain,
-                                 bPropagateToChildren);
+                                 bPropagateToChildren, bUseDebug);
+
+    if (bUseDebug) {
+        UE_LOG(LogControlRig, Warning,
+               TEXT("[ArcDistributedIK] Execution Complete - All 5 phases "
+                    "finished successfully"));
+    }
 }

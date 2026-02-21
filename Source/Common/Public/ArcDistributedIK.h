@@ -20,6 +20,9 @@ struct COMMON_API FRigUnit_ArcDistributedIK : public FRigUnit_CCDIKItemArray {
     UPROPERTY(meta = (Input))
     FVector SecondAxis = FVector(0.0f, 1.0f, 0.0f);
 
+    UPROPERTY(meta = (Input))
+    bool bUseDebug = false;
+
     FRigUnit_ArcDistributedIK()
         : PoleTarget(FVector::ZeroVector),
           SecondAxis(FVector(0.0f, 1.0f, 0.0f)) {}

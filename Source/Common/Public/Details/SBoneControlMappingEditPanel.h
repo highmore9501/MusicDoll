@@ -99,6 +99,36 @@ private:
 	FReply OnSyncBoneControlPairsClicked();
 
 	/**
+	 * 导出映射到 JSON 文件
+	 */
+	FReply OnExportClicked();
+
+	/**
+	 * 导入映射从 JSON 文件
+	 */
+	FReply OnImportClicked();
+
+	/**
+	 * 浏览文件路径
+	 */
+	FReply OnFilePathBrowse();
+
+	/**
+	 * 文件浏览对话框
+	 */
+	bool BrowseForFile(const FString& FileExtension, FString& OutFilePath);
+
+	/**
+	 * 确保 ControlRigBlueprint 有效，如果无效则尝试重新获取
+	 */
+	bool EnsureControlRigBlueprintValid();
+
+	/**
+	 * 从 SkeletalMeshActor 获取 ControlRigBlueprint（内部辅助方法）
+	 */
+	bool RetrieveControlRigBlueprint(AInstrumentBase* InInstrument);
+
+	/**
 	 * 当 Bone 下拉菜单选择改变时
 	 */
 	void OnBoneSelectionChanged(
@@ -113,6 +143,16 @@ private:
 		TSharedPtr<FString> InControl,
 		ESelectInfo::Type SelectInfo,
 		TSharedPtr<FBoneControlPair> InPair);
+
+	/**
+	 * 检测重复的 Bone 和 Control
+	 */
+	void DetectDuplicates();
+
+	/**
+	 * 获取重复项信息的显示文本
+	 */
+	FText GetDuplicateWarningText() const;
 
 	// Data members
 	TWeakObjectPtr<AInstrumentBase> InstrumentActor;
@@ -134,4 +174,11 @@ private:
 	// Search filter text
 	FString BoneFilterText;
 	FString ControlFilterText;
+
+	// Duplicate detection results
+	TArray<FString> DuplicateBones;
+	TArray<FString> DuplicateControls;
+
+	// File path for export/import
+	FString ExportImportFilePath;
 };
