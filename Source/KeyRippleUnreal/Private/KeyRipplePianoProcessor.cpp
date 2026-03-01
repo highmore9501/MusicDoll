@@ -1,12 +1,13 @@
 ﻿#include "KeyRipplePianoProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
-#include "Common/Public/InstrumentAnimationUtility.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
-#include "Common/Public/InstrumentMaterialUtility.h"
-#include "Common/Public/InstrumentMorphTargetUtility.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
+#include "ControlRigCacheSubsystem.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
+#include "InstrumentMaterialUtility.h"
+#include "InstrumentMorphTargetUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "KeyRippleControlRigProcessor.h"
@@ -268,8 +269,9 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     }
 
     // ========== 生成材质参数动画 ==========
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== Generating material parameter animation =========="));
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== Generating material parameter animation =========="));
 
     // 转换KeyframeData为MorphTargetKeyframeData格式
     TMap<FString, TPair<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>>
@@ -357,12 +359,40 @@ void UKeyRipplePianoProcessor::InitPianoKeyControlRig(
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitPianoKeyControlRig Started =========="));
 
-    // 获取 Control Rig Instance 和 Blueprint
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取 Control Rig Instance 和 Blueprint
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitPianoKeyControlRig: GEngine is not available"));
+        return;
+    }
 
-    if (!FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-            KeyRippleActor->Piano, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitPianoKeyControlRig: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT(
+                "InitPianoKeyControlRig: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->Piano, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(KeyRippleActor->Piano,
+                                               LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig from Piano SkeletalMeshActor in "
                     "InitPianoKeyControlRig"));

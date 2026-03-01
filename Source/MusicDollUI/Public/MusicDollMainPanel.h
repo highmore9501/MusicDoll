@@ -1,15 +1,14 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "UI/ModuleMainPanelInterface.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
 class ASkeletalMeshActor;
 class AActor;
 class AInstrumentBase;
-class IKeyRippleDisplayPanel;
-class IStringFlowDisplayPanel;
-class SStringFlowPropertiesPanel;
+class AKeyRippleUnreal;
 class AStringFlowUnreal;
 
 // Forward declarations for subpanels
@@ -49,8 +48,7 @@ class MUSICDOLLUI_API SMusicDollMainPanel : public SCompoundWidget {
 
     // Current selected actor - Use TWeakObjectPtr since UObjects are GC-managed
     TWeakObjectPtr<AInstrumentBase> SelectedInstrumentActor;
-    TSharedPtr<IKeyRippleDisplayPanel> CurrentKeyRipplePanel;
-    TSharedPtr<IStringFlowDisplayPanel> CurrentStringFlowPanel;
+    TSharedPtr<IModuleMainPanel> CurrentModulePanel;
 };
 
 /**

@@ -1,5 +1,4 @@
-﻿
-using UnrealBuildTool;
+﻿using UnrealBuildTool;
 
 public class StringFlowUnreal : ModuleRules
 {
@@ -20,32 +19,38 @@ public class StringFlowUnreal : ModuleRules
                 "JsonUtilities",
                 "EnhancedInput",
                 "ControlRig",
-                "ControlRigEditor",
                 "ControlRigDeveloper",
-                "LevelEditor",
+                "ControlRigEditor",
                 "MovieScene",
                 "MovieSceneTracks",
                 "LevelSequence",
-                "LevelSequenceEditor",
-                "Sequencer",
-                "UnrealEd",
-                "MovieSceneTools",
                 "Slate",
                 "SlateCore",
-                "AssetTools",
                 "AssetRegistry",
-                "Common"
+                "MusicDollCommon"
             }
         );
 
-        PrivateDependencyModuleNames.AddRange(
-            new string[]
-            {
-                "EditorStyle",
-                "PropertyEditor",
-                "DesktopPlatform",
-                "WorkspaceMenuStructure"
-            }
-        );
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(
+                new string[]
+                {
+                    "UnrealEd",
+                    "ControlRigEditor",
+                    "ControlRigDeveloper",
+                    "LevelEditor",
+                    "LevelSequenceEditor",
+                    "Sequencer",
+                    "MovieSceneTools",
+                    "EditorStyle",
+                    "PropertyEditor",
+                    "DesktopPlatform",
+                    "WorkspaceMenuStructure",
+                    "MovieRenderPipelineCore",
+                    "MovieRenderPipelineEditor"
+                }
+            );
+        }
     }
 }

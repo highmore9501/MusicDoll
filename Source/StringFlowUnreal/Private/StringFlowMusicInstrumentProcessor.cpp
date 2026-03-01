@@ -1,15 +1,15 @@
 ﻿#include "StringFlowMusicInstrumentProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
-#include "Common/Public/InstrumentAnimationUtility.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
-#include "Common/Public/InstrumentMaterialUtility.h"
-#include "Common/Public/InstrumentMorphTargetUtility.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
+#include "InstrumentMaterialUtility.h"
+#include "InstrumentMorphTargetUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
@@ -43,6 +43,13 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringInstrument Started =========="));
+
+    // 初始化弦乐器同步关系（controller_root <-> violin_root）
+    StringFlowActor->InitializeStringInstrumentSync();
+
+    // 注册ControlRig
+    StringFlowActor->TriggerControlRigReregistration(
+        TEXT("Reregist while InitializeStringInstrument"));
 
     // 清理现有的动画数据
     CleanupExistingStringAnimations(StringFlowActor);
@@ -89,8 +96,7 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
 
     // 验证骨骼网格组件是否有有效的材质
     if (SkeletalMeshComp->GetNumMaterials() == 0) {
-        UE_LOG(LogTemp, Error,
-               TEXT("SkeletalMeshComponent has no materials"));
+        UE_LOG(LogTemp, Error, TEXT("SkeletalMeshComponent has no materials"));
         return;
     }
 
@@ -113,6 +119,39 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
             return nullptr;
         }
 
+        // 验证SlotName条件
+        // 1. 检查SlotName是否包含"string"字样（不区分大小写）
+        if (!SlotName.Contains(TEXT("string"), ESearchCase::IgnoreCase)) {
+            UE_LOG(LogTemp, Verbose,
+                   TEXT("Slot '%s' does not contain 'string', skipping"),
+                   *SlotName);
+            return nullptr;
+        }
+
+        // 2. 检查SlotName是否以1个数字结尾
+        if (SlotName.Len() == 0 ||
+            !FChar::IsDigit(SlotName[SlotName.Len() - 1])) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Slot '%s' does not end with a digit, skipping"),
+                   *SlotName);
+            return nullptr;
+        }
+
+        // 3. 检查当前材质名称是否已经是生成的材质（MAT_String_%d格式）
+        UMaterialInterface* CurrentMaterial =
+            SkeletalMeshComp->GetMaterial(SlotIndex);
+        if (CurrentMaterial) {
+            FString CurrentMaterialName = CurrentMaterial->GetName();
+            if (CurrentMaterialName.StartsWith(TEXT("MAT_String_"),
+                                               ESearchCase::IgnoreCase)) {
+                UE_LOG(LogTemp, Verbose,
+                       TEXT("Material '%s' in slot '%s' is already generated, "
+                            "skipping"),
+                       *CurrentMaterialName, *SlotName);
+                return CurrentMaterial;
+            }
+        }
+
         // 构建材质名称和路径
         FString StringIndexStr = FString::FromInt(SlotIndex);
         FString TargetMaterialName =
@@ -120,11 +159,8 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringMaterials(
         FString PackagePath =
             FString::Printf(TEXT("/Game/Materials/%s"), *TargetMaterialName);
 
-        UMaterialInterface* CurrentMaterial =
-            SkeletalMeshComp->GetMaterial(SlotIndex);
         if (!CurrentMaterial) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("No material at slot %d"), SlotIndex);
+            UE_LOG(LogTemp, Warning, TEXT("No material at slot %d"), SlotIndex);
             return nullptr;
         }
 
@@ -317,16 +353,17 @@ void UStringFlowMusicInstrumentProcessor::
            TEXT("========== InitializeStringVibrationAnimationChannels Started "
                 "=========="));
 
-    // 获取 Control Rig Instance 和 Blueprint
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 获取 Control Rig Instance 和 Blueprint - 使用缓存机制
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("StringInstrument"));
 
-    if (!FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-            StringFlowActor->StringInstrument, ControlRigInstance,
-            ControlRigBlueprint)) {
+    // 不再提供后备查询，如果缓存未命中则直接失败
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig from StringInstrument in "
-                    "InitializeStringVibrationAnimationChannels"));
+               TEXT("StringFlowMusicInstrumentProcessor: Failed to get "
+                    "ControlRig for StringInstrument - cache miss"));
         return;
     }
 
@@ -367,36 +404,33 @@ void UStringFlowMusicInstrumentProcessor::
     // 使用Common模块的通用方法：检查Root Control是否存在
     if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
             ControlRigBlueprint, TEXT("violin_root"))) {
+        UE_LOG(LogTemp, Error, TEXT("====== INITIALIZATION FAILED ======"));
         UE_LOG(LogTemp, Error,
-               TEXT("====== INITIALIZATION FAILED ======"));
+               TEXT("Root Control 'violin_root' does not exist in Control Rig "
+                    "Blueprint"));
+        UE_LOG(LogTemp, Error, TEXT(""));
         UE_LOG(LogTemp, Error,
-               TEXT("Root Control 'violin_root' does not exist in Control Rig Blueprint"));
+               TEXT("Please manually create the Root Control 'violin_root' in "
+                    "your Control Rig Blueprint:"));
+        UE_LOG(LogTemp, Error, TEXT("  1. Open the Control Rig Blueprint"));
+        UE_LOG(LogTemp, Error, TEXT("  2. Go to the Hierarchy panel"));
         UE_LOG(LogTemp, Error,
-               TEXT(""));
-        UE_LOG(LogTemp, Error,
-               TEXT("Please manually create the Root Control 'violin_root' in your Control Rig Blueprint:"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  1. Open the Control Rig Blueprint"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  2. Go to the Hierarchy panel"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  3. Right-click and create a new Control named 'violin_root'"));
+               TEXT("  3. Right-click and create a new Control named "
+                    "'violin_root'"));
         UE_LOG(LogTemp, Error,
                TEXT("  4. Set the Control Type to 'Transform'"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  5. Save the Blueprint and try again"));
-        UE_LOG(LogTemp, Error,
-               TEXT("====== END OF ERROR REPORT ======"));
+        UE_LOG(LogTemp, Error, TEXT("  5. Save the Blueprint and try again"));
+        UE_LOG(LogTemp, Error, TEXT("====== END OF ERROR REPORT ======"));
         return;
     }
 
     // 获取Root Control的Key用于后续操作
-    FRigElementKey RootControlKey(TEXT("violin_root"), ERigElementType::Control);
+    FRigElementKey RootControlKey(TEXT("violin_root"),
+                                  ERigElementType::Control);
 
     // 使用Common模块的通用方法：批量添加动画通道
     if (ChannelNamesToCreate.Num() == 0) {
-        UE_LOG(LogTemp, Error,
-               TEXT("ChannelNamesToCreate is empty"));
+        UE_LOG(LogTemp, Error, TEXT("ChannelNamesToCreate is empty"));
         return;
     }
 
@@ -801,9 +835,10 @@ int32 UStringFlowMusicInstrumentProcessor::SyncVibrationToMaterialAnimation(
 
 void UStringFlowMusicInstrumentProcessor::CleanupExistingStringAnimations(
     AStringFlowUnreal* StringFlowActor) {
-    if (!StringFlowActor || !StringFlowActor->StringInstrument) {
+    if (!StringFlowActor || !StringFlowActor->StringInstrument ||
+        !StringFlowActor->Bow) {
         UE_LOG(LogTemp, Warning,
-               TEXT("Invalid StringFlowActor or StringInstrument in "
+               TEXT("Invalid StringFlowActor or StringInstrument or Bow in "
                     "CleanupExistingStringAnimations"));
         return;
     }
@@ -811,6 +846,9 @@ void UStringFlowMusicInstrumentProcessor::CleanupExistingStringAnimations(
     // 使用Common模块的通用清理方法清理Sequencer中的轨道
     UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
         StringFlowActor->StringInstrument);
+
+    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+        StringFlowActor->Bow);
 }
 
 void UStringFlowMusicInstrumentProcessor::GenerateInstrumentAnimation(

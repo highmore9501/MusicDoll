@@ -1,9 +1,10 @@
 ﻿#include "StringFlowTransformSyncProcessor.h"
 
 #include "Animation/SkeletalMeshActor.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
 #include "ControlRig/Public/ControlRig.h"
 #include "Engine/Engine.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
 #include "StringFlowControlRigProcessor.h"
 
 bool UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(
@@ -18,70 +19,55 @@ bool UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(
         return true;
     }
 
-    bool bStringSuccess = SyncStringInstrumentTransform(StringFlowActor);
+    // 检测是否为渲染环境
+    bool bIsRendering = UInstrumentAnimationUtility::IsInRenderingScenario();
+
+    bool bStringSuccess =
+        SyncStringInstrumentTransform(StringFlowActor, bIsRendering);
     bool bBowSuccess = SyncBowTransform(StringFlowActor);
 
     return bStringSuccess && bBowSuccess;
 }
 
 bool UStringFlowTransformSyncProcessor::SyncStringInstrumentTransform(
-    AStringFlowUnreal* StringFlowActor) {
+    AStringFlowUnreal* StringFlowActor, bool bIsRenderingEnvironment) {
     if (!StringFlowActor) {
         UE_LOG(LogTemp, Error,
                TEXT("SyncStringInstrumentTransform: StringFlowActor is null"));
         return false;
     }
 
-    // 如果禁用实时同步，直接返回，避免任何日志
-    if (!StringFlowActor->bEnableRealtimeSync) {
-        return true;
-    }
-
     if (!StringFlowActor->StringInstrument) {
+        UE_LOG(LogTemp, Error,
+               TEXT("SyncStringInstrumentTransform: StringInstrument is null"));
+        return false;
+    }    
+
+    // 获取 Performer 的 ControlRig 实例（与 SyncBowTransform 相同路径）
+    UControlRig* PerformerControlRig =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    if (!PerformerControlRig) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SyncStringInstrumentTransform: Failed to get cached "
+                    "Performer ControlRig"));
         return false;
     }
 
-    // ========== 检测初始化值是否改变 =========
-    TArray<FTransform> NewValues;
-    bool bValuesChanged = FInstrumentControlRigUtility::HasInitializationValuesChanged(
-        StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
-        StringFlowActor->StringInstrument, TEXT("violin_root"),
-        StringFlowActor->CachedInitializationValues, NewValues);
+    // 每帧更新：使用缓存的相对变换矩阵快速更新
+    bool bUpdateResult =
+        FInstrumentControlRigUtility::UpdateChildControlFromParent(
+            PerformerControlRig, TEXT("controller_root"),
+            StringFlowActor->SkeletalMeshActor,
+            StringFlowActor->StringInstrument, TEXT("violin_root"),
+            StringFlowActor->CachedStringInstrumentRelativeTransform);
 
-    // 如果初始化值改变，标记需要重新初始化
-    if (bValuesChanged) {
-        StringFlowActor->bStringInstrumentRelativeTransformInitialized = false;
-        StringFlowActor->CachedInitializationValues = NewValues;
+    if (!bUpdateResult) {
         UE_LOG(LogTemp, Warning,
-               TEXT("SyncStringInstrumentTransform: Initialization values "
-                    "changed, will reinitialize cache"));
+               TEXT("SyncStringInstrumentTransform: Failed to update child "
+                    "control from parent"));
     }
 
-    // ========== 第一次初始化或值改变后重新初始化：计算并缓存相对变换矩阵 =========
-    if (!StringFlowActor->bStringInstrumentRelativeTransformInitialized) {
-        if (!FInstrumentControlRigUtility::InitializeControlRelationship(
-                StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
-                StringFlowActor->StringInstrument, TEXT("violin_root"),
-                StringFlowActor->CachedStringInstrumentRelativeTransform)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("SyncStringInstrumentTransform: Failed to initialize "
-                        "control relationship"));
-            return false;
-        }
-
-        // 更新缓存的初始化值
-        StringFlowActor->CachedInitializationValues = NewValues;
-        StringFlowActor->bStringInstrumentRelativeTransformInitialized = true;
-        UE_LOG(LogTemp, Warning,
-               TEXT("SyncStringInstrumentTransform: Control relationship "
-                    "initialized and cached"));
-    }
-
-    // ========== 每帧更新：使用缓存的相对变换矩阵快速更新 =========
-    return FInstrumentControlRigUtility::UpdateChildControlFromParent(
-        StringFlowActor->SkeletalMeshActor, TEXT("controller_root"),
-        StringFlowActor->StringInstrument, TEXT("violin_root"),
-        StringFlowActor->CachedStringInstrumentRelativeTransform);
+    return bUpdateResult;
 }
 
 bool UStringFlowTransformSyncProcessor::SyncBowTransform(
@@ -102,13 +88,21 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
     }
 
     // 从人物身上获取琴弓位置源：bow_controller
-    FTransform BowControllerTransform;
-    if (!FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
-            StringFlowActor->SkeletalMeshActor, TEXT("bow_controller"),
-            BowControllerTransform)) {
+    // 使用缓存的ControlRig实例
+    UControlRig* PerformerControlRig =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    if (!PerformerControlRig) {
         UE_LOG(
             LogTemp, Warning,
-            TEXT("SyncBowTransform: Failed to get bow_controller transform"));
+            TEXT(
+                "SyncBowTransform: Failed to get cached Performer ControlRig"));
+        return false;
+    }
+
+    FTransform BowControllerTransform;
+    if (!FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
+            PerformerControlRig, TEXT("bow_controller"),
+            StringFlowActor->SkeletalMeshActor, BowControllerTransform)) {
         return false;
     }
 
@@ -117,11 +111,8 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
     // 从人物身上获取琴弓朝向源：string_touch_point
     FTransform StringTouchPointTransform;
     if (!FInstrumentControlRigUtility::GetControlRigControlWorldTransform(
-            StringFlowActor->SkeletalMeshActor, TEXT("string_touch_point"),
-            StringTouchPointTransform)) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("SyncBowTransform: Failed to get string_touch_point "
-                    "transform"));
+            PerformerControlRig, TEXT("string_touch_point"),
+            StringFlowActor->SkeletalMeshActor, StringTouchPointTransform)) {
         return false;
     }
 

@@ -1,7 +1,8 @@
 ﻿#include "KeyRippleControlRigProcessor.h"
 
-#include "Common/Public/BoneControlMappingUtility.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
+#include "BoneControlMappingUtility.h"
+#include "ControlRigCacheSubsystem.h"
+#include "InstrumentControlRigUtility.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -54,15 +55,6 @@ struct FKeyRippleControlRigHelpers {
         }
 
         return true;
-    }
-
-    static bool GetControlRigInstanceAndBlueprint(
-        AKeyRippleUnreal* KeyRippleActor, UControlRig*& OutControlRigInstance,
-        UControlRigBlueprint*& OutControlRigBlueprint) {
-        return UKeyRippleControlRigProcessor::
-            GetControlRigFromSkeletalMeshActor(
-                KeyRippleActor->SkeletalMeshActor, OutControlRigInstance,
-                OutControlRigBlueprint);
     }
 
     // ========================================
@@ -465,15 +457,6 @@ struct FKeyRippleControlRigHelpers {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // UKeyRippleControlRigProcessor implementations
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool UKeyRippleControlRigProcessor::GetControlRigFromSkeletalMeshActor(
-    ASkeletalMeshActor* SkeletalMeshActor, UControlRig*& OutControlRigInstance,
-    UControlRigBlueprint*& OutControlRigBlueprint) {
-    return FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-        SkeletalMeshActor, OutControlRigInstance, OutControlRigBlueprint);
-}
-
 FString UKeyRippleControlRigProcessor::GetRecorderNameForControl(
     AKeyRippleUnreal* KeyRippleActor, const FString& ControlName,
     bool bIsFingerControl) {
@@ -528,11 +511,38 @@ void UKeyRippleControlRigProcessor::CheckObjectsStatus(
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));
@@ -605,11 +615,38 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));
@@ -636,11 +673,38 @@ void UKeyRippleControlRigProcessor::SaveState(
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));
@@ -738,11 +802,38 @@ void UKeyRippleControlRigProcessor::LoadState(
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));
@@ -826,11 +917,38 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));
@@ -912,7 +1030,8 @@ void UKeyRippleControlRigProcessor::SetupControllers(
 
             // 检查是否为 pole 控制器
             if (ControllerName.StartsWith(TEXT("pole_"))) {
-                // 这是一个 pole 控制器，需要找到对应的手指控制器作为父级
+                // 这是一个 pole
+                // 控制器，需要找到对应的手指控制器作为参考，然后找到对应的手掌
                 FString PoleFingerNumber =
                     ControllerName.Mid(5);  // 去掉 "pole_" 前缀
 
@@ -920,12 +1039,22 @@ void UKeyRippleControlRigProcessor::SetupControllers(
                 for (const auto& FingerPair :
                      KeyRippleActor->FingerControllers) {
                     if (FingerPair.Key == PoleFingerNumber) {
-                        ParentControllerName =
+                        FString FingerControllerName =
                             FingerPair.Value;  // 例如 "0_L" 或 "5_R"
+
+                        // 根据手指控制器的后缀（_L或_R）确定对应的手掌
+                        FString HandSuffix =
+                            FingerControllerName.EndsWith(TEXT("_L"))
+                                ? TEXT("_L")
+                                : TEXT("_R");
+                        ParentControllerName = FString::Printf(
+                            TEXT("H%s"), *HandSuffix);  // 例如 "H_L" 或 "H_R"
+
                         UE_LOG(LogTemp, Warning,
-                               TEXT("Found finger controller %s as parent for "
-                                    "pole %s"),
-                               *ParentControllerName, *ControllerName);
+                               TEXT("Found finger controller %s, setting hand "
+                                    "controller %s as parent for pole %s"),
+                               *FingerControllerName, *ParentControllerName,
+                               *ControllerName);
                         break;
                     }
                 }
@@ -950,11 +1079,38 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
         return nullptr;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: GEngine is not available"));
+        return nullptr;
+    }
 
-    if (!FKeyRippleControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            KeyRippleActor, ControlRigInstance, ControlRigBlueprint)) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ControlRig access: ControlRig Cache Subsystem is not "
+                    "available"));
+        return nullptr;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRig access: No Level Sequence is currently open"));
+        return nullptr;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint from "
                     "SkeletalMeshActor"));

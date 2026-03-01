@@ -2,9 +2,11 @@
 
 #include "Animation/SkeletalMeshActor.h"
 #include "ControlRig/Public/ControlRig.h"
+#include "ControlRigCacheSubsystem.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.h"
+#include "InstrumentControlRigUtility.h"
 #include "Tickable.h"
 #include "StringFlowUnreal.generated.h"
 
@@ -43,6 +45,127 @@ enum class EStringFlowRightHandStringIndex : uint8 {
     STRING_1 = 1,
     STRING_2 = 2,
     STRING_3 = 3
+};
+
+// ========== 乐器配置相关枚举和结构体 ==========
+
+// 乐器类型枚举
+UENUM(BlueprintType)
+enum class EStringFlowInstrumentType : uint8 {
+    VIOLIN = 0,  // 小提琴（默认）
+    VIOLA = 1,   // 中提琴
+    CELLO = 2,   // 大提琴
+    CUSTOM = 3   // 自定义
+};
+
+// 乐器配置结构体
+USTRUCT(BlueprintType)
+struct FStringFlowInstrumentConfig {
+    GENERATED_BODY()
+
+   public:
+    /** 乐器类型 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "StringFlow Instrument")
+    EStringFlowInstrumentType InstrumentType;
+
+    /** 四根弦的MIDI音高 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "StringFlow Instrument")
+    TArray<int32> StringNotes;
+
+    // 构造函数
+    FStringFlowInstrumentConfig()
+        : InstrumentType(EStringFlowInstrumentType::VIOLIN) {
+        StringNotes.SetNum(4);
+        StringNotes[0] = 76;  // E
+        StringNotes[1] = 69;  // A
+        StringNotes[2] = 62;  // D
+        StringNotes[3] = 55;  // G
+    }
+
+    /**
+     * 获取乐器名称
+     */
+    FString GetInstrumentName() const {
+        switch (InstrumentType) {
+            case EStringFlowInstrumentType::VIOLIN:
+                return TEXT("Violin");
+            case EStringFlowInstrumentType::VIOLA:
+                return TEXT("Viola");
+            case EStringFlowInstrumentType::CELLO:
+                return TEXT("Cello");
+            case EStringFlowInstrumentType::CUSTOM:
+                return TEXT("Custom");
+            default:
+                return TEXT("Unknown");
+        }
+    }
+
+    /**
+     * 获取指定弦的音高
+     */
+    int32 GetStringNote(int32 StringIndex) const {
+        if (StringIndex >= 0 && StringIndex < StringNotes.Num()) {
+            return StringNotes[StringIndex];
+        }
+        return -1;
+    }
+
+    /**
+     * 创建小提琴配置（E=76, A=69, D=62, G=55）
+     */
+    static FStringFlowInstrumentConfig GetViolinConfig() {
+        FStringFlowInstrumentConfig Config;
+        Config.InstrumentType = EStringFlowInstrumentType::VIOLIN;
+        Config.StringNotes.SetNum(4);
+        Config.StringNotes[0] = 76;  // E
+        Config.StringNotes[1] = 69;  // A
+        Config.StringNotes[2] = 62;  // D
+        Config.StringNotes[3] = 55;  // G
+        return Config;
+    }
+
+    /**
+     * 创建中提琴配置（A=69, D=62, G=55, C=48）
+     */
+    static FStringFlowInstrumentConfig GetViolaConfig() {
+        FStringFlowInstrumentConfig Config;
+        Config.InstrumentType = EStringFlowInstrumentType::VIOLA;
+        Config.StringNotes.SetNum(4);
+        Config.StringNotes[0] = 69;  // A
+        Config.StringNotes[1] = 62;  // D
+        Config.StringNotes[2] = 55;  // G
+        Config.StringNotes[3] = 48;  // C
+        return Config;
+    }
+
+    /**
+     * 创建大提琴配置（A=45, D=38, G=31, C=24）
+     */
+    static FStringFlowInstrumentConfig GetCelloConfig() {
+        FStringFlowInstrumentConfig Config;
+        Config.InstrumentType = EStringFlowInstrumentType::CELLO;
+        Config.StringNotes.SetNum(4);
+        Config.StringNotes[0] = 45;  // A
+        Config.StringNotes[1] = 38;  // D
+        Config.StringNotes[2] = 31;  // G
+        Config.StringNotes[3] = 24;  // C
+        return Config;
+    }
+
+    /**
+     * 创建自定义配置
+     */
+    static FStringFlowInstrumentConfig GetCustomConfig(
+        const TArray<int32>& InStringNotes) {
+        FStringFlowInstrumentConfig Config;
+        Config.InstrumentType = EStringFlowInstrumentType::CUSTOM;
+        if (InStringNotes.Num() == 4) {
+            Config.StringNotes = InStringNotes;
+        }
+        return Config;
+    }
 };
 
 // 辅助结构体：字符串数组
@@ -135,7 +258,8 @@ struct FStringFlowSyncReport {
  * 管理小提琴表演的控制器和记录器配置
  */
 UCLASS(Blueprintable, BlueprintType)
-class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FTickableGameObject {
+class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
+                                               public FTickableGameObject {
     GENERATED_BODY()
 
    public:
@@ -197,9 +321,22 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StringFlow State")
     EStringFlowRightHandStringIndex RightHandStringIndex;
 
+    // ========== 渲染监控变量 ==========
+
+    /** 渲染监控计数器 */
+    UPROPERTY(Transient)
+    uint32 RenderingLogCounter;
+
     /** 弦材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     class UMaterialInstance* StringMaterial;
+
+    // ========== 乐器配置 ==========
+
+    /** 当前乐器配置 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "StringFlow Configuration")
+    FStringFlowInstrumentConfig CurrentInstrumentConfig;
 
     // ========== 控制器映射 ==========
 
@@ -355,6 +492,42 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
         EStringFlowRightHandPositionType PositionType) const;
 
     /**
+     * 获取当前乐器的字符串名称
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    FString GetCurrentInstrumentName() const;
+
+    /**
+     * 获取当前乐器的指定弦音高
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    int32 GetCurrentStringNote(int32 StringIndex) const;
+
+    /**
+     * 设置乐器类型为小提琴
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    void SetInstrumentToViolin();
+
+    /**
+     * 设置乐器类型为中提琴
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    void SetInstrumentToViola();
+
+    /**
+     * 设置乐器类型为大提琴
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    void SetInstrumentToCello();
+
+    /**
+     * 设置自定义乐器配置
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow Instrument")
+    void SetCustomInstrumentConfig(const TArray<int32>& InStringNotes);
+
+    /**
      * 导出记录器信息到JSON文件
      */
     UFUNCTION(BlueprintCallable, Category = "StringFlow")
@@ -366,11 +539,27 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
     UFUNCTION(BlueprintCallable, Category = "StringFlow")
     bool ImportRecorderInfo(const FString& FilePath);
 
+    /**
+     * 同步乐器变换
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow")
+    void SyncInstrumentTransforms();
+
+    /**
+     * 初始化弦乐器同步关系（手动调用）
+     * 计算并缓存 controller_root 与 violin_root 之间的相对变换矩阵
+     * 此方法应在场景设置完成后手动调用一次，而不是在每帧Tick中检查
+     * @return 是否成功初始化
+     */
+    UFUNCTION(BlueprintCallable, Category = "StringFlow")
+    bool InitializeStringInstrumentSync();
+
 #if WITH_EDITOR
     /**
      * 在编辑器中属性改变时调用，用于实时同步乐器位置
      */
-    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+    virtual void PostEditChangeProperty(
+        FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
     // ========== 已创建的对象 ==========
@@ -391,12 +580,7 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
      */
     UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
     FTransform CachedStringInstrumentRelativeTransform;
-
-    /**
-     * 标记小提琴相对变换是否已初始化
-     */
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    bool bStringInstrumentRelativeTransformInitialized;
+    
 
     /**
      * 用于检测初始化值是否改变的缓存数组
@@ -414,9 +598,7 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
     /**
      * 检查该对象是否可 Tick
      */
-    virtual bool IsTickable() const override {
-        return bEnableRealtimeSync;
-    }
+    virtual bool IsTickable() const override { return bEnableRealtimeSync; }
 
     /**
      * 检查该对象是否在编辑器中可 Tick
@@ -435,7 +617,49 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase, public FT
     /**
      * 获取性能框架信息
      */
-    virtual bool IsAllowedToTick() const override {
-        return true;
-    }
+    virtual bool IsAllowedToTick() const override { return true; }
+
+    /**
+     * Called when the actor is being destroyed
+     */
+    virtual void BeginDestroy() override;
+
+   private:
+    /** 是否已完成初始化 */
+    UPROPERTY(Transient)
+    bool bIsInitialized;
+
+   public:
+    /**
+     * 根据组件名称获取对应的SkeletalMeshActor
+     * @param ComponentName 组件名称
+     * @return 对应的SkeletalMeshActor
+     */
+    ASkeletalMeshActor* GetSkeletalMeshActorByName(FName ComponentName) const;
+
+    /**
+     * 获取指定组件的Control Rig实例（通过Subsystem）
+     * @param ComponentName 组件名称
+     * @return ControlRig实例
+     */
+    UControlRig* GetCachedControlRig(FName ComponentName);
+
+    /**
+     * 获取指定组件的Control Rig Blueprint（通过Subsystem）
+     * @param ComponentName 组件名称
+     * @return ControlRigBlueprint
+     */
+    UControlRigBlueprint* GetCachedControlRigBlueprint(FName ComponentName);
+
+    /**
+     * 当ControlRig操作失败时触发重新注册
+     * @param ErrorMessage 错误信息，用于日志记录
+     */
+    void TriggerControlRigReregistration(const FString& ErrorMessage);
+
+    /**
+     * 检查是否已完成初始化
+     * @return 是否已初始化
+     */
+    bool IsInitialized() const { return bIsInitialized; }
 };

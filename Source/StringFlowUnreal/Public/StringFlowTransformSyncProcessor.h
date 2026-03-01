@@ -59,13 +59,14 @@ class STRINGFLOWUNREAL_API UStringFlowTransformSyncProcessor : public UObject {
 
     /**
      * 同步小提琴（violin_root 跟随 controller_root）
-     * 带有缓存优化：仅在 transform 发生变化时才进行更新
+     * 纯读取-计算-应用方法，需要先调用 InitializeStringInstrumentSync 初始化
      *
      * @param StringFlowActor StringFlowUnreal实例
+     * @param bIsRenderingEnvironment 是否为渲染环境
      * @return 同步是否成功
      */
     UFUNCTION(BlueprintCallable, Category = "StringFlow Transform Sync")
-    static bool SyncStringInstrumentTransform(AStringFlowUnreal* StringFlowActor);
+    static bool SyncStringInstrumentTransform(AStringFlowUnreal* StringFlowActor, bool bIsRenderingEnvironment = false);
 
     /**
      * 同步琴弓变换（位置和旋转）

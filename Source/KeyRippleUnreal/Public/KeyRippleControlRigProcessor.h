@@ -97,19 +97,6 @@ class KEYRIPPLEUNREAL_API UKeyRippleControlRigProcessor : public UObject {
     static void SetupControllers(AKeyRippleUnreal* KeyRippleActor);
 
     /**
-     * 通过SkeletalMeshActor获取Control Rig Instance和Blueprint
-     * @param SkeletalMeshActor Skeletal Mesh Actor实例
-     * @param OutControlRigInstance 输出参数，Control Rig实例
-     * @param OutControlRigBlueprint 输出参数，Control Rig蓝图
-     * @return 是否成功获取
-     */
-    UFUNCTION(BlueprintCallable, Category = "KeyRipple Control Rig Processor")
-    static bool GetControlRigFromSkeletalMeshActor(
-        ASkeletalMeshActor* SkeletalMeshActor,
-        UControlRig*& OutControlRigInstance,
-        UControlRigBlueprint*& OutControlRigBlueprint);
-
-    /**
      * 根据Control名字和当前手部状态获取对应的Recorder名字
      * @param KeyRippleActor KeyRippleUnreal实例
      * @param ControlName Control的名字

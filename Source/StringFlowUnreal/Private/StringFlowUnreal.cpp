@@ -11,12 +11,21 @@
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "ControlRigCacheSubsystem.h"
 #include "Dom/JsonObject.h"
+#include "Editor/EditorEngine.h"
 #include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "ISequencer.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
+#include "LevelEditorSequencerIntegration.h"
 #include "LevelSequenceActor.h"
+#include "MoviePipelineQueueSubsystem.h"
+#include "MovieRenderPipelineCoreModule.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -34,8 +43,7 @@ AStringFlowUnreal::AStringFlowUnreal() {
     BowUpAxis = FVector(0.0f, 0.0f, 1.0f);            // Default: Z axis (up)
     bEnableRealtimeSync = true;
 
-    CachedStringInstrumentRelativeTransform = FTransform::Identity;
-    bStringInstrumentRelativeTransformInitialized = false;
+    CachedStringInstrumentRelativeTransform = FTransform::Identity;    
 
     // 初始化缓存的初始化值数组，共4个元素
     CachedInitializationValues.SetNum(4);
@@ -43,19 +51,24 @@ AStringFlowUnreal::AStringFlowUnreal() {
         CachedInitializationValues[i] = FTransform::Identity;
     }
 
+    bIsInitialized = false;
+    RenderingLogCounter = 0;
+
     InitializeControllersAndRecorders();
+    bIsInitialized = true;
 }
 
 // Called when the game starts or when spawned
 void AStringFlowUnreal::BeginPlay() { Super::BeginPlay(); }
 
-// Called every frame
+void AStringFlowUnreal::BeginDestroy() { Super::BeginDestroy(); }
+
 void AStringFlowUnreal::Tick(float DeltaTime) {
     Super::Tick(DeltaTime);
 
-    // 仅当启用实时同步时才同步弦乐器和琴弓的位置/旋转
     if (bEnableRealtimeSync) {
-        UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(this);
+        // 同步弦乐器和琴弓的位置/旋转
+        SyncInstrumentTransforms();
     }
 }
 
@@ -531,6 +544,39 @@ FString AStringFlowUnreal::GetRightHandPositionTypeString(
     }
 }
 
+FString AStringFlowUnreal::GetCurrentInstrumentName() const {
+    return CurrentInstrumentConfig.GetInstrumentName();
+}
+
+int32 AStringFlowUnreal::GetCurrentStringNote(int32 StringIndex) const {
+    return CurrentInstrumentConfig.GetStringNote(StringIndex);
+}
+
+void AStringFlowUnreal::SetInstrumentToViolin() {
+    CurrentInstrumentConfig = FStringFlowInstrumentConfig::GetViolinConfig();
+}
+
+void AStringFlowUnreal::SetInstrumentToViola() {
+    CurrentInstrumentConfig = FStringFlowInstrumentConfig::GetViolaConfig();
+}
+
+void AStringFlowUnreal::SetInstrumentToCello() {
+    CurrentInstrumentConfig = FStringFlowInstrumentConfig::GetCelloConfig();
+}
+
+void AStringFlowUnreal::SetCustomInstrumentConfig(
+    const TArray<int32>& InStringNotes) {
+    if (InStringNotes.Num() == 4) {
+        CurrentInstrumentConfig =
+            FStringFlowInstrumentConfig::GetCustomConfig(InStringNotes);
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SetCustomInstrumentConfig: InStringNotes must have 4 "
+                    "elements, got %d"),
+               InStringNotes.Num());
+    }
+}
+
 void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error, TEXT("ExportRecorderInfo: FilePath is empty"));
@@ -544,6 +590,36 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     ConfigObject->SetNumberField(TEXT("one_hand_finger_number"),
                                  OneHandFingerNumber);
     ConfigObject->SetNumberField(TEXT("string_number"), StringNumber);
+
+    // 保存乐器配置
+    switch (CurrentInstrumentConfig.InstrumentType) {
+        case EStringFlowInstrumentType::VIOLIN:
+            ConfigObject->SetStringField(TEXT("instrument"), TEXT("violin"));
+            break;
+        case EStringFlowInstrumentType::VIOLA:
+            ConfigObject->SetStringField(TEXT("instrument"), TEXT("viola"));
+            break;
+        case EStringFlowInstrumentType::CELLO:
+            ConfigObject->SetStringField(TEXT("instrument"), TEXT("cello"));
+            break;
+        case EStringFlowInstrumentType::CUSTOM:
+            ConfigObject->SetStringField(TEXT("instrument"), TEXT("custom"));
+            // 对于自定义乐器，导出弦音高
+            if (CurrentInstrumentConfig.StringNotes.Num() == 4) {
+                TArray<TSharedPtr<FJsonValue>> StringNotesArray;
+                for (int32 i = 0; i < 4; ++i) {
+                    StringNotesArray.Add(MakeShareable(new FJsonValueNumber(
+                        CurrentInstrumentConfig.StringNotes[i])));
+                }
+                ConfigObject->SetArrayField(TEXT("string_notes"),
+                                            StringNotesArray);
+            }
+            break;
+        default:
+            ConfigObject->SetStringField(TEXT("instrument"), TEXT("violin"));
+            break;
+    }
+
     JsonObject->SetObjectField(TEXT("config"), ConfigObject);
 
     // 创建分类对象
@@ -754,6 +830,37 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
         if (ConfigObject->HasField(TEXT("string_number"))) {
             StringNumber = ConfigObject->GetIntegerField(TEXT("string_number"));
         }
+
+        // 导入乐器配置
+        if (ConfigObject->HasField(TEXT("instrument"))) {
+            FString InstrumentType =
+                ConfigObject->GetStringField(TEXT("instrument"));
+
+            if (InstrumentType == TEXT("violin")) {
+                SetInstrumentToViolin();
+            } else if (InstrumentType == TEXT("viola")) {
+                SetInstrumentToViola();
+            } else if (InstrumentType == TEXT("cello")) {
+                SetInstrumentToCello();
+            } else if (InstrumentType == TEXT("custom")) {
+                // 对于自定义乐器，读取string_notes
+                if (ConfigObject->HasField(TEXT("string_notes"))) {
+                    TArray<TSharedPtr<FJsonValue>> StringNotesArray =
+                        ConfigObject->GetArrayField(TEXT("string_notes"));
+                    if (StringNotesArray.Num() == 4) {
+                        TArray<int32> StringNotes;
+                        for (int32 i = 0; i < 4; ++i) {
+                            StringNotes.Add(
+                                (int32)StringNotesArray[i]->AsNumber());
+                        }
+                        SetCustomInstrumentConfig(StringNotes);
+                    }
+                }
+            }
+        } else {
+            // 如果没有instrument字段，默认使用小提琴
+            SetInstrumentToViolin();
+        }
     }
 
     // 清空现有的RecorderTransforms并导入新数据
@@ -847,4 +954,211 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
         TEXT("ImportRecorderInfo: Successfully imported %d recorders from %s"),
         ImportedCount, *FilePath);
     return true;
+}
+
+void AStringFlowUnreal::SyncInstrumentTransforms() {
+    FString ActorName = GetName();
+
+    if (ActorName.StartsWith(TEXT("Default_"))) {
+        // Default_开头的并非真实实例，不需要处理
+        return;
+    }
+    // 此方法被加载到level sequnece里调用，相当于渲染环境下的tick方法。
+    bool bIsRendering = UInstrumentAnimationUtility::IsInRenderingScenario();
+
+    if (bIsRendering) {
+        // 渲染场景下直接使用现有的组件引用
+        // 原有的Actor映射恢复逻辑已被移除
+    }
+
+    // 执行正常的同步逻辑
+    if (StringInstrument && Bow && SkeletalMeshActor) {
+        // 只有当所有组件都有效时才执行同步
+        UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(this);
+    } 
+}
+
+bool AStringFlowUnreal::InitializeStringInstrumentSync() {
+    if (!SkeletalMeshActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeStringInstrumentSync: SkeletalMeshActor is null"));
+        return false;
+    }
+
+    if (!StringInstrument) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeStringInstrumentSync: StringInstrument is null"));
+        return false;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeStringInstrumentSync Started =========="));
+
+    // 计算并缓存相对变换矩阵
+    if (!FInstrumentControlRigUtility::InitializeControlRelationship(
+            SkeletalMeshActor, TEXT("controller_root"),
+            StringInstrument, TEXT("violin_root"),
+            CachedStringInstrumentRelativeTransform)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeStringInstrumentSync: Failed to initialize "
+                    "control relationship"));
+        return false;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("InitializeStringInstrumentSync: Control relationship "
+                "initialized and cached successfully"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeStringInstrumentSync Completed =========="));
+
+    return true;
+}
+
+// ========== 缓存管理方法实现 ==========
+
+ASkeletalMeshActor* AStringFlowUnreal::GetSkeletalMeshActorByName(
+    FName ComponentName) const {
+    if (ComponentName == TEXT("StringInstrument")) {
+        return StringInstrument;
+    } else if (ComponentName == TEXT("Bow")) {
+        return Bow;
+    } else if (ComponentName == TEXT("Performer")) {
+        return SkeletalMeshActor;
+    }
+    return nullptr;
+}
+
+UControlRig* AStringFlowUnreal::GetCachedControlRig(FName ComponentName) {
+    // 详细诊断GEngine和Subsystem状态
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error, TEXT("GetCachedControlRig: GEngine is NULL"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to get ControlRig for component %s - GEngine "
+                    "unavailable"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+
+    if (!CacheSubsystem) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("GetCachedControlRig: CacheSubsystem not found in GEngine"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to get ControlRig for component %s - "
+                    "CacheSubsystem unavailable"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    ASkeletalMeshActor* Actor = GetSkeletalMeshActorByName(ComponentName);
+    if (!Actor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetCachedControlRig: Actor not found for component %s"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetCachedControlRig: No LevelSequence found"));
+        return nullptr;
+    }
+
+    // 使用通用接口查询ControlRig
+    UControlRig* ControlRig =
+        CacheSubsystem->GetControlRig(Actor, LevelSequence);
+
+    return ControlRig;
+}
+
+UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
+    FName ComponentName) {
+    // 详细诊断GEngine和Subsystem状态
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetCachedControlRigBlueprint: GEngine is NULL"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to get ControlRigBlueprint for component %s - "
+                    "GEngine unavailable"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetCachedControlRigBlueprint: CacheSubsystem not found in "
+                    "GEngine"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to get ControlRigBlueprint for component %s - "
+                    "CacheSubsystem unavailable"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    ASkeletalMeshActor* Actor = GetSkeletalMeshActorByName(ComponentName);
+    if (!Actor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetCachedControlRigBlueprint: Actor not found for "
+                    "component %s"),
+               *ComponentName.ToString());
+        return nullptr;
+    }
+
+    // 获取当前LevelSequence
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetCachedControlRigBlueprint: No LevelSequence found"));
+        return nullptr;
+    }
+
+    // 使用通用接口查询ControlRig Blueprint
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence);
+
+    return ControlRigBlueprint;
+}
+
+void AStringFlowUnreal::TriggerControlRigReregistration(const FString& ErrorMessage) {
+    UE_LOG(LogTemp, Warning, 
+           TEXT("TriggerControlRigReregistration: %s, triggering ControlRig re-registration for all components"), 
+           *ErrorMessage);
+    
+    // 触发所有组件的ControlRig重新注册
+    if (GEngine) {
+        UControlRigCacheSubsystem* CacheSubsystem =
+            GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+        if (CacheSubsystem) {
+            ULevelSequence* CurrentSequence = UInstrumentAnimationUtility::GetCurrentLevelSequence();
+            if (CurrentSequence) {
+                // 为演奏者组件重新注册
+                if (SkeletalMeshActor) {
+                    CacheSubsystem->TriggerRegistrationIfNeeded(SkeletalMeshActor, CurrentSequence);
+                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for Performer component"));
+                }
+                
+                // 为乐器组件重新注册
+                if (StringInstrument) {
+                    CacheSubsystem->TriggerRegistrationIfNeeded(StringInstrument, CurrentSequence);
+                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for StringInstrument component"));
+                }
+                
+                // 为琴弓组件重新注册
+                if (Bow) {
+                    CacheSubsystem->TriggerRegistrationIfNeeded(Bow, CurrentSequence);
+                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for Bow component"));
+                }
+            }
+        }
+    }
 }

@@ -22,7 +22,7 @@ public class MusicDollUI : ModuleRules
                 "EditorFramework",
                 "WorkspaceMenuStructure",
                 "AppFramework",
-                "Common"
+                "MusicDollCommon"
             }
         );
 

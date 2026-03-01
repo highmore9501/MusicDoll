@@ -3,13 +3,13 @@
 #include "Animation/SkeletalMeshActor.h"
 #include "EngineUtils.h"
 #include "InstrumentBase.h"  // 包含InstrumentBase头文件
-#include "KeyRippleDisplayPanelInterface.h"
-#include "KeyRipplePropertiesPanel.h"
 #include "KeyRippleUnreal.h"
 #include "Misc/Paths.h"
 #include "MusicDollStyle.h"
-#include "StringFlowPropertiesPanel.h"
 #include "StringFlowUnreal.h"
+#include "UI/KeyRippleModuleMainPanel.h"
+#include "UI/ModuleMainPanelInterface.h"
+#include "UI/StringFlowModuleMainPanel.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -151,8 +151,7 @@ SMusicDollMainPanel::~SMusicDollMainPanel() {
         PropertiesPanelWidget.Reset();
     }
 
-    CurrentKeyRipplePanel.Reset();
-    CurrentStringFlowPanel.Reset();
+    CurrentModulePanel.Reset();
     ActorSelectorPanel.Reset();
     SelectedInstrumentActor.Reset();
 }
@@ -215,6 +214,9 @@ const FSlateBrush* SMusicDollMainPanel::GetSelectedActorIcon() const {
 }
 
 void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
+    UE_LOG(LogTemp, Warning, TEXT("SMusicDollMainPanel::OnActorSelected() - Switching to actor: %s"), 
+           InActor ? *InActor->GetName() : TEXT("nullptr"));
+    
     SelectedInstrumentActor = InActor;
 
     if (!PropertiesPanelWidget.IsValid()) {
@@ -223,8 +225,12 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
 
     // 完全清理旧的面板
     PropertiesPanelWidget->ClearChildren();
-    CurrentKeyRipplePanel.Reset();  // 重要：完全释放旧的面板指针
-    CurrentStringFlowPanel.Reset();
+    
+    // 显式重置模块面板指针，确保触发析构
+    if (CurrentModulePanel.IsValid()) {
+        UE_LOG(LogTemp, Warning, TEXT("SMusicDollMainPanel::OnActorSelected() - Resetting CurrentModulePanel"));
+        CurrentModulePanel.Reset();
+    }
 
     if (!InActor) {
         return;
@@ -232,19 +238,19 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
 
     // 检查选中的对象是否为AKeyRippleUnreal类型
     AKeyRippleUnreal* KeyRippleActor = Cast<AKeyRippleUnreal>(InActor);
-
     if (KeyRippleActor) {
-        // Create appropriate properties panel for this actor
-        // Try KeyRipplePropertiesPanel first
-        TSharedPtr<SKeyRipplePropertiesPanel> Panel =
-            SNew(SKeyRipplePropertiesPanel);
-        if (Panel.IsValid() && Panel->CanHandleActor(KeyRippleActor)) {
-            CurrentKeyRipplePanel = Panel;
-            Panel->SetActor(KeyRippleActor);
+        // Create KeyRipple module main panel using new architecture
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SKeyRippleModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(KeyRippleActor)) {
+            ModulePanel->SetActor(KeyRippleActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 
             if (PropertiesPanelWidget.IsValid()) {
                 PropertiesPanelWidget->AddSlot().FillHeight(
-                    1.0f)[Panel.ToSharedRef()];
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
             }
         }
         return;
@@ -252,19 +258,19 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
 
     // 检查选中的对象是否为AStringFlowUnreal类型
     AStringFlowUnreal* StringFlowActor = Cast<AStringFlowUnreal>(InActor);
-
     if (StringFlowActor) {
-        // Create appropriate properties panel for this actor
-        // Try StringFlowPropertiesPanel
-        TSharedPtr<SStringFlowPropertiesPanel> Panel =
-            SNew(SStringFlowPropertiesPanel);
-        if (Panel.IsValid() && Panel->CanHandleActor(StringFlowActor)) {
-            CurrentStringFlowPanel = Panel;
-            Panel->SetActor(StringFlowActor);
+        // Create StringFlow module main panel using new architecture
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SStringFlowModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(StringFlowActor)) {
+            ModulePanel->SetActor(StringFlowActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 
             if (PropertiesPanelWidget.IsValid()) {
                 PropertiesPanelWidget->AddSlot().FillHeight(
-                    1.0f)[Panel.ToSharedRef()];
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
             }
         }
         return;

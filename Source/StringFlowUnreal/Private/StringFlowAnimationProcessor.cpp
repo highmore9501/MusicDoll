@@ -1,8 +1,8 @@
 ﻿#include "StringFlowAnimationProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
-#include "Common/Public/InstrumentAnimationUtility.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
 #include "Dom/JsonObject.h"
@@ -312,15 +312,13 @@ void UStringFlowAnimationProcessor::MakeStringAnimation(
     UE_LOG(LogTemp, Warning, TEXT("Loaded %d animation frames"),
            JsonArray.Num());
 
-    // 3. 获取 Control Rig Instance (弦乐器模型)
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
-
-    if (!UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
-            StringFlowActor->StringInstrument, ControlRigInstance,
-            ControlRigBlueprint)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig from StringInstrument"));
+    // 3. 获取 Control Rig Instance (弦乐器模型) - 使用缓存机制
+    UControlRig* ControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
+    UControlRigBlueprint* ControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("StringInstrument"));
+    
+    // 不再提供后备查询，如果缓存未命中则直接失败
+    if (!ControlRigInstance || !ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error, TEXT("StringFlowAnimationProcessor: Failed to get ControlRig for StringInstrument - cache miss"));
         return;
     }
 
@@ -443,15 +441,13 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
     UE_LOG(LogTemp, Warning, TEXT("Loaded %d animation frames"),
            JsonArray.Num());
 
-    // 3. 获取演奏者模型的 Control Rig Instance
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
-
-    if (!FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-            StringFlowActor->SkeletalMeshActor, ControlRigInstance,
-            ControlRigBlueprint)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig from SkeletalMeshActor"));
+    // 3. 获取演奏者模型的 Control Rig Instance - 使用缓存机制
+    UControlRig* ControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+    
+    // 不再提供后备查询，如果缓存未命中则直接失败
+    if (!ControlRigInstance || !ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error, TEXT("StringFlowAnimationProcessor: Failed to get ControlRig for Performer - cache miss"));
         return;
     }
 

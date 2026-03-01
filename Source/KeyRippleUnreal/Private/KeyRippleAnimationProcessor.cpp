@@ -1,6 +1,7 @@
 ﻿#include "KeyRippleAnimationProcessor.h"
 
-#include "Common/Public/InstrumentAnimationUtility.h"
+#include "ControlRigCacheSubsystem.h"
+#include "InstrumentAnimationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "KeyRippleControlRigProcessor.h"
@@ -57,56 +58,6 @@ static void CollectKeyRippleControllerNames(AKeyRippleUnreal* KeyRippleActor,
         OutControllerNames.Add(Pair.Value);
     }
 }
-
-/**
- * 处理单个动画帧 - KeyRipple 特定的 JSON 结构解析
- * 假设 JSON 结构为: { "frame": N, "hand_infos": {...} }
- */
-static void ProcessKeyRippleAnimationFrame(
-    TSharedPtr<FJsonObject> FrameObject,
-    TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
-    int32 FrameIndex, int32& OutFailedFrames, int32& OutKeyframesAdded) {
-    if (!FrameObject.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("Frame %d is not a valid JSON object"),
-               FrameIndex);
-        OutFailedFrames++;
-        return;
-    }
-
-    // 获取帧数（KeyRipple 特定字段）
-    int32 FrameNumber = FrameIndex;
-    if (FrameObject->HasField(TEXT("frame"))) {
-        FrameNumber =
-            static_cast<int32>(FrameObject->GetNumberField(TEXT("frame")));
-    } else {
-        UE_LOG(LogTemp, Warning, TEXT("Frame %d does not have 'frame' field"),
-               FrameIndex);
-    }
-
-    // 获取 hand_infos 对象（KeyRipple 特定字段）
-    TSharedPtr<FJsonObject> HandInfos = nullptr;
-    if (FrameObject->HasField(TEXT("hand_infos"))) {
-        HandInfos = FrameObject->GetObjectField(TEXT("hand_infos"));
-    } else {
-        UE_LOG(LogTemp, Warning,
-               TEXT("Frame %d does not have 'hand_infos' field"), FrameIndex);
-        OutFailedFrames++;
-        return;
-    }
-
-    if (!HandInfos.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("Frame %d hand_infos is not valid"),
-               FrameIndex);
-        OutFailedFrames++;
-        return;
-    }
-
-    // 调用通用方法处理控件容器
-    UInstrumentAnimationUtility::ProcessControlsContainer(
-        HandInfos, FrameNumber, ControlKeyframeData,
-        GetValidKeyRippleControllerNames(), OutKeyframesAdded);
-}
-
 }  // namespace KeyRippleAnimationHelper
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -148,13 +99,16 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimation(
 void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
     AKeyRippleUnreal* KeyRippleActor, const FString& AnimationFilePath) {
     if (!KeyRippleActor) {
-        UE_LOG(LogTemp, Error, TEXT("GeneratePerformerAnimationDirect: KeyRippleActor is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("GeneratePerformerAnimationDirect: KeyRippleActor is null"));
         return;
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("Generating performer animation with Control Rig integration: %s"),
-           *AnimationFilePath);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("Generating performer animation with Control Rig integration: %s"),
+        *AnimationFilePath);
 
     // 1. 读取动画文件
     FString FileContent;
@@ -176,22 +130,19 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
         return;
     }
 
-    // 3. 获取 Control Rig Instance
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
-
-    if (!UKeyRippleControlRigProcessor::GetControlRigFromSkeletalMeshActor(
-            KeyRippleActor->SkeletalMeshActor, ControlRigInstance,
-            ControlRigBlueprint)) {
+    // 3. 通过Subsystem获取 Control Rig Instance
+    if (!GEngine) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint from "
-                    "SkeletalMeshActor"));
+               TEXT("InitAnimationControlRig: GEngine is not available"));
         return;
     }
 
-    if (!ControlRigInstance) {
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
         UE_LOG(LogTemp, Error,
-               TEXT("ControlRigInstance is null in GeneratePerformerAnimationDirect"));
+               TEXT("InitAnimationControlRig: ControlRig Cache Subsystem is "
+                    "not available"));
         return;
     }
 
@@ -203,6 +154,19 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
             LevelSequence, Sequencer)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get active Level Sequence and Sequencer"));
+        return;
+    }
+
+    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
+        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(
+            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "SkeletalMeshActor"));
         return;
     }
 
@@ -239,10 +203,13 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
 
     for (int32 FrameIndex = 0; FrameIndex < JsonArray.Num(); ++FrameIndex) {
         TSharedPtr<FJsonObject> FrameObject = JsonArray[FrameIndex]->AsObject();
+        int32 FrameNumber = FrameObject->GetIntegerField(TEXT("frame"));
+        TSharedPtr<FJsonObject> ControlsContainer =
+            FrameObject->GetObjectField(TEXT("hand_infos"));
 
         // 使用通用方法处理控件容器
         UInstrumentAnimationUtility::ProcessControlsContainer(
-            FrameObject, FrameIndex, ControlKeyframeData,
+            ControlsContainer, FrameNumber, ControlKeyframeData,
             KeyRippleAnimationHelper::GetValidKeyRippleControllerNames(),
             KeyframesAdded);
 
@@ -263,15 +230,17 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
     // 11. 标记为已修改
     LevelSequence->MarkPackageDirty();
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== GeneratePerformerAnimationDirect Summary =========="));
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== GeneratePerformerAnimationDirect Summary =========="));
     UE_LOG(LogTemp, Warning, TEXT("Successfully processed: %d frames"),
            ProcessedFrames);
     UE_LOG(LogTemp, Warning, TEXT("Failed frames: %d"), FailedFrames);
     UE_LOG(LogTemp, Warning, TEXT("Total keyframes added to Sequencer: %d"),
            KeyframesAdded);
     UE_LOG(LogTemp, Warning,
-           TEXT("========== GeneratePerformerAnimationDirect Completed =========="));
+           TEXT("========== GeneratePerformerAnimationDirect Completed "
+                "=========="));
 }
 
 // 批量插入控制关键帧 - 现在直接调用通用方法

@@ -33,7 +33,7 @@ public class KeyRippleUnreal : ModuleRules
                 "SlateCore",
                 "AssetTools",
                 "AssetRegistry",
-                "Common"
+                "MusicDollCommon"
             }
         );
 

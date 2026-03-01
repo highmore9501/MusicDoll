@@ -26,9 +26,19 @@
     {
       "Name": "ControlRigSpline",
       "Enabled": true
+    },
+    {
+      "Name": "MovieRenderPipeline",
+      "Enabled": true
     }
   ],
   "Modules": [
+    {
+      "Name": "MusicDollCommon",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
+    },
     {
       "Name": "KeyRippleUnreal",
       "Type": "Editor",
@@ -37,7 +47,7 @@
     },
     {
       "Name": "StringFlowUnreal",
-      "Type": "Editor",
+      "Type": "Runtime",
       "LoadingPhase": "Default",
       "BlacklistFolders": [ ".vshistory" ]
     },

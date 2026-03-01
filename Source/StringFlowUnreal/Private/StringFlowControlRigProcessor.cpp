@@ -1,9 +1,13 @@
 ﻿#include "StringFlowControlRigProcessor.h"
 
 #include "Animation/SkeletalMeshActor.h"
-#include "Common/Public/BoneControlMappingUtility.h"
-#include "Common/Public/InstrumentControlRigUtility.h"
+#include "BoneControlMappingUtility.h"
+#include "InstrumentControlRigUtility.h"
+#include "ControlRigCacheSubsystem.h"
 #include "ControlRig.h"
+#include "LevelEditor.h"
+#include "LevelEditorSequencerIntegration.h"
+#include "MovieSceneSequence.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
@@ -81,10 +85,18 @@ struct FStringFlowControlRigHelpers {
     static bool GetControlRigInstanceAndBlueprint(
         AStringFlowUnreal* StringFlowActor, UControlRig*& OutControlRigInstance,
         UControlRigBlueprint*& OutControlRigBlueprint) {
-        return UStringFlowControlRigProcessor::
-            GetControlRigFromStringInstrument(
-                StringFlowActor->SkeletalMeshActor, OutControlRigInstance,
-                OutControlRigBlueprint);
+        
+        // 直接使用StringFlowActor获取演奏者的ControlRig缓存
+        OutControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+        OutControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+        
+        // 不再提供后备查询，如果缓存未命中则直接失败
+        if (!OutControlRigInstance || !OutControlRigBlueprint) {
+            UE_LOG(LogTemp, Error, TEXT("StringFlowControlRigHelpers: Failed to get ControlRig for Performer - cache miss"));
+            return false;
+        }
+        
+        return OutControlRigInstance && OutControlRigBlueprint;
     }
 
     // ========================================
@@ -148,6 +160,12 @@ struct FStringFlowControlRigHelpers {
     static void InitializeRecorderTransforms(
         AStringFlowUnreal* StringFlowActor) {
         if (!StringFlowActor) {
+            return;
+        }
+        
+        // 如果已经初始化过，跳过重复初始化
+        if (StringFlowActor->IsInitialized()) {
+            UE_LOG(LogTemp, Verbose, TEXT("InitializeRecorderTransforms: Already initialized, skipping"));
             return;
         }
 
@@ -758,8 +776,60 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
     ASkeletalMeshActor* StringInstrumentActor,
     UControlRig*& OutControlRigInstance,
     UControlRigBlueprint*& OutControlRigBlueprint) {
-    return FInstrumentControlRigUtility::GetControlRigFromSkeletalMeshActor(
-        StringInstrumentActor, OutControlRigInstance, OutControlRigBlueprint);
+    
+    // 通过ControlRig缓存子系统获取ControlRig，而不是直接查询
+    if (!StringInstrumentActor) {
+        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: StringInstrumentActor is null"));
+        return false;
+    }
+    
+    // 获取当前LevelSequence
+    ULevelSequence* CurrentSequence = nullptr;
+    if (FModuleManager::Get().IsModuleLoaded(TEXT("LevelEditor"))) {
+        TArray<TWeakPtr<ISequencer>> WeakSequencers =
+            FLevelEditorSequencerIntegration::Get().GetSequencers();
+        
+        for (const TWeakPtr<ISequencer>& WeakSequencer : WeakSequencers) {
+            if (TSharedPtr<ISequencer> Sequencer = WeakSequencer.Pin()) {
+                UMovieSceneSequence* RootSequence = Sequencer->GetRootMovieSceneSequence();
+                CurrentSequence = Cast<ULevelSequence>(RootSequence);
+                if (CurrentSequence) {
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (!CurrentSequence) {
+        UE_LOG(LogTemp, Warning, TEXT("GetControlRigFromStringInstrument: No LevelSequence found"));
+        return false;
+    }
+    
+    // 通过Subsystem获取ControlRig
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: GEngine is NULL"));
+        return false;
+    }
+    
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: CacheSubsystem not found"));
+        return false;
+    }
+    
+    // 使用Subsystem获取ControlRig
+    OutControlRigInstance = CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence);
+    OutControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(StringInstrumentActor, CurrentSequence);
+    
+    // 如果获取失败，Subsystem会自动处理注册和更新逻辑，我们只需记录日志
+    if (!OutControlRigInstance || !OutControlRigBlueprint) {
+        UE_LOG(LogTemp, Warning, TEXT("GetControlRigFromStringInstrument: Failed to get ControlRig from subsystem for Actor %s"), 
+               *StringInstrumentActor->GetName());
+    }
+    
+    return OutControlRigInstance != nullptr && OutControlRigBlueprint != nullptr;
 }
 
 void UStringFlowControlRigProcessor::CheckObjectsStatus(
@@ -1061,12 +1131,14 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
 
-        FRigElementKey FingerControlKey(*FingerControlName,
-                                        ERigElementType::Control);
+        FString HandControlName = TEXT("H_L");
+
+        FRigElementKey HandControlKey(*HandControlName,
+                                      ERigElementType::Control);
 
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, PoleControlName,
-            FingerControlKey, TEXT("Sphere"));
+            HierarchyController, RigHierarchy, PoleControlName, HandControlKey,
+            TEXT("Sphere"));
     }
 
     for (const auto& FingerPair : StringFlowActor->RightFingerControllers) {
@@ -1074,12 +1146,14 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
 
-        FRigElementKey FingerControlKey(*FingerControlName,
-                                        ERigElementType::Control);
+        FString HandControlName = TEXT("H_R");
+
+        FRigElementKey HandControlKey(*HandControlName,
+                                      ERigElementType::Control);
 
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, PoleControlName,
-            FingerControlKey, TEXT("Sphere"));
+            HierarchyController, RigHierarchy, PoleControlName, HandControlKey,
+            TEXT("Sphere"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Pole controls creation completed"));

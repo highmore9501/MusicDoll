@@ -53,12 +53,6 @@ FString AKeyRippleUnreal::GetControllerName(int32 FingerNumber,
     FString HandStr = (HandType == EHandType::LEFT) ? TEXT("_L") : TEXT("_R");
     FString BaseName = FString::Printf(TEXT("%d%s"), FingerNumber, *HandStr);
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("GetControllerName: FingerNumber=%d, HandType=%s, Result=%s"),
-           FingerNumber,
-           (HandType == EHandType::LEFT) ? TEXT("LEFT") : TEXT("RIGHT"),
-           *BaseName);
-
     return BaseName;
 }
 
