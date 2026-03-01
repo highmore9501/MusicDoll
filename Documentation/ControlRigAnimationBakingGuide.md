@@ -1,288 +1,337 @@
-# Control Rig动画烘焙模块使用指南
+# Control Rig 动画烘焙用户指南
 
-## 概述
+## 🎯 概述
 
-Control Rig动画烘焙模块是一个强大的工具集，用于将实时Control Rig动画转换为静态关键帧动画。该模块支持扫描Level Sequence中的Control Rig轨道，并对指定的Control进行动画曲线烘焙。
+Control Rig动画烘焙系统是MusicDoll插件的核心功能之一，用于将演奏动画数据固化到Sequencer的时间轴上。通过烘焙操作，您可以将实时计算的Control Rig动画转换为关键帧动画，便于后续编辑和渲染。
 
-## 模块架构
-
-### 核心组件
-
-#### 1. Common模块（通用基础组件）
-
-**ControlRigScanner（扫描器）**
-- 文件路径：`Plugins/MusicDoll/Source/Common/Public/Private/Baking/ControlRigScanner.h/.cpp`
-- 功能：扫描当前Level Sequence中所有Control Rig轨道
-- 主要方法：
-  - `ScanLevelSequenceControlRigs()` - 扫描所有Control Rig轨道
-  - `GetActorControlRigInfo()` - 获取指定Actor的Control Rig信息
-  - `GetControlNamesFromBlueprint()` - 从蓝图获取Control名称列表
-
-**AnimationBaker（烘焙器）**
-- 文件路径：`Plugins/MusicDoll/Source/Common/Public/Private/Baking/AnimationBaker.h/.cpp`
-- 功能：实现动画模拟播放和关键帧提取的核心逻辑
-- 主要方法：
-  - `BakeControlAnimation()` - 烘焙单个Control动画
-  - `BakeMultipleControlAnimations()` - 批量烘焙多个Control
-  - `GetControlValueAtFrame()` - 获取指定帧的Control值
-
-**BakeOperationsPanelBase（通用操作面板基类）**
-- 文件路径：`Plugins/MusicDoll/Source/Common/Public/Private/Baking/BakeOperationsPanelBase.h/.cpp`
-- 功能：提供通用的烘焙操作界面
-- 特性：
-  - 扫描结果显示
-  - 烘焙参数设置（帧范围、步长等）
-  - 进度显示和状态管理
-
-#### 2. KeyRippleUnreal模块（钢琴演奏者专用）
-
-**SKeyRippleBakeOperationsPanel**
-- 文件路径：`Plugins/MusicDoll/Source/KeyRippleUnreal/Public/Private/KeyRippleBakeOperationsPanel.h/.cpp`
-- 特色功能：
-  - 为演奏者和钢琴分别提供Control选择下拉菜单
-  - 预设常用的KeyRipple控制器分组
-  - 支持同时选择多个Control进行批量烘焙
-
-**UKeyRippleBakeProcessor**
-- 文件路径：`Plugins/MusicDoll/Source/KeyRippleUnreal/Public/Private/KeyRippleBakeProcessor.h/.cpp`
-- 集成特点：
-  - 利用现有的ControlRigCacheSubsystem
-  - 复用KeyRippleAnimationHelper中的控制器名称管理
-  - 与现有动画生成功能保持一致性
-
-#### 3. StringFlowUnreal模块（弦乐器专用）
-
-**SStringFlowBakeOperationsPanel**
-- 文件路径：`Plugins/MusicDoll/Source/StringFlowUnreal/Public/Private/StringFlowBakeOperationsPanel.h/.cpp`
-- 特色功能：
-  - 为演奏者/琴/弓三个骨骼分别提供Control选择
-  - 支持StringFlow特有的控制器命名规则
-  - 提供弦乐器专用的预设Control分组
-
-**UStringFlowBakeProcessor**
-- 文件路径：`Plugins/MusicDoll/Source/StringFlowUnreal/Public/Private/StringFlowBakeProcessor.h/.cpp`
-- 集成特点：
-  - 充分利用StringFlowUnreal中已有的Control Rig缓存机制
-  - 支持多组件(ControlRig)的独立烘焙操作
-  - 与现有StringFlow动画处理流程无缝集成
-
-## 使用方法
-
-### 基本操作流程
-
-1. **准备工作**
-   - 确保已打开包含Control Rig动画的Level Sequence
-   - 选择要进行烘焙的目标Actor（KeyRipple或StringFlow）
-
-2. **扫描Control Rig轨道**
-   - 点击"Scan Control Rigs"按钮
-   - 系统将自动扫描当前Level Sequence中的所有Control Rig轨道
-   - 扫描结果将显示在界面中，包括绑定的Actor和可用的Control列表
-
-3. **设置烘焙参数**
-   - **Start Frame**: 烘焙开始帧号
-   - **End Frame**: 烘焙结束帧号
-   - **Frame Step**: 帧采样步长（默认为1，即逐帧采样）
-   - **Overwrite existing keyframes**: 是否覆盖现有关键帧
-
-4. **选择要烘焙的Control**
-   - KeyRipple模块：分别选择演奏者和钢琴的Control
-   - StringFlow模块：分别选择演奏者、乐器和琴弓的Control
-   - 可以选择多个Control进行批量烘焙
-
-5. **执行烘焙**
-   - 点击"Bake Animation"按钮开始烘焙过程
-   - 界面将显示烘焙进度
-   - 烘焙完成后，动画关键帧将被写入Level Sequence
-
-### 高级功能
-
-#### 批量烘焙
-```cpp
-// KeyRipple批量烘焙示例
-TArray<FString> PerformerControls = {"LeftHand_Control", "RightHand_Control"};
-TArray<FString> PianoControls = {"PianoPedal_Control"};
-
-FAnimationBakeSettings Settings;
-Settings.StartFrame = 0;
-Settings.EndFrame = 100;
-Settings.FrameStep = 1;
-
-int32 BakedCount = UKeyRippleBakeProcessor::BakeAllKeyRippleAnimation(
-    KeyRippleActor, 
-    PerformerControls, 
-    PianoControls, 
-    Settings);
-```
-
-#### 自定义进度回调
-```cpp
-auto ProgressCallback = [](int32 Current, int32 Total, const FString& ControlName)
-{
-    UE_LOG(LogTemp, Log, TEXT("Baking %s: %d/%d"), *ControlName, Current, Total);
-};
-
-UAnimationBaker::BakeMultipleControlAnimations(
-    LevelSequence,
-    ControlRigInstance,
-    ControlNames,
-    Settings,
-    ProgressCallback);
-```
-
-## API参考
-
-### 核心结构体
-
-**FAnimationBakeSettings**
-```cpp
-struct FAnimationBakeSettings
-{
-    int32 StartFrame;           // 开始帧
-    int32 EndFrame;             // 结束帧
-    int32 FrameStep;            // 帧步长
-    bool bOverwriteExistingKeys; // 是否覆盖现有关键帧
-    float BakePrecision;        // 烘焙精度
-};
-```
-
-**FControlRigScanResult**
-```cpp
-struct FControlRigScanResult
-{
-    ASkeletalMeshActor* BoundActor;        // 绑定的Actor
-    UControlRig* ControlRigInstance;       // Control Rig实例
-    UControlRigBlueprint* ControlRigBlueprint; // Control Rig蓝图
-    TArray<FString> AvailableControls;     // 可用Control列表
-    FString TrackName;                     // 轨道名称
-};
-```
-
-### 主要方法
-
-**ControlRigScanner**
-```cpp
-// 扫描Level Sequence中的所有Control Rig
-static bool ScanLevelSequenceControlRigs(TMap<FString, FControlRigScanResult>& OutResults);
-
-// 获取指定Actor的Control Rig信息
-static bool GetActorControlRigInfo(ASkeletalMeshActor* Actor, FControlRigScanResult& OutResult);
-```
-
-**AnimationBaker**
-```cpp
-// 烘焙单个Control动画
-static bool BakeControlAnimation(
-    ULevelSequence* LevelSequence,
-    UControlRig* ControlRigInstance,
-    const FString& ControlName,
-    const FAnimationBakeSettings& Settings,
-    TFunction<void(int32, int32)> OutProgressCallback = nullptr);
-
-// 批量烘焙多个Control动画
-static int32 BakeMultipleControlAnimations(
-    ULevelSequence* LevelSequence,
-    UControlRig* ControlRigInstance,
-    const TArray<FString>& ControlNames,
-    const FAnimationBakeSettings& Settings,
-    TFunction<void(int32, int32, const FString&)> OutProgressCallback = nullptr);
-```
-
-## 最佳实践
-
-### 性能优化建议
-
-1. **合理设置帧步长**
-   - 对于高频动画，可以适当增加FrameStep以减少关键帧数量
-   - 对于精细动作，保持FrameStep=1以保证动画质量
-
-2. **分批处理大型动画**
-   - 对于长时间序列，建议分段烘焙
-   - 可以按Control类型分组进行批量处理
-
-3. **及时清理临时数据**
-   - 烘焙完成后及时释放不需要的资源
-   - 避免在编辑器中积累过多的Undo历史
-
-### 质量保证
-
-1. **预览检查**
-   - 烘焙前先预览动画效果
-   - 确认Control选择正确无误
-
-2. **备份重要数据**
-   - 对重要的Level Sequence建议先备份
-   - 烘焙前保存当前工作进度
-
-3. **验证烘焙结果**
-   - 烘焙后检查关键帧分布是否合理
-   - 验证动画播放是否符合预期
-
-## 故障排除
-
-### 常见问题
-
-**Q: 扫描时找不到Control Rig轨道**
-A: 
-- 确保Level Sequence已正确打开
-- 检查Actor是否已正确绑定到Control Rig轨道
-- 验证Control Rig实例是否正常加载
-
-**Q: 烘焙过程中出现错误**
-A:
-- 检查Control名称是否正确
-- 确认帧范围设置是否合理
-- 验证是否有足够的权限修改Level Sequence
-
-**Q: 烘焙后的动画效果不理想**
-A:
-- 尝试减小FrameStep值提高采样密度
-- 检查Control Rig的初始状态是否正确
-- 验证动画曲线的插值设置
-
-### 调试技巧
-
-1. **启用详细日志**
-```cpp
-// 在控制台中输入以下命令启用详细日志
-log LogTemp Verbose
-```
-
-2. **使用调试断点**
-- 在关键方法中设置断点观察数据流
-- 检查中间结果是否符合预期
-
-3. **逐步验证**
-- 先测试简单的单Control烘焙
-- 逐步增加复杂度和Control数量
-
-## 扩展开发
-
-### 添加新的烘焙目标
-
-要为新的模块添加烘焙支持，需要：
-
-1. 继承`SBakeOperationsPanelBase`创建专用面板
-2. 实现`CreateControlSelectionWidget()`和`GetSelectedControlNames()`
-3. 创建对应的处理器类继承`UObject`
-4. 实现具体的烘焙逻辑和Actor验证方法
-
-### 自定义烘焙算法
-
-可以通过继承`UAnimationBaker`来实现自定义的烘焙算法：
-
-```cpp
-class CUSTOM_API UCustomAnimationBaker : public UAnimationBaker
-{
-    // 实现自定义的烘焙逻辑
-};
-```
-
-## 版本历史
-
-- v1.0.0: 初始版本，支持基础的Control Rig动画烘焙功能
-- v1.1.0: 添加批量烘焙和进度回调支持
-- v1.2.0: 完善KeyRipple和StringFlow模块的专用支持
+本系统专门为音乐表演动画设计，支持钢琴演奏者和弦乐器演奏者的Control Rig动画烘焙。
 
 ---
-*本文档最后更新时间：2026年 2月 26日*
+
+## 🎹 界面功能介绍
+
+### 1. 主要操作面板
+
+Control Rig烘焙功能位于插件主界面的"Bake"标签页中，包含以下主要区域：
+
+#### 扫描区域
+- **Scan Control Rigs按钮** - 扫描当前场景中可用的Control Rig实例
+- 扫描结果显示区域 - 显示找到的Control Rig及其包含的控制器列表
+
+#### 烘焙设置区域
+- **起始帧 (Start Frame)** - 烘焙的开始时间点
+- **结束帧 (End Frame)** - 烘焙的结束时间点  
+- **帧步长 (Frame Step)** - 采样间隔（默认为1，即每帧采样）
+- **覆盖现有关键帧** - 是否覆盖已存在的关键帧数据
+
+#### 控制器选择区域
+根据不同模块有不同的选择界面：
+
+**KeyRipple（钢琴）模块：**
+- 演奏者控制器下拉菜单
+- 钢琴控制器下拉菜单
+
+**StringFlow（弦乐器）模块：**
+- 演奏者控制器下拉菜单
+- 乐器控制器下拉菜单
+- 琴弓控制器下拉菜单
+
+#### 操作按钮区域
+- **Add Selected** - 添加选中的控制器到烘焙列表
+- **Bake Animation** - 开始烘焙过程
+- **Cancel** - 取消正在进行的烘焙
+- **Clear Selected Control Tracks** - 清除选中控制器的现有关键帧
+
+#### 状态显示区域
+- 实时状态信息显示
+- 烘焙进度条
+- 操作结果反馈
+
+---
+
+## 🎬 使用流程
+
+### 1. 基础准备工作
+
+#### 步骤1：设置Level Sequence
+1. 在Sequencer中创建或打开一个Level Sequence
+2. 确保需要烘焙的Control Rig已经绑定到Sequencer中
+3. 设置合适的播放范围（这将作为默认的烘焙范围）
+
+#### 步骤2：选择正确的Actor
+1. 在插件主界面中选择对应的演奏者Actor
+2. 确保Actor已经正确设置了SkeletalMeshActor和其他相关组件
+
+### 2. 扫描Control Rig
+
+#### 操作步骤：
+1. 点击 **"Scan Control Rigs"** 按钮
+2. 系统会自动扫描当前Actor关联的所有Control Rig实例
+3. 扫描完成后，相应的控制器下拉菜单会被填充
+
+#### 扫描结果说明：
+- 系统只会识别Transform和EulerTransform类型的控制器
+- Float等自定义通道类型的控制器不会出现在列表中
+- 每个下拉菜单的第一个选项为空白选项
+
+### 3. 选择要烘焙的控制器
+
+#### KeyRipple模块选择：
+- **演奏者控制器**：选择演奏者手部、手臂等相关控制器
+- **钢琴控制器**：选择钢琴按键、踏板等相关控制器
+
+#### StringFlow模块选择：
+- **演奏者控制器**：选择演奏者手部、手臂等相关控制器
+- **乐器控制器**：选择小提琴、吉他等乐器的相关控制器
+- **琴弓控制器**：选择琴弓的相关控制器
+
+#### 选择技巧：
+- 可以多次选择不同的控制器组合
+- 每次选择后点击"Add Selected"添加到烘焙列表
+- 已添加的控制器会显示在下方的选择列表中
+
+### 4. 配置烘焙参数
+
+#### 时间范围设置：
+- **起始帧**：建议设置为动画开始前几帧（如0或-5）
+- **结束帧**：建议设置为动画结束后几帧（如动画长度+5）
+- **帧步长**：一般保持默认值1，需要节省关键帧时可设为2或3
+
+#### 覆盖选项：
+- 勾选：会删除选定控制器上已有的关键帧
+- 不勾选：会在现有关键帧基础上添加新关键帧
+
+### 5. 执行烘焙
+
+#### 操作步骤：
+1. 确认已添加需要烘焙的控制器到列表中
+2. 检查烘焙设置参数是否正确
+3. 点击 **"Bake Animation"** 按钮开始烘焙
+
+#### 烘焙过程：
+- 系统会逐帧采样选中控制器的当前位置和旋转
+- 将采样数据转换为Sequencer关键帧
+- 进度条显示烘焙进度
+- 完成后显示成功/失败的统计信息
+
+### 6. 验证结果
+
+#### 检查要点：
+1. 在Sequencer中查看对应轨道是否生成了关键帧
+2. 播放动画验证烘焙结果是否符合预期
+3. 检查控制器运动是否流畅自然
+
+---
+
+## ⚙️ 高级使用技巧
+
+### 1. 批量烘焙策略
+
+#### 分组烘焙：
+- 建议将相关的控制器分组烘焙
+- 例如：先烘焙演奏者手部控制器，再烘焙乐器控制器
+- 这样便于分别调整和验证
+
+#### 增量烘焙：
+- 可以先烘焙主要控制器
+- 验证无误后再添加次要控制器进行补充烘焙
+- 避免一次性烘焙过多控制器导致问题难排查
+
+### 2. 时间范围优化
+
+#### 合理设置范围：
+```
+推荐设置：
+起始帧 = 动画实际开始帧 - 5帧
+结束帧 = 动画实际结束帧 + 5帧
+```
+
+#### 特殊情况处理：
+- **循环动画**：确保包含完整的循环周期
+- **过渡动画**：适当延长前后缓冲帧数
+- **精确控制**：使用较小的帧步长获得更精细的控制
+
+### 3. 控制器选择原则
+
+#### 必选控制器：
+- 直接参与演奏动作的主要控制器
+- 影响整体表演效果的关键控制器
+
+#### 可选控制器：
+- 辅助性的微调控制器
+- 对最终效果影响较小的控制器
+
+#### 避免选择：
+- 纯粹的辅助控制器（如IK极向量）
+- 仅用于设置的初始化控制器
+- 不参与实际动画的静态控制器
+
+---
+
+## 🛠️ 常见问题解答
+
+### Q1: 扫描后下拉菜单为空？
+**可能原因：**
+- 没有打开Level Sequence
+- Control Rig未正确绑定到Sequencer
+- Actor组件未正确设置
+
+**解决方法：**
+1. 确保Sequencer已打开且包含相应的Control Rig轨道
+2. 检查Actor的SkeletalMeshActor等组件是否正确设置
+3. 重新点击Scan按钮尝试再次扫描
+
+### Q2: 烘焙按钮是灰色的无法点击？
+**可能原因：**
+- 没有选择任何控制器
+- 正在进行其他烘焙操作
+- 没有打开Level Sequence
+
+**解决方法：**
+1. 确保已通过"Add Selected"添加了控制器
+2. 等待当前操作完成或点击Cancel取消
+3. 确保有打开的Level Sequence
+
+### Q3: 烘焙后动画效果不理想？
+**可能原因：**
+- 时间范围设置不当
+- 帧步长设置过大
+- 选择了不合适的控制器
+
+**解决方法：**
+1. 调整起始帧和结束帧范围
+2. 减小帧步长值获得更平滑的动画
+3. 重新选择更合适的控制器组合
+
+### Q4: 烘焙过程中出现错误？
+**常见错误及处理：**
+
+**"No Level Sequence is currently open"**
+- 解决：打开相应的Level Sequence
+
+**"ControlRig is not bound to any track"**
+- 解决：在Sequencer中正确绑定Control Rig
+
+**"Invalid bake settings"**
+- 解决：检查起始帧不能大于结束帧等基本设置
+
+### Q5: 如何清除错误的烘焙结果？
+**方法一：使用内置清除功能**
+1. 在控制器选择列表中选择要清除的控制器
+2. 点击"Clear Selected Control Tracks"按钮
+3. 确认操作
+
+**方法二：手动清除**
+1. 在Sequencer中找到对应的Control Rig轨道
+2. 选择要清除的关键帧范围
+3. 按Delete键删除
+
+---
+
+## 📊 最佳实践建议
+
+### 1. 工作流程建议
+
+```
+推荐工作流程：
+1. 设置好Level Sequence和Actor绑定
+2. 扫描Control Rig获取控制器列表
+3. 按重要性分批选择控制器
+4. 设置合适的烘焙参数
+5. 执行烘焙并验证结果
+6. 根据需要进行调整和补充烘焙
+```
+
+### 2. 参数设置建议
+
+| 场景 | 起始帧 | 结束帧 | 帧步长 | 覆盖选项 |
+|------|--------|--------|--------|----------|
+| 初次烘焙 | -5 | 动画长度+5 | 1 | 勾选 |
+| 补充烘焙 | 实际范围 | 实际范围 | 1 | 不勾选 |
+| 精细调整 | 问题区域-2 | 问题区域+2 | 1 | 勾选 |
+| 性能优化 | -3 | 动画长度+3 | 2-3 | 根据需要 |
+
+### 3. 质量控制要点
+
+#### 烘焙前检查：
+- ✓ Level Sequence已正确设置
+- ✓ 所有需要的Control Rig已绑定
+- ✓ Actor组件配置正确
+- ✓ 播放范围设置合理
+
+#### 烘焙后验证：
+- ✓ 关键帧已正确生成
+- ✓ 动画播放流畅自然
+- ✓ 没有明显的跳跃或抖动
+- ✓ 符合音乐表演的要求
+
+---
+
+## 🔧 故障排除指南
+
+### 系统状态检查清单
+
+#### 基础环境检查：
+- [ ] Unreal Engine 5.7.1正常运行
+- [ ] MusicDoll插件已正确安装并启用
+- [ ] 项目中包含相应的演奏者Actor
+
+#### Sequencer设置检查：
+- [ ] Level Sequence已打开
+- [ ] Control Rig已绑定到Sequencer
+- [ ] 播放范围设置正确
+- [ ] 时间轴刻度显示正常
+
+#### Actor配置检查：
+- [ ] SkeletalMeshActor组件存在且有效
+- [ ] Control Rig Blueprint正确设置
+- [ ] 相关的乐器组件（钢琴/小提琴等）已添加
+
+### 日志信息解读
+
+#### 常见日志信息：
+```
+"Scan completed: Performer(X), Piano(Y) controls found"
+- 表示扫描成功，找到了X个演奏者控制器和Y个钢琴控制器
+
+"Baking X control(s) across Y instances..."
+- 表示开始烘焙X个控制器，涉及Y个Control Rig实例
+
+"Bake completed: X/Y controls successful"
+- 表示烘焙完成，X个成功，Y-X个失败
+```
+
+#### 错误日志处理：
+- 注意查看Output Log中的详细错误信息
+- 根据错误类型采取相应的解决措施
+- 必要时可以截图保存错误信息用于技术支持
+
+---
+
+## 🎯 总结
+
+Control Rig动画烘焙系统为MusicDoll用户提供了一个强大而直观的动画固化工具。通过合理的使用流程和参数设置，您可以：
+
+✅ **高效转换动画** - 将实时计算的Control Rig动画转换为可编辑的关键帧  
+✅ **精确控制时间** - 通过关键帧获得对动画时间点的精确控制  
+✅ **便于后期编辑** - 烘焙后的动画可以在Sequencer中自由调整  
+✅ **支持复杂场景** - 同时处理多个Control Rig实例和多种类型控制器  
+
+掌握这套系统的使用方法，将大大提升您的音乐表演动画制作效率和质量。
+
+---
+
+## ⚠️ 免责声明
+
+本文档由AI生成，内容基于对MusicDoll项目代码的理解和分析。由于项目仍在持续开发中，部分功能可能与文档描述存在差异。
+
+如在使用过程中遇到问题或发现文档错误，请及时联系项目维护人员或查阅最新的官方文档。
+
+**注意事项：**
+- 烘焙操作会修改Sequencer中的关键帧数据，请做好备份
+- 建议在正式项目中使用前先在测试场景中验证功能
+- 不同版本的Unreal Engine可能存在兼容性差异
+
+---
+*文档版本：1.0*  
+*最后更新：2026-03-02*
