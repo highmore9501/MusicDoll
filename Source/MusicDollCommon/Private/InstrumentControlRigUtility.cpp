@@ -444,7 +444,7 @@ bool FInstrumentControlRigUtility::UpdateChildControlFromParent(
     }
 
     // ========== 步骤1：使用与 SyncBowTransform 相同的路径获取父 Control
-    // の世界变换 =========
+    // 的世界变换 =========
     FTransform ParentCurrentWorldTransform;
     if (!GetControlRigControlWorldTransform(
             ParentControlRigInstance, ParentControlName,

@@ -441,8 +441,86 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
            TEXT("SyncBoneControlPairs: Starting sync for %d pairs"),
            BoneControlPairs.Num());
 
-    // 遍历所有的Bone-Control Pair
+    // 构建 Control 名称到 Pair 的映射，并获取每个 Control 的层级深度
+    TArray<TPair<FRigElementKey, FBoneControlPair>> SortedPairs;
+    TMap<FString, int32> ControlDepthCache;
+
     for (const FBoneControlPair& Pair : BoneControlPairs) {
+        // 验证 bone 和 control 都不为 empty
+        if (Pair.BoneName.IsNone() || Pair.ControlName.IsNone()) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("SyncBoneControlPairs: Skipping pair with empty name"));
+            continue;
+        }
+
+        // 获取 Control 元素
+        FRigElementKey ControlKey(*Pair.ControlName.ToString(),
+                                  ERigElementType::Control);
+        if (!Hierarchy->Contains(ControlKey)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("SyncBoneControlPairs: Control '%s' not found in "
+                        "hierarchy"),
+                   *Pair.ControlName.ToString());
+            OutFailedCount++;
+            continue;
+        }
+
+        SortedPairs.Add(
+            TPair<FRigElementKey, FBoneControlPair>(ControlKey, Pair));
+    }
+
+    // 计算每个 Control 的层级深度（从叶子到根）
+    auto GetControlDepth = [&](FRigElementKey ControlKey,
+                               auto& SelfFunc) -> int32 {
+        FString ControlName = ControlKey.Name.ToString();
+
+        // 检查缓存
+        int32* CachedDepth = ControlDepthCache.Find(ControlName);
+        if (CachedDepth) {
+            return *CachedDepth;
+        }
+
+        int32 Depth = 0;
+        FRigElementKey CurrentKey = ControlKey;
+
+        while (true) {
+            FRigElementKey ParentElement =
+                Hierarchy->GetFirstParent(CurrentKey);
+            if (!ParentElement) {
+                break;
+            }
+            Depth++;
+            CurrentKey = ParentElement;
+        }
+
+        ControlDepthCache.Add(ControlName, Depth);
+        return Depth;
+    };
+
+    // 按层级深度排序，先处理子级（深度大的），再处理父级（深度小的）
+    SortedPairs.Sort([&](const TPair<FRigElementKey, FBoneControlPair>& A,
+                         const TPair<FRigElementKey, FBoneControlPair>& B) {
+        int32 DepthA = GetControlDepth(A.Key, GetControlDepth);
+        int32 DepthB = GetControlDepth(B.Key, GetControlDepth);
+        // 深度大的（子级）排在前面
+        return DepthA > DepthB;
+    });
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("SyncBoneControlPairs: Sorted pairs by depth (child first):"));
+    for (int32 i = 0; i < SortedPairs.Num(); i++) {
+        FString ControlName = SortedPairs[i].Key.Name.ToString();
+        int32 Depth = GetControlDepth(SortedPairs[i].Key, GetControlDepth);
+        UE_LOG(LogTemp, Verbose, TEXT("  [%d] Control=%s, Depth=%d"), i,
+               *ControlName, Depth);
+    }
+
+    // 遍历排序后的所有的 Bone-Control Pair
+    for (const TPair<FRigElementKey, FBoneControlPair>& SortedPair :
+         SortedPairs) {
+        const FBoneControlPair& Pair = SortedPair.Value;
+        FRigElementKey ControlKey = SortedPair.Key;
+
         // 验证bone和control都不为empty
         if (Pair.BoneName.IsNone() || Pair.ControlName.IsNone()) {
             UE_LOG(LogTemp, Warning,
@@ -461,24 +539,13 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             continue;
         }
 
-        // 获取bone的世界变换
+        // 获取 bone 的世界变换
         const FTransform& ComponentSpaceTransform =
             SkeletalMeshComponent->GetComponentSpaceTransforms()[BoneIndex];
-        FTransform BoneWorldTransform =
-            ComponentSpaceTransform * SkeletalMeshActor->GetActorTransform();
+        // FTransform BoneWorldTransform =
+        //     ComponentSpaceTransform * SkeletalMeshActor->GetActorTransform();
 
-        // 获取Control元素
-        FRigElementKey ControlKey(*Pair.ControlName.ToString(),
-                                  ERigElementType::Control);
-        if (!Hierarchy->Contains(ControlKey)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("SyncBoneControlPairs: Control '%s' not found in "
-                        "hierarchy"),
-                   *Pair.ControlName.ToString());
-            OutFailedCount++;
-            continue;
-        }
-
+        // Control 元素已经在前面获取并验证过了，直接使用
         FRigControlElement* ControlElement =
             Hierarchy->Find<FRigControlElement>(ControlKey);
         if (!ControlElement) {
@@ -490,14 +557,13 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             continue;
         }
 
-        FTransform ActorWorldTransform = SkeletalMeshActor->GetActorTransform();
+        // 直接使用 Bone 的世界变换（SetGlobalTransform 会自动处理层级关系）
+        // 只保留位置和旋转，移除缩放（避免 Control 变得过大）
+        FVector Location = ComponentSpaceTransform.GetLocation();
+        FRotator Rotation = ComponentSpaceTransform.Rotator();
+        FTransform CleanTransform(Rotation, Location, FVector(1.f, 1.f, 1.f));
 
-        // 计算相对于Hierarchy根的全局变换(Hierarchy内部坐标系)
-        // BoneWorldTransform是世界空间，需要转换到Hierarchy内部坐标系
-        FTransform ControlGlobalTransform =
-            BoneWorldTransform.GetRelativeTransform(ActorWorldTransform);
-
-        // 直接设置Control的全局变换
+        // 直接设置 Control 的全局变换
         int32 ControlIndex = Hierarchy->GetIndex(ControlKey);
         if (ControlIndex != INDEX_NONE) {
             // 直接设置全局变换
@@ -506,22 +572,13 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             constexpr bool bPrintPythonCommand = true;
 
             // 设置初始全局变换
-            Hierarchy->SetInitialGlobalTransform(ControlKey,
-                                                 ControlGlobalTransform,
+            Hierarchy->SetInitialGlobalTransform(ControlKey, CleanTransform,
                                                  bAffectChildren, bSetupUndo);
 
             // 设置当前全局变换
-            Hierarchy->SetGlobalTransform(ControlKey, ControlGlobalTransform,
+            Hierarchy->SetGlobalTransform(ControlKey, CleanTransform,
                                           bAffectChildren, bSetupUndo,
                                           bPrintPythonCommand);
-
-            UE_LOG(LogTemp, Warning,
-                   TEXT("SyncBoneControlPairs: Successfully synced control "
-                        "'%s' to bone '%s' at location (%.2f, %.2f, %.2f)"),
-                   *Pair.ControlName.ToString(), *Pair.BoneName.ToString(),
-                   ControlGlobalTransform.GetLocation().X,
-                   ControlGlobalTransform.GetLocation().Y,
-                   ControlGlobalTransform.GetLocation().Z);
 
             OutSyncedCount++;
         } else {

@@ -40,17 +40,41 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
     FString ActorName = Actor->GetName();
     FControlRigCacheKey CacheKey(ActorName, Sequence);
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("GetControlRig: Querying cache for Actor %s, Sequence %s"),
+           *ActorName, *Sequence->GetName());
+
     // 检查运行时缓存中是否存在
     FControlRigRuntimeCacheEntry* CacheEntry =
         RuntimeControlRigCache.Find(CacheKey);
     if (CacheEntry) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRig: Cache entry found for Actor %s"),
+               *ActorName);
         // 第一层：检查缓存条目是否有效
         if (CacheEntry->IsValid()) {
             CacheEntry->UpdateAccessTime();
-            // 再次验证返回的ControlRig指针是否真的可用
+            // 再次验证返回的 ControlRig 指针是否真的可用
             UControlRig* ResultControlRig = CacheEntry->GetControlRig();
+            if (ResultControlRig) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("GetControlRig: Successfully retrieved ControlRig from cache for Actor %s"),
+                       *ActorName);
+            } else {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("GetControlRig: ControlRig pointer is null in valid cache entry for Actor %s"),
+                       *ActorName);
+            }
             return ResultControlRig;
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRig: Cache entry is INVALID for Actor %s"),
+                   *ActorName);
         }
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRig: NO cache entry found for Actor %s"),
+               *ActorName);
     }
 
     // 缓存中没有找到或需要完全重建，触发注册
@@ -59,21 +83,71 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
                 "triggering registration"),
            *ActorName);
     TriggerRegistrationIfNeeded(Actor, Sequence);
+    
+    // 触发注册后，再次尝试查询
+    UE_LOG(LogTemp, Warning,
+           TEXT("GetControlRig: Re-querying cache after registration for Actor %s"),
+           *ActorName);
+    CacheEntry = RuntimeControlRigCache.Find(CacheKey);
+    if (CacheEntry && CacheEntry->IsValid()) {
+        UControlRig* ResultControlRig = CacheEntry->GetControlRig();
+        if (ResultControlRig) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRig: Successfully retrieved ControlRig after re-query for Actor %s"),
+                   *ActorName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRig: ControlRig still null after re-query for Actor %s"),
+                   *ActorName);
+        }
+        return ResultControlRig;
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRig: Still NO valid cache entry after registration for Actor %s"),
+               *ActorName);
+    }
+    
     return nullptr;
 }
 
 UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {
+    UE_LOG(LogTemp, Warning,
+           TEXT("GetControlRigBlueprint: Calling for Actor %s"),
+           *Actor->GetName());
+    
     UControlRig* ControlRig = GetControlRig(Actor, Sequence);
     if (!ControlRig) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRigBlueprint: GetControlRig returned null for Actor %s"),
+               *Actor->GetName());
         return nullptr;
     }
 
-    // 从ControlRig实例获取Blueprint
+    UE_LOG(LogTemp, Warning,
+           TEXT("GetControlRigBlueprint: Got ControlRig %s, extracting Blueprint"),
+           *ControlRig->GetName());
+
+    // 从 ControlRig 实例获取 Blueprint
     UClass* ControlRigClass = ControlRig->GetClass();
     if (ControlRigClass) {
         UObject* ClassGeneratedBy = ControlRigClass->ClassGeneratedBy;
-        return Cast<UControlRigBlueprint>(ClassGeneratedBy);
+        UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(ClassGeneratedBy);
+        if (Blueprint) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRigBlueprint: Successfully extracted Blueprint %s"),
+                   *Blueprint->GetName());
+        } else {
+            UE_LOG(LogTemp, Error,
+                   TEXT("GetControlRigBlueprint: Failed to cast ClassGeneratedBy to ControlRigBlueprint for Actor %s, ClassGeneratedBy=%s"),
+                   *Actor->GetName(), 
+                   ClassGeneratedBy ? *ClassGeneratedBy->GetName() : TEXT("NULL"));
+        }
+        return Blueprint;
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRigBlueprint: ControlRigClass is null for Actor %s"),
+               *Actor->GetName());
     }
 
     return nullptr;
@@ -91,7 +165,11 @@ void UControlRigCacheSubsystem::RegisterControlRig(
     FString ActorName = Actor->GetName();
     FControlRigCacheKey CacheKey(ActorName, Sequence);
 
-    // 查找ControlRig绑定代理
+    UE_LOG(LogTemp, Warning,
+           TEXT("RegisterControlRig: Starting registration for Actor %s, ControlRig %s"),
+           *ActorName, *ControlRig->GetName());
+
+    // 查找 ControlRig 绑定代理
     FControlRigSequencerBindingProxy ControlRigProxy =
         FindControlRigProxy(ActorName, Sequence);
     if (ControlRigProxy.ControlRig == nullptr ||
@@ -103,8 +181,16 @@ void UControlRigCacheSubsystem::RegisterControlRig(
         return;
     }
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("RegisterControlRig: Found valid proxy, creating cache entry for Actor %s"),
+           *ActorName);
+
     FControlRigRuntimeCacheEntry CacheEntry(ControlRigProxy);
     RuntimeControlRigCache.FindOrAdd(CacheKey) = CacheEntry;
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("RegisterControlRig: Cache entry created. Cache size: %d"),
+           RuntimeControlRigCache.Num());
 
     UE_LOG(LogTemp, Log,
            TEXT("Registered/Updated runtime ControlRig for Actor %s with "
@@ -334,6 +420,10 @@ void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
 
     FString ActorName = Actor->GetName();
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("TriggerRegistrationIfNeeded: Starting for Actor %s"),
+           *ActorName);
+
     // 检查是否正在进行注册（避免递归）
     static TSet<FString> RegistrationInProgress;
     if (RegistrationInProgress.Contains(ActorName)) {
@@ -346,23 +436,39 @@ void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
 
     RegistrationInProgress.Add(ActorName);
 
-    // 直接尝试查找并注册ControlRig
+    // 直接尝试查找并注册 ControlRig
     UControlRig* ControlRig = nullptr;
     UControlRigBlueprint* Blueprint = nullptr;
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("TriggerRegistrationIfNeeded: Calling FindControlRigFromActorAndSequence for Actor %s"),
+           *ActorName);
+
     if (FindControlRigFromActorAndSequence(Actor, Sequence, ControlRig,
                                            Blueprint)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("TriggerRegistrationIfNeeded: FindControlRigFromActorAndSequence SUCCESS for Actor %s, ControlRig=%s, Blueprint=%s"),
+               *ActorName, 
+               ControlRig ? *ControlRig->GetName() : TEXT("NULL"),
+               Blueprint ? *Blueprint->GetName() : TEXT("NULL"));
+        
         RegisterControlRig(Actor, Sequence, ControlRig, Blueprint);
         UE_LOG(LogTemp, Log,
                TEXT("TriggerRegistrationIfNeeded: Successfully registered "
                     "ControlRig for Actor %s"),
                *ActorName);
     } else {
-        UE_LOG(LogTemp, Warning,
-               TEXT("TriggerRegistrationIfNeeded: Failed to find ControlRig "
-                    "for Actor %s"),
+        UE_LOG(LogTemp, Error,
+               TEXT("TriggerRegistrationIfNeeded: FindControlRigFromActorAndSequence FAILED for Actor %s"),
                *ActorName);
+        UE_LOG(LogTemp, Error,
+               TEXT("TriggerRegistrationIfNeeded: ControlRig=%s, Blueprint=%s"),
+               ControlRig ? *ControlRig->GetName() : TEXT("NULL"),
+               Blueprint ? *Blueprint->GetName() : TEXT("NULL"));
     }
 
     RegistrationInProgress.Remove(ActorName);
+    UE_LOG(LogTemp, Warning,
+           TEXT("TriggerRegistrationIfNeeded: Completed for Actor %s"),
+           *ActorName);
 }

@@ -1,6 +1,7 @@
 ﻿
 #include "UI/StringFlowBakeOperationsPanel.h"
 
+#include "Baking/BakeTaskManager.h"
 #include "InstrumentAnimationUtility.h"
 #include "Widgets/Input/STextComboBox.h"
 
@@ -17,12 +18,6 @@ void SStringFlowBakeOperationsPanel::SetActor(AActor* InActor) {
 
     // 调用基类方法设置Actor
     SBakeOperationsPanelBase::SetActor(InActor);
-
-    if (StringFlowActor.IsValid()) {
-        // 更新状态文本
-        UpdateStatusText(FString::Printf(TEXT("StringFlow actor set: %s"),
-                                         *StringFlowActor->GetName()));
-    }
 }
 
 TSharedRef<SWidget>
@@ -228,19 +223,12 @@ void SStringFlowBakeOperationsPanel::UpdateControlOptionsFromScan() {
         UE_LOG(LogTemp, Warning,
                TEXT("BowControlCombo is invalid - options may not display"));
     }
-
-    UpdateStatusText(FString::Printf(
-        TEXT("Updated control options: Performer(%d), Instrument(%d), Bow(%d)"),
-        PerformerControlOptions.Num() - 1, InstrumentControlOptions.Num() - 1,
-        BowControlOptions.Num() - 1));
 }
 
 void SStringFlowBakeOperationsPanel::HandlePerformerControlSelectionChanged(
     TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo) {
     if (NewSelection.IsValid()) {
         SelectedPerformerControl = NewSelection;
-        UpdateStatusText(FString::Printf(TEXT("Selected performer control: %s"),
-                                         **NewSelection));
     }
 }
 
@@ -248,8 +236,6 @@ void SStringFlowBakeOperationsPanel::HandleInstrumentControlSelectionChanged(
     TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo) {
     if (NewSelection.IsValid()) {
         SelectedInstrumentControl = NewSelection;
-        UpdateStatusText(FString::Printf(
-            TEXT("Selected instrument control: %s"), **NewSelection));
     }
 }
 
@@ -257,16 +243,11 @@ void SStringFlowBakeOperationsPanel::HandleBowControlSelectionChanged(
     TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo) {
     if (NewSelection.IsValid()) {
         SelectedBowControl = NewSelection;
-        UpdateStatusText(
-            FString::Printf(TEXT("Selected bow control: %s"), **NewSelection));
     }
 }
 
 void SStringFlowBakeOperationsPanel::RefreshScanResults() {
-    UpdateStatusText(TEXT("Scanning StringFlow Control Rigs..."));
-
     if (!StringFlowActor.IsValid()) {
-        UpdateStatusText(TEXT("No StringFlow actor set"));
         return;
     }
 
@@ -274,7 +255,6 @@ void SStringFlowBakeOperationsPanel::RefreshScanResults() {
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
-        UpdateStatusText(TEXT("No Level Sequence is currently open"));
         return;
     }
 
@@ -396,22 +376,12 @@ void SStringFlowBakeOperationsPanel::RefreshScanResults() {
         BowControlCombo->RefreshOptions();
     }
 
-    UpdateStatusText(FString::Printf(
-        TEXT("Scan completed: Performer(%d), Instrument(%d), Bow(%d) controls "
-             "found"),
-        PerformerControlOptions.Num() - 1, InstrumentControlOptions.Num() - 1,
-        BowControlOptions.Num() - 1));
-
     // 扫描完成后设置有效的扫描结果标志
     bHasValidScanResults = true;
-
-    UpdateStatusText(
-        TEXT("Scan completed. You can now select controls and bake."));
 }
 
 void SStringFlowBakeOperationsPanel::AddSelectedControl() {
     if (!StringFlowActor.IsValid()) {
-        UpdateStatusText(TEXT("No StringFlow actor set"));
         return;
     }
 
@@ -419,7 +389,6 @@ void SStringFlowBakeOperationsPanel::AddSelectedControl() {
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
-        UpdateStatusText(TEXT("No Level Sequence is currently open"));
         return;
     }
 
@@ -491,4 +460,8 @@ void SStringFlowBakeOperationsPanel::AddSelectedControl() {
 
     // 使用基类方法完成添加操作
     FinalizeAddSelectedControl(bAddedAny);
+}
+
+FName SStringFlowBakeOperationsPanel::GetModuleName() const {
+    return TEXT("StringFlow");
 }

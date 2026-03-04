@@ -4,6 +4,7 @@
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
 #include "DesktopPlatformModule.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentBase.h"
 #include "InstrumentControlRigUtility.h"
@@ -17,6 +18,7 @@
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SSearchBox.h"
+#include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
@@ -34,103 +36,143 @@ void SBoneControlMappingEditPanel::Construct(const FArguments& InArgs) {
 
     ChildSlot
         [SNew(SVerticalBox) +
+         // 1. 标题区域
          SVerticalBox::Slot().AutoHeight().Padding(10.0f)
              [SNew(STextBlock)
                   .Text(LOCTEXT("BoneControlMappingTitle",
                                 "Bone Control Mapping Editor"))
                   .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFont"))] +
-         SVerticalBox::Slot().AutoHeight().Padding(10.0f)
+         // 2. 主体区域：左侧操作栏 + 右侧映射列表
+         SVerticalBox::Slot().FillHeight(1.0f).Padding(10.0f)
              [SNew(SHorizontalBox) +
+              // 左侧操作栏（固定高度，紧凑排列）
               SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
-                  [SNew(SButton)
-                       .Text(LOCTEXT("SyncBoneControlPairsButton",
-                                     "SyncBoneControlPairs"))
-                       .OnClicked(this, &SBoneControlMappingEditPanel::
-                                            OnSyncBoneControlPairsClicked)]] +
-         SVerticalBox::Slot().AutoHeight().Padding(10.0f)
-             [SNew(SHorizontalBox) +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-                  5.0f)[SNew(SEditableTextBox)
-                            .Text_Lambda([this]() -> FText {
-                                return FText::FromString(ExportImportFilePath);
-                            })
-                            .OnTextCommitted_Lambda(
-                                [this](const FText& InText,
-                                       ETextCommit::Type CommitType) {
-                                    if (CommitType == ETextCommit::OnEnter ||
-                                        CommitType ==
-                                            ETextCommit::OnUserMovedFocus) {
-                                        ExportImportFilePath =
-                                            InText.ToString();
-                                    }
-                                })
-                            .HintText(FText::FromString(
-                                TEXT("Select file path for export/import")))] +
-              SHorizontalBox::Slot().AutoWidth().Padding(
-                  5.0f, 0.0f, 0.0f,
-                  0.0f)[SNew(SButton)
-                            .Text(LOCTEXT("BrowseButton", "Browse"))
+                  [SNew(SVerticalBox) +
+                   // Initialize 按钮
+                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                       [SNew(SButton)
+                            .Text(LOCTEXT("InitializeButton", "Initialize"))
+                            .OnClicked(this,
+                                       &SBoneControlMappingEditPanel::
+                                           OnInitBoneControlMappingClicked)] +
+                   // Add 按钮
+                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                       [SNew(SButton)
+                            .Text(LOCTEXT("AddButton", "Add"))
                             .OnClicked(this, &SBoneControlMappingEditPanel::
-                                                 OnFilePathBrowse)]] +
-         SVerticalBox::Slot().AutoHeight().Padding(10.0f)
+                                                 OnAddRowClicked)] +
+                   // Save 按钮
+                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                       [SNew(SButton)
+                            .Text(LOCTEXT("SaveButton", "Save"))
+                            .OnClicked(this, &SBoneControlMappingEditPanel::
+                                                 OnSaveClicked)] +
+                   // Sync 按钮
+                   SVerticalBox::Slot().AutoHeight().Padding(
+                       5.0f)[SNew(SButton)
+                                 .Text(LOCTEXT("SyncBoneControlPairsButton",
+                                               "SyncBoneControlPairs"))
+                                 .OnClicked(
+                                     this, &SBoneControlMappingEditPanel::
+                                               OnSyncBoneControlPairsClicked)] +
+                   // Bone 过滤框
+                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                       [SNew(SSearchBox)
+                            .HintText(
+                                FText::FromString(TEXT("Search Bones...")))
+                            .OnTextChanged_Lambda([this](const FText& InText) {
+                                BoneFilterText = InText.ToString();
+                                ApplyBoneFilter(InText);
+                                if (MappingListView.IsValid()) {
+                                    MappingListView->RequestListRefresh();
+                                }
+                            })] +
+                   // Control 过滤框
+                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                       [SNew(SSearchBox)
+                            .HintText(
+                                FText::FromString(TEXT("Search Controls...")))
+                            .OnTextChanged_Lambda([this](const FText& InText) {
+                                ControlFilterText = InText.ToString();
+                                ApplyControlFilter(InText);
+                                if (MappingListView.IsValid()) {
+                                    MappingListView->RequestListRefresh();
+                                }
+                            })]] +  // closes left SVerticalBox content ] + SHorizontalBox::Slot content ]
+              // 右侧映射列表区（可滚动）
+              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                  [SNew(SScrollBox)
+                       .Orientation(Orient_Vertical)
+                       .ScrollBarAlwaysVisible(false) +
+                   SScrollBox::Slot()
+                       [SAssignNew(MappingListView,
+                                   SListView<TSharedPtr<FBoneControlPair>>)
+                            .ListItemsSource(&MappingPairs)
+                            .OnGenerateRow(this,
+                                           &SBoneControlMappingEditPanel::
+                                               GenerateMappingRow)
+                            .HeaderRow(SNew(SHeaderRow) +
+                                       SHeaderRow::Column("Bone")
+                                           .DefaultLabel(
+                                               LOCTEXT("BoneHeader", "Bone"))
+                                           .FillWidth(0.4f) +
+                                       SHeaderRow::Column("Control")
+                                           .DefaultLabel(LOCTEXT(
+                                               "ControlHeader", "Control"))
+                                           .FillWidth(0.4f) +
+                                       SHeaderRow::Column("Action")
+                                           .DefaultLabel(LOCTEXT(
+                                               "ActionHeader", "Action"))
+                                           .FillWidth(0.2f))]]] +  // closes SScrollBox::Slot content ] + right SHorizontalBox::Slot content ] + section-2 SVerticalBox::Slot content ]
+         // 3. 导入导出操作行
+         SVerticalBox::Slot().AutoHeight().Padding(10.0f, 5.0f, 10.0f, 0.0f)
              [SNew(SHorizontalBox) +
               SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                  [SNew(SEditableTextBox)
+                       .Text_Lambda([this]() -> FText {
+                           return FText::FromString(ExportImportFilePath);
+                       })
+                       .OnTextCommitted_Lambda(
+                           [this](const FText& InText,
+                                  ETextCommit::Type CommitType) {
+                               if (CommitType == ETextCommit::OnEnter ||
+                                   CommitType == ETextCommit::OnUserMovedFocus) {
+                                   ExportImportFilePath = InText.ToString();
+                               }
+                           })
+                       .HintText(FText::FromString(
+                           TEXT("Select file path for export/import")))] +
+              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                  [SNew(SButton)
+                       .Text(LOCTEXT("BrowseButton", "Browse"))
+                       .OnClicked(this, &SBoneControlMappingEditPanel::
+                                            OnFilePathBrowse)] +
+              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
                   [SNew(SButton)
                        .Text(LOCTEXT("ExportButton", "Export"))
                        .OnClicked(
                            this, &SBoneControlMappingEditPanel::OnExportClicked)
                        .HAlign(HAlign_Center)] +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
                   [SNew(SButton)
                        .Text(LOCTEXT("ImportButton", "Import"))
                        .OnClicked(
                            this, &SBoneControlMappingEditPanel::OnImportClicked)
                        .HAlign(HAlign_Center)]] +
-         SVerticalBox::Slot().FillHeight(1.0f).Padding(10.0f)
-             [SAssignNew(MappingListView,
-                         SListView<TSharedPtr<FBoneControlPair>>)
-                  .ListItemsSource(&MappingPairs)
-                  .OnGenerateRow(
-                      this,
-                      &SBoneControlMappingEditPanel::GenerateMappingRow)
-                  .HeaderRow(
-                      SNew(SHeaderRow) +
-                      SHeaderRow::Column("Bone")
-                          .DefaultLabel(LOCTEXT("BoneHeader", "Bone"))
-                          .FillWidth(0.4f) +
-                      SHeaderRow::Column("Control")
-                          .DefaultLabel(LOCTEXT("ControlHeader", "Control"))
-                          .FillWidth(0.4f) +
-                      SHeaderRow::Column("Action")
-                          .DefaultLabel(LOCTEXT("ActionHeader", "Action"))
-                          .FillWidth(0.2f))] +
-         SVerticalBox::Slot().AutoHeight().Padding(10.0f)
-             [SNew(SVerticalBox) +
-              SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                  [SNew(SHorizontalBox) +
-                   SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
-                       [SNew(SButton)
-                            .Text(LOCTEXT("AddButton", "Add"))
-                            .OnClicked(this, &SBoneControlMappingEditPanel::
-                                                 OnAddRowClicked)] +
-                   SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
-                       [SNew(SButton)
-                            .Text(LOCTEXT("SaveButton", "Save"))
-                            .OnClicked(this, &SBoneControlMappingEditPanel::
-                                                 OnSaveClicked)] +
-                   SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
-                       [SNew(STextBlock)
-                            .Text_Lambda([this]() -> FText {
-                                return GetDuplicateWarningText();
-                            })
-                            .ColorAndOpacity_Lambda([this]() -> FSlateColor {
-                                return (DuplicateBones.Num() > 0 ||
-                                        DuplicateControls.Num() > 0)
-                                           ? FSlateColor(
-                                                 FLinearColor(1.0f, 0.5f, 0.5f))
-                                           : FSlateColor(
-                                                 FLinearColor::Transparent);
-                            })]]]];
+         // 4. 警告区域
+         SVerticalBox::Slot().AutoHeight().Padding(10.0f, 5.0f, 10.0f, 0.0f)
+             [SNew(SHorizontalBox) +
+              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                  [SNew(STextBlock)
+                       .Text_Lambda([this]() -> FText {
+                           return GetDuplicateWarningText();
+                       })
+                       .ColorAndOpacity_Lambda([this]() -> FSlateColor {
+                           return (DuplicateBones.Num() > 0 ||
+                                   DuplicateControls.Num() > 0)
+                                      ? FSlateColor(FLinearColor(1.0f, 0.5f, 0.5f))
+                                      : FSlateColor(FLinearColor::Transparent);
+                       })]]];
 }
 
 TSharedPtr<SWidget> SBoneControlMappingEditPanel::GetWidget() {
@@ -266,7 +308,7 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
     return SNew(STableRow<TSharedPtr<FBoneControlPair>>, OwnerTable)
         [SNew(SHorizontalBox) +
          SHorizontalBox::Slot().FillWidth(0.4f).Padding(FMargin(5.0f))
-             [SAssignNew(BoneComboBox, SComboBox<TSharedPtr<FString>>)
+             [SNew(SComboBox<TSharedPtr<FString>>)
                   .OptionsSource(&FilteredBoneNames)
                   .OnGenerateWidget_Lambda([](TSharedPtr<FString> InOption) {
                       return SNew(STextBlock)
@@ -278,21 +320,8 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
                       this,
                       &SBoneControlMappingEditPanel::OnBoneSelectionChanged,
                       InPair)[
-                      // 搜索框 + 显示选中值
+                      // 显示选中值
                       SNew(SVerticalBox) +
-                      SVerticalBox::Slot().AutoHeight().Padding(FMargin(
-                          5.0f,
-                          2.0f))[SNew(SSearchBox)
-                                     .HintText(FText::FromString(
-                                         TEXT("Search Bones...")))
-                                     .OnTextChanged_Lambda(
-                                         [this, InPair](const FText& InText) {
-                                             BoneFilterText = InText.ToString();
-                                             ApplyBoneFilter(InText);
-                                             if (BoneComboBox.IsValid()) {
-                                                 BoneComboBox->RefreshOptions();
-                                             }
-                                         })] +
                       SVerticalBox::Slot().AutoHeight().Padding(FMargin(
                           5.0f))[SNew(STextBlock)
                                      .Text_Lambda([InPair]() -> FText {
@@ -319,7 +348,7 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
                                                  FLinearColor::White);
                                          })]]] +
          SHorizontalBox::Slot().FillWidth(0.4f).Padding(FMargin(5.0f))
-             [SAssignNew(ControlComboBox, SComboBox<TSharedPtr<FString>>)
+             [SNew(SComboBox<TSharedPtr<FString>>)
                   .OptionsSource(&FilteredControlNames)
                   .OnGenerateWidget_Lambda([](TSharedPtr<FString> InOption) {
                       return SNew(STextBlock)
@@ -331,23 +360,8 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
                       this,
                       &SBoneControlMappingEditPanel::OnControlSelectionChanged,
                       InPair)[
-                      // 搜索框 + 显示选中值
+                      // 显示选中值
                       SNew(SVerticalBox) +
-                      SVerticalBox::Slot().AutoHeight().Padding(FMargin(
-                          5.0f,
-                          2.0f))[SNew(SSearchBox)
-                                     .HintText(FText::FromString(
-                                         TEXT("Search Controls...")))
-                                     .OnTextChanged_Lambda(
-                                         [this, InPair](const FText& InText) {
-                                             ControlFilterText =
-                                                 InText.ToString();
-                                             ApplyControlFilter(InText);
-                                             if (ControlComboBox.IsValid()) {
-                                                 ControlComboBox
-                                                     ->RefreshOptions();
-                                             }
-                                         })] +
                       SVerticalBox::Slot().AutoHeight().Padding(FMargin(
                           5.0f))[SNew(STextBlock)
                                      .Text_Lambda([InPair]() -> FText {
@@ -527,6 +541,81 @@ FReply SBoneControlMappingEditPanel::OnSaveClicked() {
     return FReply::Handled();
 }
 
+FReply SBoneControlMappingEditPanel::OnInitBoneControlMappingClicked() {
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnInitBoneControlMappingClicked: Initializing variable"));
+
+    if (!InstrumentActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnInitBoneControlMappingClicked: InstrumentActor is not "
+                    "valid"));
+        return FReply::Handled();
+    }
+
+    AInstrumentBase* Instrument = InstrumentActor.Get();
+    if (!Instrument || !Instrument->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnInitBoneControlMappingClicked: Instrument or "
+                    "SkeletalMeshActor is null"));
+        return FReply::Handled();
+    }
+
+    if (!EnsureControlRigBlueprintValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnInitBoneControlMappingClicked: ControlRigBlueprint is "
+                    "not valid and cannot be retrieved"));
+        return FReply::Handled();
+    }
+
+    // 检查变量是否已存在
+    const FName VarName = FName(TEXT("BoneControlPairMapping"));
+    bool bVariableExists = false;
+    for (const FBPVariableDescription& Var :
+         ControlRigBlueprint->NewVariables) {
+        if (Var.VarName == VarName) {
+            bVariableExists = true;
+            break;
+        }
+    }
+
+    if (bVariableExists) {
+        // 变量已存在，弹出确认对话框
+        const FText Title =
+            LOCTEXT("ConfirmOverwriteTitle", "Confirm Overwrite");
+        const FText Message =
+            LOCTEXT("ConfirmOverwriteMessage",
+                    "BoneControlPairMapping variable already exists.\n\n"
+                    "Clicking 'Yes' will overwrite the existing variable and "
+                    "may cause data loss. "
+                    "Are you sure you want to continue?");
+
+        EAppReturnType::Type Result =
+            FMessageDialog::Open(EAppMsgType::YesNo, Message, Title);
+
+        if (Result != EAppReturnType::Yes) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("OnInitBoneControlMappingClicked: User cancelled "
+                        "overwrite operation"));
+            return FReply::Handled();
+        }
+    }
+
+    // 调用 AddBoneControlMappingVariable 创建/重置变量
+    if (FBoneControlMappingUtility::AddBoneControlMappingVariable(
+            ControlRigBlueprint.Get(), Instrument)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("OnInitBoneControlMappingClicked: Successfully %s "
+                    "BoneControlPairMapping variable"),
+               bVariableExists ? TEXT("reset") : TEXT("created"));
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnInitBoneControlMappingClicked: Failed to %s variable"),
+               bVariableExists ? TEXT("reset") : TEXT("create"));
+    }
+
+    return FReply::Handled();
+}
+
 FReply SBoneControlMappingEditPanel::OnSyncBoneControlPairsClicked() {
     UE_LOG(LogTemp, Warning,
            TEXT("OnSyncBoneControlPairsClicked: Starting sync"));
@@ -612,18 +701,39 @@ void SBoneControlMappingEditPanel::ApplyBoneFilter(const FText& InFilterText) {
     FilteredBoneNames.Reset();
     FString FilterString = InFilterText.ToString().ToLower();
 
+    // 如果过滤文本为空，显示所有项
+    if (FilterString.IsEmpty()) {
+        FilteredBoneNames = BoneNames;
+        return;
+    }
+
+    // 按空格分割过滤文本为多个关键词（AND 逻辑）
+    TArray<FString> Keywords;
+    FilterString.ParseIntoArray(Keywords, TEXT(" "), true);
+
     for (const TSharedPtr<FString>& BoneName : BoneNames) {
         if (BoneName.IsValid()) {
-            if (FilterString.IsEmpty() ||
-                BoneName->ToLower().Contains(FilterString)) {
+            FString LowerBoneName = BoneName->ToLower();
+            bool bMatchAll = true;
+
+            // 检查是否包含所有关键词
+            for (const FString& Keyword : Keywords) {
+                if (!LowerBoneName.Contains(Keyword)) {
+                    bMatchAll = false;
+                    break;
+                }
+            }
+
+            if (bMatchAll) {
                 FilteredBoneNames.Add(BoneName);
             }
         }
     }
 
     UE_LOG(LogTemp, Verbose,
-           TEXT("ApplyBoneFilter: Filtered %d bones from %d total"),
-           FilteredBoneNames.Num(), BoneNames.Num());
+           TEXT("ApplyBoneFilter: Filtered %d bones from %d total with %d "
+                "keywords"),
+           FilteredBoneNames.Num(), BoneNames.Num(), Keywords.Num());
 }
 
 void SBoneControlMappingEditPanel::ApplyControlFilter(
@@ -631,18 +741,39 @@ void SBoneControlMappingEditPanel::ApplyControlFilter(
     FilteredControlNames.Reset();
     FString FilterString = InFilterText.ToString().ToLower();
 
+    // 如果过滤文本为空，显示所有项
+    if (FilterString.IsEmpty()) {
+        FilteredControlNames = ControlNames;
+        return;
+    }
+
+    // 按空格分割过滤文本为多个关键词（AND 逻辑）
+    TArray<FString> Keywords;
+    FilterString.ParseIntoArray(Keywords, TEXT(" "), true);
+
     for (const TSharedPtr<FString>& ControlName : ControlNames) {
         if (ControlName.IsValid()) {
-            if (FilterString.IsEmpty() ||
-                ControlName->ToLower().Contains(FilterString)) {
+            FString LowerControlName = ControlName->ToLower();
+            bool bMatchAll = true;
+
+            // 检查是否包含所有关键词
+            for (const FString& Keyword : Keywords) {
+                if (!LowerControlName.Contains(Keyword)) {
+                    bMatchAll = false;
+                    break;
+                }
+            }
+
+            if (bMatchAll) {
                 FilteredControlNames.Add(ControlName);
             }
         }
     }
 
     UE_LOG(LogTemp, Verbose,
-           TEXT("ApplyControlFilter: Filtered %d controls from %d total"),
-           FilteredControlNames.Num(), ControlNames.Num());
+           TEXT("ApplyControlFilter: Filtered %d controls from %d total with "
+                "%d keywords"),
+           FilteredControlNames.Num(), ControlNames.Num(), Keywords.Num());
 }
 
 void SBoneControlMappingEditPanel::DetectDuplicates() {

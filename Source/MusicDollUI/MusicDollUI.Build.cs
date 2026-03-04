@@ -22,7 +22,11 @@ public class MusicDollUI : ModuleRules
                 "EditorFramework",
                 "WorkspaceMenuStructure",
                 "AppFramework",
-                "MusicDollCommon"
+                "MusicDollCommon",
+                "ControlRig",
+                "Sequencer",
+                "MovieScene",
+                "SequencerScripting",
             }
         );
 
@@ -31,6 +35,7 @@ public class MusicDollUI : ModuleRules
             {
                 "KeyRippleUnreal",
                 "StringFlowUnreal",
+                "FretDanceUnreal",
             }
         );
 

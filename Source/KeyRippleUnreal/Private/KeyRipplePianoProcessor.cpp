@@ -359,7 +359,22 @@ void UKeyRipplePianoProcessor::InitPianoKeyControlRig(
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitPianoKeyControlRig Started =========="));
 
-    // 通过Subsystem获取 Control Rig Instance 和 Blueprint
+    // 关键修复：先触发 ControlRig 注册机制，确保可以从缓存中获取
+    if (KeyRippleActor->Piano && GEngine) {
+        UControlRigCacheSubsystem* CacheSubsystem =
+            GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+        if (CacheSubsystem) {
+            ULevelSequence* LevelSequence =
+                UInstrumentAnimationUtility::GetCurrentLevelSequence();
+            if (LevelSequence) {
+                // 触发注册，确保 ControlRig 已注册到缓存
+                KeyRippleActor->RegisterAllControlRigs(CacheSubsystem,
+                                                       LevelSequence);
+            }
+        }
+    }
+
+    // 通过 Subsystem 获取 Control Rig Instance 和 Blueprint
     if (!GEngine) {
         UE_LOG(LogTemp, Error,
                TEXT("InitPianoKeyControlRig: GEngine is not available"));

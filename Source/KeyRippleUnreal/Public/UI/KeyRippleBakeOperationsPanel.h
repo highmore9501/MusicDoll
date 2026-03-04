@@ -23,6 +23,7 @@ class KEYRIPPLEUNREAL_API SKeyRippleBakeOperationsPanel
     virtual TArray<FString> GetSelectedControlNames() const override;
     virtual void RefreshScanResults() override;
     virtual void AddSelectedControl() override;
+    virtual FName GetModuleName() const override;
 
    private:
     // KeyRipple特定的UI控件

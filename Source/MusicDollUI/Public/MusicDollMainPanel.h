@@ -13,6 +13,7 @@ class AStringFlowUnreal;
 
 // Forward declarations for subpanels
 class SActorSelectorPanel;
+class SBakeQueuePanel;
 
 /**
  * Main panel for Music Doll UI
@@ -45,6 +46,7 @@ class MUSICDOLLUI_API SMusicDollMainPanel : public SCompoundWidget {
     // References to subpanels
     TSharedPtr<SActorSelectorPanel> ActorSelectorPanel;
     TSharedPtr<SVerticalBox> PropertiesPanelWidget;
+    TSharedPtr<SBakeQueuePanel> BakeQueuePanel;
 
     // Current selected actor - Use TWeakObjectPtr since UObjects are GC-managed
     TWeakObjectPtr<AInstrumentBase> SelectedInstrumentActor;

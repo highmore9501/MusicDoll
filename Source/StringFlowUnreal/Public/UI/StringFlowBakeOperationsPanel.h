@@ -24,6 +24,7 @@ class STRINGFLOWUNREAL_API SStringFlowBakeOperationsPanel
     virtual TArray<FString> GetSelectedControlNames() const override;
     virtual void RefreshScanResults() override;
     virtual void AddSelectedControl() override;
+    virtual FName GetModuleName() const override;
 
    private:
     // StringFlow特定的UI控件

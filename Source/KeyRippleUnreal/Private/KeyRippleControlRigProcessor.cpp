@@ -2,10 +2,10 @@
 
 #include "BoneControlMappingUtility.h"
 #include "ControlRigCacheSubsystem.h"
-#include "InstrumentControlRigUtility.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentControlRigUtility.h"
 #include "KeyRipplePianoProcessor.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Rigs/RigHierarchyController.h"
@@ -631,7 +631,7 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
         return;
     }
 
-    // 获取当前LevelSequence
+    // 获取当前 LevelSequence
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
@@ -640,6 +640,10 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
         return;
     }
 
+    // 关键修复：先触发注册机制，确保两个 ControlRig 都被注册到缓存子系统
+    KeyRippleActor->RegisterAllControlRigs(CacheSubsystem, LevelSequence);
+
+    // 现在可以安全地获取 ControlRig 了
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
         KeyRippleActor->SkeletalMeshActor, LevelSequence);
     UControlRigBlueprint* ControlRigBlueprint =
@@ -971,34 +975,21 @@ void UKeyRippleControlRigProcessor::SetupControllers(
     FKeyRippleControlRigHelpers::CleanupDuplicateControls(
         KeyRippleActor, RigHierarchy, AllControllerNames);
 
-    // 获取层级控制器
-    URigHierarchyController* HierarchyController =
-        RigHierarchy->GetController();
-    if (!HierarchyController) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get hierarchy controller"));
-        return;
-    }
-
     // 第1步：创建 base_root（最上层的根控制器）
-    if (!FControlRigCreationUtility::CreateRootController(
-            HierarchyController, RigHierarchy, TEXT("base_root"),
-            TEXT("Cube"))) {
+    if (!FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, TEXT("base_root"), TEXT(""))) {
         UE_LOG(LogTemp, Error, TEXT("Failed to create base_root"));
         return;
     }
 
     // 第2步：创建 controller_root（乐器演奏层级的根控制器，父级为base_root）
-    if (!FControlRigCreationUtility::CreateInstrumentRootController(
-            HierarchyController, RigHierarchy, TEXT("controller_root"),
-            TEXT("base_root"), TEXT("Cube"))) {
+    if (!FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, TEXT("controller_root"), TEXT("base_root"))) {
         UE_LOG(LogTemp, Error, TEXT("Failed to create controller_root"));
         return;
     }
 
     // 第3步：遍历所有其他控制器，创建父级为controller_root的控制器
-    FRigElementKey RootControllerKey(TEXT("controller_root"),
-                                     ERigElementType::Control);
-
     // 将TSet转换为TArray并排序，确保pole控制器最后处理
     TArray<FString> SortedControllerNames = AllControllerNames.Array();
     SortedControllerNames.Sort([](const FString& A, const FString& B) {
@@ -1014,12 +1005,10 @@ void UKeyRippleControlRigProcessor::SetupControllers(
 
     // 遍历所有其他控制器名称，检查是否存在，如果不存在则创建
     for (const FString& ControllerName : SortedControllerNames) {
-        // 🔧 FIX: 使用更严格的存在性检查
         bool bExists = FKeyRippleControlRigHelpers::StrictControlExistenceCheck(
             RigHierarchy, ControllerName);
 
         if (!bExists) {
-            // 如果不存在，则创建控制器
             UE_LOG(LogTemp, Warning,
                    TEXT("Controller %s does not exist, creating as child of "
                         "controller_root..."),
@@ -1041,7 +1030,6 @@ void UKeyRippleControlRigProcessor::SetupControllers(
                     if (FingerPair.Key == PoleFingerNumber) {
                         FString FingerControllerName =
                             FingerPair.Value;  // 例如 "0_L" 或 "5_R"
-
                         // 根据手指控制器的后缀（_L或_R）确定对应的手掌
                         FString HandSuffix =
                             FingerControllerName.EndsWith(TEXT("_L"))
@@ -1060,8 +1048,8 @@ void UKeyRippleControlRigProcessor::SetupControllers(
                 }
             }
 
-            CreateController(KeyRippleActor, ControllerName,
-                             ParentControllerName);
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ControllerName, ParentControllerName);
         } else {
             UE_LOG(LogTemp, Warning, TEXT("✅ Controller %s already exists"),
                    *ControllerName);
@@ -1117,101 +1105,15 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
         return nullptr;
     }
 
-    // 获取层级结构和控制器
-    URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
-    if (!RigHierarchy) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to get hierarchy from ControlRigBlueprint"));
-        return nullptr;
-    }
-
-    URigHierarchyController* HierarchyController =
-        RigHierarchy->GetController();
-    if (!HierarchyController) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get hierarchy controller"));
-        return nullptr;
-    }
-
-    if (FKeyRippleControlRigHelpers::StrictControlExistenceCheck(
-            RigHierarchy, ControllerName)) {
+    // 使用新的统一接口
+    if (FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, ControllerName, ParentControllerName)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("✅ Controller %s already exists (verified)"),
-               *ControllerName);
-        return nullptr;  // 如果已存在，返回nullptr，因为不需要创建
-    }
-
-    // 确定父控制器键
-    FRigElementKey ParentKey;
-    if (!ParentControllerName.IsEmpty()) {
-        if (FKeyRippleControlRigHelpers::StrictControlExistenceCheck(
-                RigHierarchy, ParentControllerName)) {
-            FRigElementKey PotentialParentKey(*ParentControllerName,
-                                              ERigElementType::Control);
-            ParentKey = PotentialParentKey;
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Using verified parent controller '%s' for '%s'"),
-                   *ParentControllerName, *ControllerName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("⚠️ Parent controller '%s' does not exist or is "
-                        "corrupted, creating child "
-                        "controller '%s' without parent"),
-                   *ParentControllerName, *ControllerName);
-        }
-    }
-
-    // 确定控制器类型和形状
-    FRigControlSettings ControlSettings;
-    ControlSettings.ControlType = ERigControlType::Transform;
-    ControlSettings.DisplayName = FName(*ControllerName);
-
-    // 根据控制器名称确定形状
-    if (ControllerName.Contains(TEXT("hand"), ESearchCase::IgnoreCase) &&
-        !ControllerName.Contains(TEXT("rotation"), ESearchCase::IgnoreCase)) {
-        // HandControllers且不包含rotation的使用立方体形状
-        ControlSettings.ShapeName = FName(TEXT("Cube"));
-    } else if (ControllerName.Contains(TEXT("rotation"),
-                                       ESearchCase::IgnoreCase)) {
-        // 包含rotation的使用圆形形状
-        ControlSettings.ShapeName = FName(TEXT("Circle"));
-    } else if (ControllerName.StartsWith(TEXT("pole_"))) {
-        // Pole控制器使用钻石形状
-        ControlSettings.ShapeName = FName(TEXT("Diamond"));
+               TEXT("✅ Successfully created controller %s with parent %s"),
+               *ControllerName, *ParentControllerName);
+        return nullptr;
     } else {
-        // 其他控制器使用小球形
-        ControlSettings.ShapeName = FName(TEXT("Sphere"));
-    }
-
-    FTransform InitialTransform = FTransform::Identity;
-    FRigControlValue InitialValue;
-    InitialValue.SetFromTransform(InitialTransform, ERigControlType::Transform,
-                                  ERigControlAxis::X);
-
-    // 添加控制
-    FRigElementKey NewControlKey = HierarchyController->AddControl(
-        FName(*ControllerName), ParentKey, ControlSettings, InitialValue,
-        FTransform::Identity,  // Offset transform
-        FTransform::Identity,  // Shape transform
-        true,                  // bSetupUndo
-        false                  // bPrintPythonCommand
-    );
-
-    if (NewControlKey.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("✅ Successfully created controller: %s"),
-               *ControllerName);
-
-        // 🔧 FIX: 创建后验证Control确实存在且正确
-        if (!FKeyRippleControlRigHelpers::StrictControlExistenceCheck(
-                RigHierarchy, ControllerName)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("⚠️ Created controller '%s' but verification failed - "
-                        "may need manual check"),
-                   *ControllerName);
-        }
-
-        return nullptr;  // 在Control Rig中创建的控制器不需要返回AActor指针
-    } else {
-        UE_LOG(LogTemp, Error, TEXT("❌ Failed to create controller: %s"),
+        UE_LOG(LogTemp, Error, TEXT("❌ Failed to create controller %s"),
                *ControllerName);
         return nullptr;
     }

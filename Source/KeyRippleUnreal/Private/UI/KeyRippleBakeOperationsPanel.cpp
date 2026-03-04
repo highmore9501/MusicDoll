@@ -1,6 +1,7 @@
 ﻿
 #include "UI/KeyRippleBakeOperationsPanel.h"
 
+#include "Baking/BakeTaskManager.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "Widgets/Input/STextComboBox.h"
 
@@ -17,12 +18,6 @@ void SKeyRippleBakeOperationsPanel::SetActor(AActor* InActor) {
 
     // 调用基类方法设置Actor
     SBakeOperationsPanelBase::SetActor(InActor);
-
-    if (KeyRippleActor.IsValid()) {
-        // 更新状态文本
-        UpdateStatusText(FString::Printf(TEXT("KeyRipple actor set: %s"),
-                                         *KeyRippleActor->GetName()));
-    }
 }
 
 TSharedRef<SWidget>
@@ -176,18 +171,12 @@ void SKeyRippleBakeOperationsPanel::UpdateControlOptionsFromScan() {
         UE_LOG(LogTemp, Warning,
                TEXT("PianoControlCombo is invalid - options may not display"));
     }
-
-    UpdateStatusText(FString::Printf(
-        TEXT("Updated control options from scan: Performer(%d), Piano(%d)"),
-        PerformerControlOptions.Num() - 1, PianoControlOptions.Num() - 1));
 }
 
 void SKeyRippleBakeOperationsPanel::HandlePerformerControlSelectionChanged(
     TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo) {
     if (NewSelection.IsValid()) {
         SelectedPerformerControl = NewSelection;
-        UpdateStatusText(FString::Printf(TEXT("Selected performer control: %s"),
-                                         **NewSelection));
     }
 }
 
@@ -195,16 +184,11 @@ void SKeyRippleBakeOperationsPanel::HandlePianoControlSelectionChanged(
     TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo) {
     if (NewSelection.IsValid()) {
         SelectedPianoControl = NewSelection;
-        UpdateStatusText(FString::Printf(TEXT("Selected piano control: %s"),
-                                         **NewSelection));
     }
 }
 
 void SKeyRippleBakeOperationsPanel::RefreshScanResults() {
-    UpdateStatusText(TEXT("Scanning KeyRipple Control Rigs..."));
-
     if (!KeyRippleActor.IsValid()) {
-        UpdateStatusText(TEXT("No KeyRipple actor set"));
         return;
     }
 
@@ -212,7 +196,6 @@ void SKeyRippleBakeOperationsPanel::RefreshScanResults() {
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
-        UpdateStatusText(TEXT("No Level Sequence is currently open"));
         return;
     }
 
@@ -295,23 +278,15 @@ void SKeyRippleBakeOperationsPanel::RefreshScanResults() {
         PianoControlCombo->RefreshOptions();
     }
 
-    UpdateStatusText(FString::Printf(
-        TEXT("Scan completed: Performer(%d), Piano(%d) controls found"),
-        PerformerControlOptions.Num() - 1, PianoControlOptions.Num() - 1));
-
     // 扫描完成后设置有效的扫描结果标志
     bHasValidScanResults = true;
 
     // 更新按钮状态 - 基于选中的controls而不是扫描结果
     UpdateButtonStates();
-
-    UpdateStatusText(
-        TEXT("Scan completed. You can now select controls and bake."));
 }
 
 void SKeyRippleBakeOperationsPanel::AddSelectedControl() {
     if (!KeyRippleActor.IsValid()) {
-        UpdateStatusText(TEXT("No KeyRipple actor set"));
         return;
     }
 
@@ -319,7 +294,6 @@ void SKeyRippleBakeOperationsPanel::AddSelectedControl() {
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
-        UpdateStatusText(TEXT("No Level Sequence is currently open"));
         return;
     }
 
@@ -370,4 +344,8 @@ void SKeyRippleBakeOperationsPanel::AddSelectedControl() {
 
     // 使用基类方法完成添加操作
     FinalizeAddSelectedControl(bAddedAny);
+}
+
+FName SKeyRippleBakeOperationsPanel::GetModuleName() const {
+    return TEXT("KeyRipple");
 }

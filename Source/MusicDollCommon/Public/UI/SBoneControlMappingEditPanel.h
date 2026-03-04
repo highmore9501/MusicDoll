@@ -92,9 +92,14 @@ private:
 	 * 保存映射
 	 */
 	FReply OnSaveClicked();
-
+	
 	/**
-	 * 同步Bone与Control的位置变换
+	 * 初始化 BoneControlPairMapping 变量
+	 */
+	FReply OnInitBoneControlMappingClicked();
+	
+	/**
+	 * 同步 Bone 与 Control 的位置变换
 	 */
 	FReply OnSyncBoneControlPairsClicked();
 
@@ -160,8 +165,6 @@ private:
 
 	TArray<TSharedPtr<FBoneControlPair>> MappingPairs;
 	TSharedPtr<SListView<TSharedPtr<FBoneControlPair>>> MappingListView;
-	TSharedPtr<SComboBox<TSharedPtr<FString>>> BoneComboBox;
-	TSharedPtr<SComboBox<TSharedPtr<FString>>> ControlComboBox;
 
 	// Cached lists for combo boxes
 	TArray<TSharedPtr<FString>> BoneNames;

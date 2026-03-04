@@ -7,6 +7,7 @@
 #include "Misc/Paths.h"
 #include "MusicDollStyle.h"
 #include "StringFlowUnreal.h"
+#include "UI/BakeQueuePanel.h"
 #include "UI/KeyRippleModuleMainPanel.h"
 #include "UI/ModuleMainPanelInterface.h"
 #include "UI/StringFlowModuleMainPanel.h"
@@ -16,6 +17,10 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+// FretDance module main panel
+#include "UI/FretDanceModuleMainPanel.h"
+// FretDance actor
+#include "FretDanceUnreal.h"
 
 #define LOCTEXT_NAMESPACE "SMusicDollMainPanel"
 
@@ -127,6 +132,9 @@ AInstrumentBase* SActorSelectorPanel::GetSelectedActor() const {
 // ==================== SMusicDollMainPanel ====================
 
 void SMusicDollMainPanel::Construct(const FArguments& InArgs) {
+    // Create bake queue panel
+    SAssignNew(BakeQueuePanel, SBakeQueuePanel);
+    
     ChildSlot[SNew(SVerticalBox) +
               SVerticalBox::Slot().AutoHeight().Padding(5.0f)
                   [SNew(SHorizontalBox) +
@@ -140,8 +148,10 @@ void SMusicDollMainPanel::Construct(const FArguments& InArgs) {
                                     ActorSelectorPanel->GetSelectedActor();
                                 OnActorSelected(SelectedActor);
                             })] +
-              SVerticalBox::Slot().FillHeight(1).Padding(
-                  5.0f)[SAssignNew(PropertiesPanelWidget, SVerticalBox)]];
+              SVerticalBox::Slot().FillHeight(0.8f).Padding(
+                  5.0f)[SAssignNew(PropertiesPanelWidget, SVerticalBox)] +
+              SVerticalBox::Slot().AutoHeight().Padding(
+                  5.0f)[BakeQueuePanel.ToSharedRef()]];
 }
 
 SMusicDollMainPanel::~SMusicDollMainPanel() {
@@ -271,6 +281,21 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
             if (PropertiesPanelWidget.IsValid()) {
                 PropertiesPanelWidget->AddSlot().FillHeight(
                     1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中的对象是否为AFretDanceUnreal类型
+    AFretDanceUnreal* FretDanceActor = Cast<AFretDanceUnreal>(InActor);
+    if (FretDanceActor) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel = SNew(SFretDanceModuleMainPanel);
+        if (ModulePanel.IsValid() && ModulePanel->CanHandleActor(FretDanceActor)) {
+            ModulePanel->SetActor(FretDanceActor);
+            CurrentModulePanel = StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(1.0f)[ModulePanel->GetWidget().ToSharedRef()];
             }
         }
         return;

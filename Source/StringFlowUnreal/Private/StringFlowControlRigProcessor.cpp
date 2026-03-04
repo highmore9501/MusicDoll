@@ -2,18 +2,19 @@
 
 #include "Animation/SkeletalMeshActor.h"
 #include "BoneControlMappingUtility.h"
-#include "InstrumentControlRigUtility.h"
-#include "ControlRigCacheSubsystem.h"
 #include "ControlRig.h"
-#include "LevelEditor.h"
-#include "LevelEditorSequencerIntegration.h"
-#include "MovieSceneSequence.h"
 #include "ControlRigBlueprintLegacy.h"
+#include "ControlRigCacheSubsystem.h"
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "LevelEditor.h"
+#include "LevelEditorSequencerIntegration.h"
+#include "MovieSceneSequence.h"
 #include "Rigs/RigHierarchyController.h"
 
 #define LOCTEXT_NAMESPACE "StringFlowControlRigProcessor"
@@ -85,17 +86,20 @@ struct FStringFlowControlRigHelpers {
     static bool GetControlRigInstanceAndBlueprint(
         AStringFlowUnreal* StringFlowActor, UControlRig*& OutControlRigInstance,
         UControlRigBlueprint*& OutControlRigBlueprint) {
-        
         // 直接使用StringFlowActor获取演奏者的ControlRig缓存
-        OutControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
-        OutControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-        
+        OutControlRigInstance =
+            StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+        OutControlRigBlueprint =
+            StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+
         // 不再提供后备查询，如果缓存未命中则直接失败
         if (!OutControlRigInstance || !OutControlRigBlueprint) {
-            UE_LOG(LogTemp, Error, TEXT("StringFlowControlRigHelpers: Failed to get ControlRig for Performer - cache miss"));
+            UE_LOG(LogTemp, Error,
+                   TEXT("StringFlowControlRigHelpers: Failed to get ControlRig "
+                        "for Performer - cache miss"));
             return false;
         }
-        
+
         return OutControlRigInstance && OutControlRigBlueprint;
     }
 
@@ -162,10 +166,12 @@ struct FStringFlowControlRigHelpers {
         if (!StringFlowActor) {
             return;
         }
-        
+
         // 如果已经初始化过，跳过重复初始化
         if (StringFlowActor->IsInitialized()) {
-            UE_LOG(LogTemp, Verbose, TEXT("InitializeRecorderTransforms: Already initialized, skipping"));
+            UE_LOG(LogTemp, Verbose,
+                   TEXT("InitializeRecorderTransforms: Already initialized, "
+                        "skipping"));
             return;
         }
 
@@ -776,22 +782,24 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
     ASkeletalMeshActor* StringInstrumentActor,
     UControlRig*& OutControlRigInstance,
     UControlRigBlueprint*& OutControlRigBlueprint) {
-    
     // 通过ControlRig缓存子系统获取ControlRig，而不是直接查询
     if (!StringInstrumentActor) {
-        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: StringInstrumentActor is null"));
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRigFromStringInstrument: StringInstrumentActor "
+                    "is null"));
         return false;
     }
-    
+
     // 获取当前LevelSequence
     ULevelSequence* CurrentSequence = nullptr;
     if (FModuleManager::Get().IsModuleLoaded(TEXT("LevelEditor"))) {
         TArray<TWeakPtr<ISequencer>> WeakSequencers =
             FLevelEditorSequencerIntegration::Get().GetSequencers();
-        
+
         for (const TWeakPtr<ISequencer>& WeakSequencer : WeakSequencers) {
             if (TSharedPtr<ISequencer> Sequencer = WeakSequencer.Pin()) {
-                UMovieSceneSequence* RootSequence = Sequencer->GetRootMovieSceneSequence();
+                UMovieSceneSequence* RootSequence =
+                    Sequencer->GetRootMovieSceneSequence();
                 CurrentSequence = Cast<ULevelSequence>(RootSequence);
                 if (CurrentSequence) {
                     break;
@@ -799,37 +807,48 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
             }
         }
     }
-    
+
     if (!CurrentSequence) {
-        UE_LOG(LogTemp, Warning, TEXT("GetControlRigFromStringInstrument: No LevelSequence found"));
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("GetControlRigFromStringInstrument: No LevelSequence found"));
         return false;
     }
-    
+
     // 通过Subsystem获取ControlRig
     if (!GEngine) {
-        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: GEngine is NULL"));
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRigFromStringInstrument: GEngine is NULL"));
         return false;
     }
-    
+
     UControlRigCacheSubsystem* CacheSubsystem =
         GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
-    
+
     if (!CacheSubsystem) {
-        UE_LOG(LogTemp, Error, TEXT("GetControlRigFromStringInstrument: CacheSubsystem not found"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT(
+                "GetControlRigFromStringInstrument: CacheSubsystem not found"));
         return false;
     }
-    
+
     // 使用Subsystem获取ControlRig
-    OutControlRigInstance = CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence);
-    OutControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(StringInstrumentActor, CurrentSequence);
-    
+    OutControlRigInstance =
+        CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence);
+    OutControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(
+        StringInstrumentActor, CurrentSequence);
+
     // 如果获取失败，Subsystem会自动处理注册和更新逻辑，我们只需记录日志
     if (!OutControlRigInstance || !OutControlRigBlueprint) {
-        UE_LOG(LogTemp, Warning, TEXT("GetControlRigFromStringInstrument: Failed to get ControlRig from subsystem for Actor %s"), 
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRigFromStringInstrument: Failed to get "
+                    "ControlRig from subsystem for Actor %s"),
                *StringInstrumentActor->GetName());
     }
-    
-    return OutControlRigInstance != nullptr && OutControlRigBlueprint != nullptr;
+
+    return OutControlRigInstance != nullptr &&
+           OutControlRigBlueprint != nullptr;
 }
 
 void UStringFlowControlRigProcessor::CheckObjectsStatus(
@@ -978,6 +997,22 @@ void UStringFlowControlRigProcessor::SetupAllObjects(
         return;
     }
 
+    // 关键修复：先通过 StringInstrument 触发 ControlRig 注册机制
+    // 这样可以确保在获取 ControlRig 之前，它已经被正确注册到缓存子系统
+    if (StringFlowActor->StringInstrument && GEngine) {
+        UControlRigCacheSubsystem* CacheSubsystem =
+            GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+        if (CacheSubsystem) {
+            ULevelSequence* LevelSequence =
+                UInstrumentAnimationUtility::GetCurrentLevelSequence();
+            if (LevelSequence) {
+                // 触发注册，确保 ControlRig 已注册到缓存
+                CacheSubsystem->TriggerRegistrationIfNeeded(
+                    StringFlowActor->StringInstrument, LevelSequence);
+            }
+        }
+    }
+
     UControlRig* ControlRigInstance = nullptr;
     UControlRigBlueprint* ControlRigBlueprint = nullptr;
 
@@ -1025,13 +1060,6 @@ void UStringFlowControlRigProcessor::SetupControllers(
         return;
     }
 
-    URigHierarchyController* HierarchyController =
-        RigHierarchy->GetController();
-    if (!HierarchyController) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get hierarchy controller"));
-        return;
-    }
-
     UE_LOG(LogTemp, Warning,
            TEXT("========== SetupControllers Started =========="));
 
@@ -1040,51 +1068,31 @@ void UStringFlowControlRigProcessor::SetupControllers(
     FStringFlowControlRigHelpers::CleanupDuplicateControls(
         StringFlowActor, RigHierarchy, AllControllerNames);
 
-    if (!FControlRigCreationUtility::CreateRootController(
-            HierarchyController, RigHierarchy, TEXT("base_root"),
-            TEXT("Cube"))) {
+    // 使用新的 CreateControl 接口
+    if (!FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, TEXT("base_root"), TEXT(""))) {
         UE_LOG(LogTemp, Error, TEXT("Failed to create base_root"));
         return;
     }
 
-    if (!FControlRigCreationUtility::CreateInstrumentRootController(
-            HierarchyController, RigHierarchy, TEXT("controller_root"),
-            TEXT("base_root"), TEXT("Cube"))) {
+    if (!FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, TEXT("controller_root"), TEXT("base_root"))) {
         UE_LOG(LogTemp, Error, TEXT("Failed to create controller_root"));
         return;
     }
 
-    FRigElementKey ControllerRootKey(TEXT("controller_root"),
-                                     ERigElementType::Control);
-
     TArray<FString> SortedControllerNames = AllControllerNames.Array();
-    int32 CreatedCount = 0;
-    int32 SkippedCount = 0;
 
     for (const FString& ControllerName : SortedControllerNames) {
         if (FStringFlowControlRigHelpers::StrictControlExistenceCheck(
                 RigHierarchy, ControllerName)) {
             UE_LOG(LogTemp, Warning, TEXT("✓ Controller '%s' already exists"),
                    *ControllerName);
-            SkippedCount++;
             continue;
         }
 
-        FString ShapeName = TEXT("Sphere");
-        if (ControllerName.Contains(TEXT("hand"), ESearchCase::IgnoreCase)) {
-            ShapeName = TEXT("Cube");
-        }
-
-        if (FControlRigCreationUtility::CreateControl(
-                HierarchyController, RigHierarchy, ControllerName,
-                ControllerRootKey, ShapeName)) {
-            UE_LOG(LogTemp, Warning, TEXT("✅ Created controller: %s"),
-                   *ControllerName);
-            CreatedCount++;
-        } else {
-            UE_LOG(LogTemp, Error, TEXT("❌ Failed to create controller: %s"),
-                   *ControllerName);
-        }
+        FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Creating special controllers..."));
@@ -1092,68 +1100,45 @@ void UStringFlowControlRigProcessor::SetupControllers(
     // 创建 String_Touch_Point 控制器
     if (!FStringFlowControlRigHelpers::StrictControlExistenceCheck(
             RigHierarchy, TEXT("String_Touch_Point"))) {
-        if (FControlRigCreationUtility::CreateControl(
-                HierarchyController, RigHierarchy, TEXT("String_Touch_Point"),
-                ControllerRootKey, TEXT("Sphere"))) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Created controller: String_Touch_Point"));
-            CreatedCount++;
-        }
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  TEXT("String_Touch_Point"),
+                                                  TEXT("controller_root"));
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("✓ Controller 'String_Touch_Point' already exists"));
-        SkippedCount++;
     }
 
     // 创建 Bow_Controller 控制器
     if (!FStringFlowControlRigHelpers::StrictControlExistenceCheck(
             RigHierarchy, TEXT("Bow_Controller"))) {
-        if (FControlRigCreationUtility::CreateControl(
-                HierarchyController, RigHierarchy, TEXT("Bow_Controller"),
-                ControllerRootKey, TEXT("Sphere"))) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Created controller: Bow_Controller"));
-            CreatedCount++;
-        }
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  TEXT("Bow_Controller"),
+                                                  TEXT("controller_root"));
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("✓ Controller 'Bow_Controller' already exists"));
-        SkippedCount++;
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Creating pole controls for fingers..."));
-
-    int32 PoleControlsCreated = 0;
-    int32 PoleControlsFailed = 0;
 
     for (const auto& FingerPair : StringFlowActor->LeftFingerControllers) {
         FString FingerControlName = FingerPair.Value;
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
-
         FString HandControlName = TEXT("H_L");
 
-        FRigElementKey HandControlKey(*HandControlName,
-                                      ERigElementType::Control);
-
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, PoleControlName, HandControlKey,
-            TEXT("Sphere"));
+            ControlRigBlueprint, PoleControlName, HandControlName);
     }
 
     for (const auto& FingerPair : StringFlowActor->RightFingerControllers) {
         FString FingerControlName = FingerPair.Value;
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
-
         FString HandControlName = TEXT("H_R");
 
-        FRigElementKey HandControlKey(*HandControlName,
-                                      ERigElementType::Control);
-
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, PoleControlName, HandControlKey,
-            TEXT("Sphere"));
+            ControlRigBlueprint, PoleControlName, HandControlName);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Pole controls creation completed"));
@@ -1166,24 +1151,20 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FString StringStartName =
             FString::Printf(TEXT("position_s%d_f0"), StringIndex);
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, StringStartName,
-            ControllerRootKey, TEXT("Sphere"));
+            ControlRigBlueprint, StringStartName, TEXT("controller_root"));
 
         FString StringEndName =
             FString::Printf(TEXT("position_s%d_f12"), StringIndex);
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, StringEndName, ControllerRootKey,
-            TEXT("Sphere"));
+            ControlRigBlueprint, StringEndName, TEXT("controller_root"));
 
         FString StringMidName = FString::Printf(TEXT("mid_s%d"), StringIndex);
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, StringMidName, ControllerRootKey,
-            TEXT("Sphere"));
+            ControlRigBlueprint, StringMidName, TEXT("controller_root"));
 
         FString StringF9Name = FString::Printf(TEXT("f9_s%d"), StringIndex);
         FControlRigCreationUtility::CreateControl(
-            HierarchyController, RigHierarchy, StringF9Name, ControllerRootKey,
-            TEXT("Sphere"));
+            ControlRigBlueprint, StringF9Name, TEXT("controller_root"));
     }
 
     UE_LOG(LogTemp, Warning,

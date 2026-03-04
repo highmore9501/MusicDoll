@@ -123,12 +123,6 @@ void AKeyRippleUnreal::InitializeControllersAndRecorders() {
             finger_number, is_left_hand ? EHandType::LEFT : EHandType::RIGHT);
         FString finger_number_str = FString::FromInt(finger_number);
 
-        UE_LOG(LogTemp, Warning,
-               TEXT("InitializeControllers: finger_number=%d, is_left_hand=%s, "
-                    "controller_name=%s"),
-               finger_number, is_left_hand ? TEXT("true") : TEXT("false"),
-               *controller_name);
-
         FingerControllers.Add(finger_number_str, controller_name);
 
         for (EKeyType key_type : {EKeyType::WHITE, EKeyType::BLACK}) {
@@ -786,4 +780,29 @@ bool AKeyRippleUnreal::ImportRecorderInfo() {
     }
 
     return ImportedCount > 0;
+}
+
+void AKeyRippleUnreal::RegisterAllControlRigs(
+    UControlRigCacheSubsystem* CacheSubsystem, ULevelSequence* LevelSequence) {
+    if (!CacheSubsystem || !LevelSequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("RegisterAllControlRigs: Invalid parameters"));
+        return;
+    }
+
+    // 注册演奏者（SkeletalMeshActor）的 ControlRig
+    if (SkeletalMeshActor) {
+        CacheSubsystem->TriggerRegistrationIfNeeded(SkeletalMeshActor,
+                                                    LevelSequence);
+        UE_LOG(LogTemp, Warning,
+               TEXT("RegisterAllControlRigs: Registered SkeletalMeshActor "
+                    "ControlRig"));
+    }
+
+    // 注册钢琴（Piano）的 ControlRig
+    if (Piano) {
+        CacheSubsystem->TriggerRegistrationIfNeeded(Piano, LevelSequence);
+        UE_LOG(LogTemp, Warning,
+               TEXT("RegisterAllControlRigs: Registered Piano ControlRig"));
+    }
 }

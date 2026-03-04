@@ -3,6 +3,7 @@
 #include "Animation/SkeletalMeshActor.h"  // 包含SkeletalMeshActor定义
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
+#include "ControlRigCreationUtility.h"
 #include "ControlRigSequencerEditorLibrary.h"
 #include "CoreMinimal.h"
 #include "KeyRippleAnimationProcessor.h"  // 包含动画处理函数
@@ -106,4 +107,7 @@ class KEYRIPPLEUNREAL_API UKeyRippleControlRigProcessor : public UObject {
     static FString GetRecorderNameForControl(AKeyRippleUnreal* KeyRippleActor,
                                              const FString& ControlName,
                                              bool bIsFingerControl);
+                                             
+    
+    
 };

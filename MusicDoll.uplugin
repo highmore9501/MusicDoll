@@ -56,6 +56,12 @@
       "Type": "Editor",
       "LoadingPhase": "PostEngineInit",
       "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
+      "Name": "FretDanceUnreal",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
     }
 
   ]

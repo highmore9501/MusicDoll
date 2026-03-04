@@ -4,8 +4,9 @@
 #include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "InstrumentAnimationUtility.h"  // Include for FAnimationKeyframe
+#include "InstrumentAnimationUtility.h" 
 #include "InstrumentBase.h" 
+#include "ControlRigCacheSubsystem.h"
 #include "KeyRippleUnreal.generated.h"
 
 UENUM(BlueprintType)
@@ -288,4 +289,14 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
      */
     UFUNCTION(BlueprintCallable, Category = "KeyRipple")
     bool ImportRecorderInfo();
+    
+    
+    /**
+    * 注册所有 Control Rig（演奏者和钢琴）到缓存子系统    
+    * @param CacheSubsystem Control Rig 缓存子系统
+    * @param LevelSequence 当前的 Level Sequence
+    */
+    void RegisterAllControlRigs(
+        UControlRigCacheSubsystem* CacheSubsystem,
+        ULevelSequence* LevelSequence);
 };
