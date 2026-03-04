@@ -184,4 +184,9 @@ private:
 
 	// File path for export/import
 	FString ExportImportFilePath;
+
+	// 左侧操作栏的 widget 引用，用于动态读取其渲染高度以约束右侧列表
+	TSharedPtr<SWidget> LeftSidebarWidget;
+	// 右侧列表容器，高度跟随左侧操作栏
+	TSharedPtr<SBox> RightListContainer;
 };

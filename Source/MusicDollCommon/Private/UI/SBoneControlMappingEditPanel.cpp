@@ -20,6 +20,7 @@
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STableViewBase.h"
@@ -43,136 +44,118 @@ void SBoneControlMappingEditPanel::Construct(const FArguments& InArgs) {
                                 "Bone Control Mapping Editor"))
                   .Font(FAppStyle::GetFontStyle("DetailsView.CategoryFont"))] +
          // 2. 主体区域：左侧操作栏 + 右侧映射列表
-         SVerticalBox::Slot().FillHeight(1.0f).Padding(10.0f)
-             [SNew(SHorizontalBox) +
-              // 左侧操作栏（固定高度，紧凑排列）
-              SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
-                  [SNew(SVerticalBox) +
-                   // Initialize 按钮
-                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                       [SNew(SButton)
-                            .Text(LOCTEXT("InitializeButton", "Initialize"))
-                            .OnClicked(this,
-                                       &SBoneControlMappingEditPanel::
-                                           OnInitBoneControlMappingClicked)] +
-                   // Add 按钮
-                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                       [SNew(SButton)
-                            .Text(LOCTEXT("AddButton", "Add"))
-                            .OnClicked(this, &SBoneControlMappingEditPanel::
-                                                 OnAddRowClicked)] +
-                   // Save 按钮
-                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                       [SNew(SButton)
-                            .Text(LOCTEXT("SaveButton", "Save"))
-                            .OnClicked(this, &SBoneControlMappingEditPanel::
-                                                 OnSaveClicked)] +
-                   // Sync 按钮
-                   SVerticalBox::Slot().AutoHeight().Padding(
-                       5.0f)[SNew(SButton)
-                                 .Text(LOCTEXT("SyncBoneControlPairsButton",
-                                               "SyncBoneControlPairs"))
-                                 .OnClicked(
-                                     this, &SBoneControlMappingEditPanel::
-                                               OnSyncBoneControlPairsClicked)] +
-                   // Bone 过滤框
-                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                       [SNew(SSearchBox)
-                            .HintText(
-                                FText::FromString(TEXT("Search Bones...")))
-                            .OnTextChanged_Lambda([this](const FText& InText) {
-                                BoneFilterText = InText.ToString();
-                                ApplyBoneFilter(InText);
-                                if (MappingListView.IsValid()) {
-                                    MappingListView->RequestListRefresh();
-                                }
-                            })] +
-                   // Control 过滤框
-                   SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                       [SNew(SSearchBox)
-                            .HintText(
-                                FText::FromString(TEXT("Search Controls...")))
-                            .OnTextChanged_Lambda([this](const FText& InText) {
-                                ControlFilterText = InText.ToString();
-                                ApplyControlFilter(InText);
-                                if (MappingListView.IsValid()) {
-                                    MappingListView->RequestListRefresh();
-                                }
-                            })]] +  // closes left SVerticalBox content ] + SHorizontalBox::Slot content ]
-              // 右侧映射列表区（可滚动）
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
-                  [SNew(SScrollBox)
-                       .Orientation(Orient_Vertical)
-                       .ScrollBarAlwaysVisible(false) +
-                   SScrollBox::Slot()
-                       [SAssignNew(MappingListView,
-                                   SListView<TSharedPtr<FBoneControlPair>>)
-                            .ListItemsSource(&MappingPairs)
-                            .OnGenerateRow(this,
-                                           &SBoneControlMappingEditPanel::
-                                               GenerateMappingRow)
-                            .HeaderRow(SNew(SHeaderRow) +
-                                       SHeaderRow::Column("Bone")
-                                           .DefaultLabel(
-                                               LOCTEXT("BoneHeader", "Bone"))
-                                           .FillWidth(0.4f) +
-                                       SHeaderRow::Column("Control")
-                                           .DefaultLabel(LOCTEXT(
-                                               "ControlHeader", "Control"))
-                                           .FillWidth(0.4f) +
-                                       SHeaderRow::Column("Action")
-                                           .DefaultLabel(LOCTEXT(
-                                               "ActionHeader", "Action"))
-                                           .FillWidth(0.2f))]]] +  // closes SScrollBox::Slot content ] + right SHorizontalBox::Slot content ] + section-2 SVerticalBox::Slot content ]
+         // 整个区域 AutoHeight，高度由左侧内容决定。
+         // 右侧 SBox 通过 HeightOverride_Lambda 读取左侧实际渲染高度，
+         // SListView 在该高度内独立滚动，左侧按钮始终可见。
+         SVerticalBox::Slot().AutoHeight().Padding(10.0f)
+             [SNew(SHorizontalBox)
+              // 左侧操作栏
+              + SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
+                    [SAssignNew(LeftSidebarWidget, SVerticalBox)
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("InitializeButton", "Initialize"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnInitBoneControlMappingClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("AddButton", "Add"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnAddRowClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("SaveButton", "Save"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnSaveClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("SyncBoneControlPairsButton", "SyncBoneControlPairs"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnSyncBoneControlPairsClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SSearchBox)
+                                .HintText(FText::FromString(TEXT("Search Bones...")))
+                                .OnTextChanged_Lambda([this](const FText& InText) {
+                                    BoneFilterText = InText.ToString();
+                                    ApplyBoneFilter(InText);
+                                    if (MappingListView.IsValid()) {
+                                        MappingListView->RequestListRefresh();
+                                    }
+                                })]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SSearchBox)
+                                .HintText(FText::FromString(TEXT("Search Controls...")))
+                                .OnTextChanged_Lambda([this](const FText& InText) {
+                                    ControlFilterText = InText.ToString();
+                                    ApplyControlFilter(InText);
+                                    if (MappingListView.IsValid()) {
+                                        MappingListView->RequestListRefresh();
+                                    }
+                                })]]
+              // 右侧映射列表：SBox 高度动态匹配左侧实际高度，SListView 在其中独立滚动
+              + SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                    [SAssignNew(RightListContainer, SBox)
+                         .HeightOverride_Lambda([this]() -> FOptionalSize {
+                             if (LeftSidebarWidget.IsValid()) {
+                                 float Height = LeftSidebarWidget->GetCachedGeometry().GetLocalSize().Y;
+                                 if (Height > 0.0f) {
+                                     return FOptionalSize(Height);
+                                 }
+                             }
+                             return FOptionalSize();
+                         })
+                         [SAssignNew(MappingListView, SListView<TSharedPtr<FBoneControlPair>>)
+                              .ListItemsSource(&MappingPairs)
+                              .OnGenerateRow(this, &SBoneControlMappingEditPanel::GenerateMappingRow)
+                              .HeaderRow(SNew(SHeaderRow)
+                                         + SHeaderRow::Column("Bone")
+                                               .DefaultLabel(LOCTEXT("BoneHeader", "Bone"))
+                                               .FillWidth(0.4f)
+                                         + SHeaderRow::Column("Control")
+                                               .DefaultLabel(LOCTEXT("ControlHeader", "Control"))
+                                               .FillWidth(0.4f)
+                                         + SHeaderRow::Column("Action")
+                                               .DefaultLabel(LOCTEXT("ActionHeader", "Action"))
+                                               .FillWidth(0.2f))]]] +
          // 3. 导入导出操作行
          SVerticalBox::Slot().AutoHeight().Padding(10.0f, 5.0f, 10.0f, 0.0f)
-             [SNew(SHorizontalBox) +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
-                  [SNew(SEditableTextBox)
-                       .Text_Lambda([this]() -> FText {
-                           return FText::FromString(ExportImportFilePath);
-                       })
-                       .OnTextCommitted_Lambda(
-                           [this](const FText& InText,
-                                  ETextCommit::Type CommitType) {
-                               if (CommitType == ETextCommit::OnEnter ||
-                                   CommitType == ETextCommit::OnUserMovedFocus) {
-                                   ExportImportFilePath = InText.ToString();
-                               }
-                           })
-                       .HintText(FText::FromString(
-                           TEXT("Select file path for export/import")))] +
-              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-                  [SNew(SButton)
-                       .Text(LOCTEXT("BrowseButton", "Browse"))
-                       .OnClicked(this, &SBoneControlMappingEditPanel::
-                                            OnFilePathBrowse)] +
-              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-                  [SNew(SButton)
-                       .Text(LOCTEXT("ExportButton", "Export"))
-                       .OnClicked(
-                           this, &SBoneControlMappingEditPanel::OnExportClicked)
-                       .HAlign(HAlign_Center)] +
-              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-                  [SNew(SButton)
-                       .Text(LOCTEXT("ImportButton", "Import"))
-                       .OnClicked(
-                           this, &SBoneControlMappingEditPanel::OnImportClicked)
-                       .HAlign(HAlign_Center)]] +
+             [SNew(SHorizontalBox)
+              + SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                    [SNew(SEditableTextBox)
+                         .Text_Lambda([this]() -> FText {
+                             return FText::FromString(ExportImportFilePath);
+                         })
+                         .OnTextCommitted_Lambda(
+                             [this](const FText& InText, ETextCommit::Type CommitType) {
+                                 if (CommitType == ETextCommit::OnEnter ||
+                                     CommitType == ETextCommit::OnUserMovedFocus) {
+                                     ExportImportFilePath = InText.ToString();
+                                 }
+                             })
+                         .HintText(FText::FromString(TEXT("Select file path for export/import")))]
+              + SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                    [SNew(SButton)
+                         .Text(LOCTEXT("BrowseButton", "Browse"))
+                         .OnClicked(this, &SBoneControlMappingEditPanel::OnFilePathBrowse)]
+              + SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                    [SNew(SButton)
+                         .Text(LOCTEXT("ExportButton", "Export"))
+                         .OnClicked(this, &SBoneControlMappingEditPanel::OnExportClicked)
+                         .HAlign(HAlign_Center)]
+              + SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                    [SNew(SButton)
+                         .Text(LOCTEXT("ImportButton", "Import"))
+                         .OnClicked(this, &SBoneControlMappingEditPanel::OnImportClicked)
+                         .HAlign(HAlign_Center)]] +
          // 4. 警告区域
          SVerticalBox::Slot().AutoHeight().Padding(10.0f, 5.0f, 10.0f, 0.0f)
-             [SNew(SHorizontalBox) +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
-                  [SNew(STextBlock)
-                       .Text_Lambda([this]() -> FText {
-                           return GetDuplicateWarningText();
-                       })
-                       .ColorAndOpacity_Lambda([this]() -> FSlateColor {
-                           return (DuplicateBones.Num() > 0 ||
-                                   DuplicateControls.Num() > 0)
-                                      ? FSlateColor(FLinearColor(1.0f, 0.5f, 0.5f))
-                                      : FSlateColor(FLinearColor::Transparent);
-                       })]]];
+             [SNew(SHorizontalBox)
+              + SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f)
+                    [SNew(STextBlock)
+                         .Text_Lambda([this]() -> FText {
+                             return GetDuplicateWarningText();
+                         })
+                         .ColorAndOpacity_Lambda([this]() -> FSlateColor {
+                             return (DuplicateBones.Num() > 0 || DuplicateControls.Num() > 0)
+                                        ? FSlateColor(FLinearColor(1.0f, 0.5f, 0.5f))
+                                        : FSlateColor(FLinearColor::Transparent);
+                         })]]];
 }
 
 TSharedPtr<SWidget> SBoneControlMappingEditPanel::GetWidget() {
