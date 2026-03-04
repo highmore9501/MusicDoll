@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MusicDoll 文档中心</title>
+    <link rel="stylesheet" href="css/musicdoll-docs.css">
+    <style>
+        .hero {
+            background: linear-gradient(135deg, #0078d4 0%, #004a8f 100%);
+            padding: 60px 40px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            text-align: center;
+            color: white;
+        }
+
+        .hero h1 {
+            font-size: 42px;
+            margin-bottom: 16px;
+            border: none;
+            color: white;
+        }
+
+        .hero p {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.9);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .doc-card {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .doc-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 8px 24px rgba(0, 120, 212, 0.2);
+        }
+
+        .doc-card-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+        .doc-card-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .doc-card-description {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+
+        .doc-card-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background-color: var(--bg-tertiary);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .tag.blue {
+            background-color: rgba(0, 120, 212, 0.2);
+            color: #4da6ff;
+        }
+
+        .tag.green {
+            background-color: rgba(46, 160, 67, 0.2);
+            color: #2ea043;
+        }
+
+        .tag.orange {
+            background-color: rgba(210, 153, 34, 0.2);
+            color: #d29922;
+        }
+
+        .quick-links {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            margin-top: 40px;
+        }
+
+        .quick-links h3 {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+
+        .quick-links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 16px;
+        }
+
+        .quick-link-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background-color: var(--bg-panel);
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: var(--text-secondary);
+        }
+
+        .quick-link-item:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            transform: translateX(4px);
+        }
+
+        .quick-link-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .features {
+            margin-top: 60px;
+            padding-top: 40px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .features h2 {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-item {
+            text-align: center;
+            padding: 24px;
+            background-color: var(--bg-tertiary);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .feature-icon {
+            font-size: 40px;
+            margin-bottom: 16px;
+        }
+
+        .feature-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .feature-desc {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="doc-container">
+        <!-- Sidebar Navigation -->
+        <aside class="doc-sidebar">
+            <div class="doc-nav-header">
+                <h2>📚 MusicDoll 文档</h2>
+            </div>
+            <ul class="doc-nav">
+                <li class="doc-nav-item">
+                    <a href="index.html" class="doc-nav-link active">🏠 首页</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="MusicDollAnimationGuide.html" class="doc-nav-link">🎬 动画生成原理</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="BakeUserGuide.html" class="doc-nav-link">🔥 烘焙系统用户指南</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="StringFlowRealtimeSyncSystem.html" class="doc-nav-link">🎻 实时同步系统</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="ControlRigCacheSubsystemGuide.html" class="doc-nav-link">💾 ControlRig 缓存子系统</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="doc-main">
+            <div class="doc-content">
+                <!-- Hero Section -->
+                <div class="hero">
+                    <h1>MusicDoll 文档中心</h1>
+                    <p>专业的音乐表演动画生成系统技术文档</p>
+                </div>
+
+                <!-- Documentation Cards -->
+                <div class="doc-grid">
+                    <a href="MusicDollAnimationGuide.html" class="doc-card">
+                        <span class="doc-card-icon">🎬</span>
+                        <h3 class="doc-card-title">动画生成原理</h3>
+                        <p class="doc-card-description">
+                            详细介绍 MusicDoll 系统的三种核心动画类型：人物演奏动画、乐器 Morph Target 动画和乐器材质动画的生成原理与工作流程。
+                        </p>
+                        <div class="doc-card-tags">
+                            <span class="tag blue">动画</span>
+                            <span class="tag green">Sequencer</span>
+                            <span class="tag orange">Control Rig</span>
+                        </div>
+                    </a>
+
+                    <a href="BakeUserGuide.html" class="doc-card">
+                        <span class="doc-card-icon">🔥</span>
+                        <h3 class="doc-card-title">烘焙系统用户指南</h3>
+                        <p class="doc-card-description">
+                            学习如何使用烘焙系统将多个 Actor 的 Control 集中执行并写入到 Level Sequence，支持批量操作和灵活配置。
+                        </p>
+                        <div class="doc-card-tags">
+                            <span class="tag blue">烘焙</span>
+                            <span class="tag green">工作流</span>
+                            <span class="tag orange">教程</span>
+                        </div>
+                    </a>
+
+                    <a href="StringFlowRealtimeSyncSystem.html" class="doc-card">
+                        <span class="doc-card-icon">🎻</span>
+                        <h3 class="doc-card-title">实时同步系统</h3>
+                        <p class="doc-card-description">
+                            深入讲解 StringFlow 系统中的人物 Control Rig、小提琴 Control Rig 和琴弓之间的实时同步机制与配置方法。
+                        </p>
+                        <div class="doc-card-tags">
+                            <span class="tag blue">同步</span>
+                            <span class="tag green">StringFlow</span>
+                            <span class="tag orange">架构</span>
+                        </div>
+                    </a>
+
+                    <a href="ControlRigCacheSubsystemGuide.html" class="doc-card">
+                        <span class="doc-card-icon">💾</span>
+                        <h3 class="doc-card-title">ControlRig 缓存子系统</h3>
+                        <p class="doc-card-description">
+                            了解 ControlRig 缓存子系统的架构设计，如何通过分层缓存和环境感知机制解决性能问题和渲染场景失效问题。
+                        </p>
+                        <div class="doc-card-tags">
+                            <span class="tag blue">架构</span>
+                            <span class="tag green">性能优化</span>
+                            <span class="tag orange">系统设计</span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Quick Links -->
+                <div class="quick-links">
+                    <h3>🚀 快速链接</h3>
+                    <div class="quick-links-grid">
+                        <a href="MusicDollAnimationGuide.html#performer-animation" class="quick-link-item">
+                            <div class="quick-link-icon">👤</div>
+                            <span>人物演奏动画</span>
+                        </a>
+                        <a href="MusicDollAnimationGuide.html#instrument-morph" class="quick-link-item">
+                            <div class="quick-link-icon">🎹</div>
+                            <span>乐器 Morph Target</span>
+                        </a>
+                        <a href="MusicDollAnimationGuide.html#instrument-material" class="quick-link-item">
+                            <div class="quick-link-icon">🎨</div>
+                            <span>乐器材质动画</span>
+                        </a>
+                        <a href="BakeUserGuide.html#workflow" class="quick-link-item">
+                            <div class="quick-link-icon">📋</div>
+                            <span>烘焙工作流程</span>
+                        </a>
+                        <a href="StringFlowRealtimeSyncSystem.html#usage-guide" class="quick-link-item">
+                            <div class="quick-link-icon">⚙️</div>
+                            <span>同步配置步骤</span>
+                        </a>
+                        <a href="MusicDollAnimationGuide.html#faq" class="quick-link-item">
+                            <div class="quick-link-icon">❓</div>
+                            <span>常见问题</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Features -->
+                <div class="features">
+                    <h2>🌟 MusicDoll 核心特性</h2>
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <div class="feature-icon">🎯</div>
+                            <h4 class="feature-title">精准动画生成</h4>
+                            <p class="feature-desc">基于 JSON 数据精确驱动 Control Rig，实现真实的音乐演奏动画</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">⚡</div>
+                            <h4 class="feature-title">高效烘焙系统</h4>
+                            <p class="feature-desc">支持多 Actor 批量提交，一键执行所有动画烘焙任务</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">🔄</div>
+                            <h4 class="feature-title">实时同步机制</h4>
+                            <p class="feature-desc">人物、乐器、琴弓三者完美同步，保持自然相对关系</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">💎</div>
+                            <h4 class="feature-title">智能缓存管理</h4>
+                            <p class="feature-desc">O(1) 查找性能，跨场景状态保持，渲染稳定性 100%</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">🎨</div>
+                            <h4 class="feature-title">材质动画集成</h4>
+                            <p class="feature-desc">自动创建材质参数轨道，与 Morph Target 完美同步</p>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-icon">🛠️</div>
+                            <h4 class="feature-title">灵活可扩展</h4>
+                            <p class="feature-desc">模块化设计，支持多种乐器，易于扩展新功能</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <footer style="margin-top: 60px; padding-top: 30px; border-top: 1px solid var(--border-color); text-align: center; color: var(--text-muted); font-size: 13px;">
+                    <p><strong>MusicDoll 文档中心</strong></p>
+                    <p>最后更新：2026/03/04 | 文档版本：2.0</p>
+                    <p style="margin-top: 16px;">
+                        <a href="#" style="color: var(--text-link); margin: 0 8px;">GitHub</a> • 
+                        <a href="#" style="color: var(--text-link); margin: 0 8px;">问题反馈</a> • 
+                        <a href="#" style="color: var(--text-link); margin: 0 8px;">开发者团队</a>
+                    </p>
+                </footer>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/musicdoll-docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>烘焙系统用户指南 - MusicDoll 文档</title>
+    <link rel="stylesheet" href="css/musicdoll-docs.css">
+</head>
+<body>
+    <div class="doc-container">
+        <!-- Sidebar Navigation -->
+        <aside class="doc-sidebar">
+            <div class="doc-nav-header">
+                <h2>📚 MusicDoll 文档</h2>
+            </div>
+            <ul class="doc-nav">
+                <li class="doc-nav-item">
+                    <a href="index.html" class="doc-nav-link">🏠 首页</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="MusicDollAnimationGuide.html" class="doc-nav-link">🎬 动画生成原理</a>
+                </li>
+                <li class="doc-nav-item expanded">
+                    <a href="#bake-user-guide" class="doc-nav-link active">🔥 烘焙系统用户指南</a>
+                    <ul class="doc-nav-sub">
+                        <li><a href="#overview" class="doc-nav-link">快速概览</a></li>
+                        <li><a href="#panels" class="doc-nav-link">面板说明</a></li>
+                        <li><a href="#workflow" class="doc-nav-link">常用工作流程</a></li>
+                        <li><a href="#tips" class="doc-nav-link">重要提示</a></li>
+                        <li><a href="#faq" class="doc-nav-link">常见问题</a></li>
+                    </ul>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="StringFlowRealtimeSyncSystem.html" class="doc-nav-link">🎻 实时同步系统</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="ControlRigCacheSubsystemGuide.html" class="doc-nav-link">💾 ControlRig 缓存子系统</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="doc-main">
+            <div class="doc-content">
+                <h1 id="bake-user-guide">烘焙（Bake）系统 用户指南</h1>
+
+                <div class="callout callout-note">
+                    <div class="callout-title">📖 文档说明</div>
+                    <div class="callout-content">
+                        本指南面向使用者，介绍 MusicDoll 插件中新烘焙系统的使用方法与常见操作。该系统支持在多个 Actor（例如 StringFlow、KeyRipple 等）之间提交待烘焙的 Control，一次集中执行并写入到当前打开的 Level Sequence 中。
+                    </div>
+                </div>
+
+                <section id="overview">
+                    <h2>快速概览</h2>
+                    
+                    <div class="ui-panel">
+                        <div class="ui-panel-body">
+                            <ul>
+                                <li>烘焙任务由<strong>"提交（Add）"</strong>和<strong>"执行（Bake All）"</strong>两步组成</li>
+                                <li>你可以在不同 Actor 的 Bake 面板中扫描并选择要烘焙的 Control，然后将它们提交到全局烘焙队列</li>
+                                <li>全局烘焙队列面板位于主界面底部（Bake Queue），用于查看、编辑烘焙设置、执行或清理队列中的任务</li>
+                                <li>提交的任务在队列中保留，切换 Actor 后仍然存在，直到被执行或手动移除</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="panels">
+                    <h2>面板说明</h2>
+
+                    <h3>1. 模块 Bake 面板（例如 StringFlow / KeyRipple 的 Bake Tab）</h3>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">功能列表</div>
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label">扫描 Control Rigs</div>
+                                <div class="property-value">
+                                    <span>扫描当前 Actor 相关的 Control Rig，展示可烘焙的 Control 列表</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">选择并提交</div>
+                                <div class="property-value">
+                                    <span>从下拉菜单选择 Control，然后点击 "Add Selected" 将任务提交到全局队列</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">我的提交任务</div>
+                                <div class="property-value">
+                                    <span>在面板下方显示「My Submitted Tasks」，仅列出当前 Actor 提交的任务，并可逐条移除或一次性移除所有</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-warning">
+                        <div class="callout-title">⚠️ 注意点</div>
+                        <div class="callout-content">
+                            <ul>
+                                <li>这些面板仅负责选择与提交，不直接执行烘焙</li>
+                                <li>只能删除自己（当前 Actor）提交的任务，无法删除其他 Actor 的任务</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3>2. 全局烘焙队列（Bake Queue）面板</h3>
+
+                    <p><strong>位置:</strong> 主面板底部，始终可见（当队列为空时可折叠隐藏）。</p>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">功能列表</div>
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label">显示队列任务</div>
+                                <div class="property-value">
+                                    <span>显示当前队列中所有待烘焙任务（按提交顺序或分组显示）</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">烘焙设置</div>
+                                <div class="property-value">
+                                    <span>编辑共享烘焙设置：Start / End / Step / Overwrite（是否覆盖已存在关键帧）</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">操作按钮</div>
+                                <div class="property-value">
+                                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                        <button class="ui-button primary">Bake All</button>
+                                        <button class="ui-button">Clear All</button>
+                                        <button class="ui-button">Clear Tracks</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">任务管理</div>
+                                <div class="property-value">
+                                    <span>任务条目可单独删除（点击条目右侧 × 按钮），显示烘焙进度与状态信息</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-important">
+                        <div class="callout-title">⚠️ 行为说明</div>
+                        <div class="callout-content">
+                            <ul>
+                                <li>一旦点击 <code>Bake All</code> 并完成烘焙，队列会被自动清空，所有面板的「My Submitted Tasks」也会刷新为无任务状态</li>
+                                <li><code>Clear Tracks</code> 会根据队列中任务定位到对应 Control Rig 的轨道并清理通道，请谨慎使用</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="workflow">
+                    <h2>常用工作流程（示例）</h2>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 1</strong></div>
+                                <div class="property-value">
+                                    <span>在编辑器中打开要操作的 Level Sequence。确保 Sequence 已加载。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 2</strong></div>
+                                <div class="property-value">
+                                    <span>在主面板中从 Actor 列表选择第一个演奏 Actor（例如 StringFlow）。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 3</strong></div>
+                                <div class="property-value">
+                                    <span>切换到该模块的 Bake Tab，点击 <code>Scan Control Rigs</code>。等待扫描完成。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 4</strong></div>
+                                <div class="property-value">
+                                    <span>在 Performer/Instrument/Bow 下拉框中选择需要烘焙的 Control（可多次操作提交多个 Control）。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 5</strong></div>
+                                <div class="property-value">
+                                    <span>点击 <code>Add Selected</code> 将选中 Control 提交到全局队列。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 6</strong></div>
+                                <div class="property-value">
+                                    <span>切换到另一个 Actor（例如 KeyRipple），重复步骤 3–5，继续向队列累计任务。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 7</strong></div>
+                                <div class="property-value">
+                                    <span>在主面板底部的 <code>Bake Queue</code> 面板调整 Start/End/Step/Overwrite 设置。</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label"><strong>步骤 8</strong></div>
+                                <div class="property-value">
+                                    <span>点击 <code>Bake All</code>。界面将显示烘焙进度与状态信息，完成后队列自动清空。</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="tips">
+                    <h2>重要提示与注意事项</h2>
+
+                    <details>
+                        <summary>提交与执行的关系</summary>
+                        <div class="details-content">
+                            <p>提交任务不会马上写入序列，只有执行 <code>Bake All</code> 才会真实写关键帧。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>任务与 Actor 的绑定</summary>
+                        <div class="details-content">
+                            <p>提交的任务与 Actor 绑定：如果在提交后删除或销毁了某个 Actor 或其 ControlRig，执行烘焙前系统会自动跳过这些失效任务。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>烘焙过程的影响</summary>
+                        <div class="details-content">
+                            <p>烘焙过程会移动 Sequencer 播放头并触发当前场景中 Actor 的同步逻辑（与播放头评估一致），所以请确保在烘焙前保存好未保存的编辑状态。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>Overwrite 选项的作用</summary>
+                        <div class="details-content">
+                            <p><code>Overwrite existing keyframes</code>：选中后将先清理序列中对应 Control 的已存在关键帧，再写入新的烘焙数据；否则新关键帧将与现有关键帧共存，可能造成结果不确定。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>烘焙耗时因素</summary>
+                        <div class="details-content">
+                            <p>烘焙耗时与总帧数、Control 数量和场景复杂度相关。建议先在较小范围（少帧、少 Control）进行测试确认参数正确。</p>
+                        </div>
+                    </details>
+                </section>
+
+                <section id="faq">
+                    <h2>常见问题（FAQ）</h2>
+
+                    <details>
+                        <summary>Q：切换 Actor 会丢失我刚刚添加的任务吗？</summary>
+                        <div class="details-content">
+                            <p><strong>A：</strong>不会。任务提交到全局队列后与面板实例无关，切换 Actor 后依然保留在队列中（除非手动移除或执行烘焙）。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>Q：为什么有些 Control 提交后无法烘焙？</summary>
+                        <div class="details-content">
+                            <p><strong>A：</strong>可能原因包括：</p>
+                            <ul>
+                                <li>对应 Actor 或 ControlRig 在烘焙前已被销毁或未绑定到 Sequence（系统会在执行前尝试清理失效任务）</li>
+                                <li>用户输入了无效的帧范围或步长</li>
+                                <li>该 Control 并非 Transform/EulerTransform 类型（某些自定义通道不参与本次烘焙）</li>
+                            </ul>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>Q：烘焙后我看不到关键帧，怎么办？</summary>
+                        <div class="details-content">
+                            <p><strong>A：</strong>请检查：</p>
+                            <ul>
+                                <li>当前编辑的 Level Sequence 是否为你在面板中选择的 Sequence</li>
+                                <li>烘焙设置（Start/End/Step）是否正确</li>
+                                <li>是否启用了 <code>Overwrite existing keyframes</code> 导致意外覆盖（可以先关闭测试）</li>
+                                <li>在 Sequencer 中查找对应的 ControlRig Track，并展开 Section 检查通道</li>
+                            </ul>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>Q：可以只烘焙队列中某一部分任务吗？</summary>
+                        <div class="details-content">
+                            <p><strong>A：</strong>当前提供的是"全部烘焙（Bake All）"与逐个删除的工作流。要部分烘焙，可在队列中删除不想烘焙的任务，仅保留目标任务后点击 <code>Bake All</code>。</p>
+                        </div>
+                    </details>
+                </section>
+
+                <section id="recommendations">
+                    <h2>使用建议</h2>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-body">
+                            <ul style="margin-bottom: 0;">
+                                <li>先用较短的帧范围和少量 Control 做试验，确认结果和参数无误后再进行完整烘焙。</li>
+                                <li>在大型烘焙任务前备份或保存当前 Level Sequence，以便回滚。</li>
+                                <li>如果需要多次尝试不同参数，可以将任务提交到队列后修改 Bake Settings，然后再次执行（任务会基于当前设置进行写入）。</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <hr style="margin: 40px 0; border-color: var(--border-color);">
+                
+                <div class="callout callout-tip">
+                    <div class="callout-title">💡 需要帮助？</div>
+                    <div class="callout-content">
+                        如需进一步帮助或发现问题，请将烘焙任务的简要信息（参与的 Actor 名称、Control 名称、Start/End/Step、是否勾选 Overwrite）和控制台日志一并提交给开发者团队以便排查。祝使用顺利！
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/musicdoll-docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,651 @@
+/* ============================================
+   MusicDoll Documentation Styles
+   Unreal Engine Dark Theme Inspired
+   ============================================ */
+
+:root {
+    /* Color Palette - UE Dark Theme */
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #252525;
+    --bg-tertiary: #2d2d2d;
+    --bg-panel: #333333;
+    
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --text-muted: #999999;
+    --text-link: #4da6ff;
+    
+    --accent-blue: #0078d4;
+    --accent-blue-hover: #1e8ce5;
+    --accent-green: #2ea043;
+    --accent-orange: #d29922;
+    --accent-red: #f85149;
+    --accent-purple: #a371f7;
+    
+    --border-color: #404040;
+    --border-light: #555555;
+    
+    --code-bg: #1e1e1e;
+    --code-border: #3c3c3c;
+    --code-keyword: #569cd6;
+    --code-string: #ce9178;
+    --code-number: #b5cea8;
+    --code-comment: #6a9955;
+    --code-function: #dcdcaa;
+    --code-type: #4ec9b0;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+/* ============================================
+   Layout
+   ============================================ */
+
+.doc-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 30px;
+}
+
+/* Sidebar Navigation */
+.doc-sidebar {
+    position: sticky;
+    top: 20px;
+    height: calc(100vh - 40px);
+    overflow-y: auto;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 20px 0;
+}
+
+.doc-nav-header {
+    padding: 0 20px 15px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 15px;
+}
+
+.doc-nav-header h2 {
+    font-size: 18px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.doc-nav {
+    list-style: none;
+}
+
+.doc-nav-item {
+    margin: 0;
+}
+
+.doc-nav-link {
+    display: block;
+    padding: 10px 20px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+.doc-nav-link:hover {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-left-color: var(--accent-blue);
+}
+
+.doc-nav-link.active {
+    background-color: var(--bg-panel);
+    color: var(--text-primary);
+    border-left-color: var(--accent-blue);
+    font-weight: 500;
+}
+
+.doc-nav-sub {
+    list-style: none;
+    padding-left: 20px;
+    display: none;
+}
+
+.doc-nav-item.expanded > .doc-nav-sub {
+    display: block;
+}
+
+.doc-nav-sub .doc-nav-link {
+    padding: 8px 20px;
+    font-size: 13px;
+}
+
+/* Main Content */
+.doc-main {
+    min-width: 0;
+}
+
+.doc-content {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 40px;
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 16px;
+    line-height: 1.25;
+}
+
+h1 {
+    font-size: 32px;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border-color);
+}
+
+h2 {
+    font-size: 24px;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border-color);
+}
+
+h3 {
+    font-size: 20px;
+}
+
+h4 {
+    font-size: 16px;
+}
+
+p {
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+}
+
+ul, ol {
+    margin-bottom: 16px;
+    padding-left: 2em;
+    color: var(--text-secondary);
+}
+
+li {
+    margin-bottom: 8px;
+}
+
+a {
+    color: var(--text-link);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   Code Blocks
+   ============================================ */
+
+pre {
+    background-color: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin: 16px 0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+code {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    background-color: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--code-border);
+}
+
+pre code {
+    background: none;
+    padding: 0;
+    border: none;
+}
+
+/* Syntax Highlighting */
+.kw { color: var(--code-keyword); }  /* Keyword */
+.str { color: var(--code-string); }  /* String */
+.num { color: var(--code-number); }  /* Number */
+.cmt { color: var(--code-comment); } /* Comment */
+.fn { color: var(--code-function); } /* Function */
+.tp { color: var(--code-type); }     /* Type */
+
+/* Inline code */
+p code, li code {
+    color: var(--text-primary);
+}
+
+/* ============================================
+   Tables
+   ============================================ */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+    background-color: var(--bg-tertiary);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+th, td {
+    padding: 12px 16px;
+    text-align: left;
+    border: 1px solid var(--border-color);
+}
+
+th {
+    background-color: var(--bg-panel);
+    color: var(--text-primary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+}
+
+td {
+    color: var(--text-secondary);
+}
+
+tr:nth-child(even) {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ============================================
+   UI Panel Components (Slate-inspired)
+   ============================================ */
+
+/* Panel Container */
+.ui-panel {
+    background-color: var(--bg-panel);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin: 20px 0;
+    overflow: hidden;
+}
+
+.ui-panel-header {
+    background-color: var(--bg-tertiary);
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ui-panel-header::before {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    border-radius: 2px;
+}
+
+.ui-panel-body {
+    padding: 15px;
+}
+
+/* Property Row */
+.property-row {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.property-row:last-child {
+    border-bottom: none;
+}
+
+.property-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding-left: 5px;
+}
+
+.property-value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Input Fields */
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--text-primary);
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+    max-width: 400px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+/* Buttons */
+.ui-button {
+    background: linear-gradient(to bottom, #3a3a3a, #2d2d2d);
+    border: 1px solid var(--border-light);
+    border-radius: 3px;
+    color: var(--text-primary);
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ui-button:hover {
+    background: linear-gradient(to bottom, #4a4a4a, #353535);
+    border-color: var(--accent-blue);
+}
+
+.ui-button:active {
+    background: linear-gradient(to bottom, #2d2d2d, #3a3a3a);
+}
+
+.ui-button.primary {
+    background: linear-gradient(to bottom, var(--accent-blue), #006cbd);
+    border-color: #006cbd;
+}
+
+.ui-button.primary:hover {
+    background: linear-gradient(to bottom, var(--accent-blue-hover), #0078d4);
+}
+
+/* Combo Box */
+.combo-box {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+    max-width: 400px;
+}
+
+.combo-box select {
+    width: 100%;
+    padding-right: 30px;
+    cursor: pointer;
+}
+
+.combo-box::after {
+    content: '▼';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+    font-size: 10px;
+}
+
+/* Section Header */
+.section-header {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 0;
+    margin-top: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* ============================================
+   Flow Diagrams
+   ============================================ */
+
+.flow-diagram {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 20px;
+    margin: 20px 0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text-secondary);
+}
+
+.flow-diagram .box {
+    display: inline-block;
+    background-color: var(--bg-panel);
+    border: 1px solid var(--accent-blue);
+    border-radius: 4px;
+    padding: 8px 16px;
+    margin: 5px;
+    color: var(--text-primary);
+}
+
+.flow-diagram .arrow {
+    color: var(--accent-blue);
+}
+
+/* ============================================
+   Callouts & Alerts
+   ============================================ */
+
+.callout {
+    padding: 15px 20px;
+    border-left: 4px solid;
+    border-radius: 4px;
+    margin: 20px 0;
+    background-color: var(--bg-tertiary);
+}
+
+.callout-note {
+    border-left-color: var(--accent-blue);
+}
+
+.callout-warning {
+    border-left-color: var(--accent-orange);
+}
+
+.callout-important {
+    border-left-color: var(--accent-red);
+}
+
+.callout-tip {
+    border-left-color: var(--accent-green);
+}
+
+.callout-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.callout-content {
+    color: var(--text-secondary);
+}
+
+/* ============================================
+   Collapsible Sections
+   ============================================ */
+
+details {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin: 16px 0;
+    overflow: hidden;
+}
+
+summary {
+    padding: 12px 16px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text-primary);
+    background-color: var(--bg-panel);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+summary:hover {
+    background-color: var(--bg-tertiary);
+}
+
+summary::-webkit-details-marker {
+    display: none;
+}
+
+summary::before {
+    content: '▶';
+    display: inline-block;
+    font-size: 10px;
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+}
+
+details[open] summary::before {
+    transform: rotate(90deg);
+}
+
+details[open] summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.details-content {
+    padding: 16px;
+}
+
+/* ============================================
+   Tab Navigation
+   ============================================ */
+
+.tabs {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 20px;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tertiary);
+}
+
+.tab-button.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* ============================================
+   Responsive Design
+   ============================================ */
+
+@media (max-width: 1024px) {
+    .doc-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .doc-sidebar {
+        position: static;
+        height: auto;
+        max-height: 300px;
+    }
+    
+    .property-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+}
+
+/* ============================================
+   Print Styles
+   ============================================ */
+
+@media print {
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .doc-sidebar {
+        display: none;
+    }
+    
+    .doc-content {
+        border: none;
+        padding: 0;
+    }
+}

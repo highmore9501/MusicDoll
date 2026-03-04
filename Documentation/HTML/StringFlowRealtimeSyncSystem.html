@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时同步系统指南 - MusicDoll 文档</title>
+    <link rel="stylesheet" href="css/musicdoll-docs.css">
+</head>
+<body>
+    <div class="doc-container">
+        <!-- Sidebar Navigation -->
+        <aside class="doc-sidebar">
+            <div class="doc-nav-header">
+                <h2>📚 MusicDoll 文档</h2>
+            </div>
+            <ul class="doc-nav">
+                <li class="doc-nav-item">
+                    <a href="index.html" class="doc-nav-link">🏠 首页</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="MusicDollAnimationGuide.html" class="doc-nav-link">🎬 动画生成原理</a>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="BakeUserGuide.html" class="doc-nav-link">🔥 烘焙系统用户指南</a>
+                </li>
+                <li class="doc-nav-item expanded">
+                    <a href="#stringflow-sync" class="doc-nav-link active">🎻 实时同步系统</a>
+                    <ul class="doc-nav-sub">
+                        <li><a href="#architecture" class="doc-nav-link">系统架构与原理</a></li>
+                        <li><a href="#three-control-rigs" class="doc-nav-link">三个关键 Control Rig</a></li>
+                        <li><a href="#sync-mechanism" class="doc-nav-link">实时同步机制</a></li>
+                        <li><a href="#usage-guide" class="doc-nav-link">使用指南</a></li>
+                        <li><a href="#technical-details" class="doc-nav-link">技术细节</a></li>
+                    </ul>
+                </li>
+                <li class="doc-nav-item">
+                    <a href="ControlRigCacheSubsystemGuide.html" class="doc-nav-link">💾 ControlRig 缓存子系统</a>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="doc-main">
+            <div class="doc-content">
+                <h1 id="stringflow-sync">实时同步系统指南</h1>
+
+                <section id="overview">
+                    <h2>概述</h2>
+                    <p>本文档详细说明了 StringFlow（弦乐器）系统中的实时同步机制，包括人物 Control Rig、小提琴 Control Rig 和琴弓之间的协调关系。</p>
+                </section>
+
+                <section id="architecture">
+                    <h2>第一部分：系统架构与实现原理</h2>
+
+                    <h3 id="three-control-rigs">1.1 三个关键 Control Rig</h3>
+                    <p>在 StringFlow 系统中存在三个独立的 Control Rig 实例:</p>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">A. 人物 Control Rig（Character Control Rig）</div>
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label">所有者</div>
+                                <div class="property-value">
+                                    <span>人物骨骼网格 Actor（SkeletalMeshActor）</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">核心控制器</div>
+                                <div class="property-value">
+                                    <code>controller_root</code> - 用于驱动整个演奏的基础框架
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">其他关键控制器</div>
+                                <div class="property-value">
+                                    <ul>
+                                        <li><code>bow_controller</code>: 右手弓的控制器</li>
+                                        <li><code>string_touch_point</code>: 弦触点的参考位置</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">B. 小提琴 Control Rig（Instrument Control Rig）</div>
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label">所有者</div>
+                                <div class="property-value">
+                                    <span>小提琴骨骼网格 Actor（StringInstrument）</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">核心控制器</div>
+                                <div class="property-value">
+                                    <code>violin_root</code> - 驱动整个小提琴模型，通过实时同步与人物 controller_root 关联
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">C. 琴弓 Control Rig（Bow Control Rig）</div>
+                        <div class="ui-panel-body">
+                            <div class="property-row">
+                                <div class="property-label">所有者</div>
+                                <div class="property-value">
+                                    <span>琴弓骨骼网格 Actor（Bow）</span>
+                                </div>
+                            </div>
+                            <div class="property-row">
+                                <div class="property-label">核心控制器</div>
+                                <div class="property-value">
+                                    <code>bow_ctrl</code> - 驱动琴弓模型的位置和旋转，由人物的右手控制器驱动
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="sync-mechanism">
+                    <h2>1.2 实时同步机制</h2>
+
+                    <h3>小提琴与人物的同步（ParentBetweenControlRig）</h3>
+
+                    <p>实时同步使用一个称为 <strong>"父子关系"</strong> 的机制:</p>
+
+                    <div class="flow-diagram">人物 Control Rig          小提琴 Control Rig
+└─ controller_root    →    └─ violin_root
+   (父控制器)                (子控制器)</div>
+
+                    <h4>核心算法</h4>
+
+                    <ol>
+                        <li><strong>计算父控制器的偏移矩阵</strong>
+                            <pre><code>offset = controller_root_init^(-1) × controller_root_current</code></pre>
+                            <ul>
+                                <li><code>controller_root_init</code>: 蓝图中定义的初始化变换</li>
+                                <li><code>controller_root_current</code>: 运行时的当前变换</li>
+                                <li>这个 offset 表示相对于初始化位置的偏移</li>
+                            </ul>
+                        </li>
+                        <li><strong>应用到子控制器</strong>
+                            <pre><code>violin_root_new = violin_root_init × offset</code></pre>
+                            <ul>
+                                <li><code>violin_root_init</code>: 蓝图中定义的初始化变换（相对于 controller_root 的相对变换）</li>
+                                <li>小提琴自动跟随人物的所有运动</li>
+                            </ul>
+                        </li>
+                    </ol>
+
+                    <div class="callout callout-tip">
+                        <div class="callout-title">✅ 关键特性</div>
+                        <div class="callout-content">
+                            <ul>
+                                <li>即使 <code>controller_root</code> 的初始化变换不是零值，算法也能正确处理</li>
+                                <li>小提琴保持与人物的初始相对关系</li>
+                                <li>人物的任何旋转、位置、缩放变化都会自动传递到小提琴</li>
+                                <li>完全无需在两个 Control Rig 之间来回切换坐标系</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <h3>琴弓的同步（SyncBowTransform）</h3>
+
+                    <p>琴弓由人物的右手控制驱动:</p>
+
+                    <ol>
+                        <li><strong>获取驱动源</strong>
+                            <ul>
+                                <li>位置源：<code>bow_controller</code>（右手弓的控制器位置）</li>
+                                <li>朝向源：<code>string_touch_point</code>（弦触点位置）</li>
+                            </ul>
+                        </li>
+                        <li><strong>计算目标旋转</strong>
+                            <ul>
+                                <li>计算从弓位置指向弦触点的方向向量</li>
+                                <li>使用 <code>BowAxisTowardString</code> 参数定义弓的哪个轴应该朝向琴弦</li>
+                                <li>通过 <code>FQuat::FindBetweenNormals</code> 计算必要的旋转增量</li>
+                                <li>最终旋转 = 增量旋转 × 当前旋转</li>
+                            </ul>
+                        </li>
+                        <li><strong>应用到琴弓</strong>
+                            <ul>
+                                <li>位置：直接使用 <code>bow_controller</code> 的位置</li>
+                                <li>旋转：使用计算后的目标旋转</li>
+                            </ul>
+                        </li>
+                    </ol>
+
+                    <h3>1.3 实现细节</h3>
+
+                    <h4>关键方法：FInstrumentControlRigUtility::ParentBetweenControlRig</h4>
+
+                    <p>这是实现父子关系的核心方法，位于 <code>Common</code> 模块中:</p>
+
+                    <pre><code><span class="kw">static bool</span> <span class="fn">ParentBetweenControlRig</span>(
+    ASkeletalMeshActor* ParentControlRig,
+    <span class="kw">const</span> FString& ParentControlName,
+    ASkeletalMeshActor* ChildControlRig,
+    <span class="kw">const</span> FString& ChildControlName);</code></pre>
+
+                    <p><strong>用途:</strong> 在两个不同的 Control Rig 中建立 Control 的父子关系</p>
+
+                    <p><strong>参数说明:</strong></p>
+                    <ul>
+                        <li><code>ParentControlRig</code>: 父 Control 所属的 Control Rig（通常是人物）</li>
+                        <li><code>ParentControlName</code>: 父 Control 的名称（如 "controller_root"）</li>
+                        <li><code>ChildControlRig</code>: 子 Control 所属的 Control Rig（通常是乐器）</li>
+                        <li><code>ChildControlName</code>: 子 Control 的名称（如 "violin_root"）</li>
+                    </ul>
+
+                    <h4>关键方法：GetControlRigControlInitTransform</h4>
+
+                    <p>获取 Control Rig 蓝图中定义的初始化变换:</p>
+
+                    <pre><code><span class="kw">static bool</span> <span class="fn">GetControlRigControlInitTransform</span>(
+    ASkeletalMeshActor* InSkeletalMeshActor,
+    <span class="kw">const</span> FString& ControlName,
+    FTransform& OutInitTransform);</code></pre>
+
+                    <p>这个方法从蓝图的 Hierarchy 中读取初始值，这对于建立正确的父子关系至关重要。</p>
+                </section>
+
+                <section id="usage-guide">
+                    <h2>第二部分：使用指南</h2>
+
+                    <h3>2.1 初始化流程</h3>
+                    <p>按照以下步骤在编辑器中正确初始化小提琴与人物的关系:</p>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">步骤 1: 禁用实时同步</div>
+                        <div class="ui-panel-body">
+                            <ol>
+                                <li>选择包含小提琴的 Actor（<code>AStringFlowUnreal</code>）</li>
+                                <li>在 Details 面板中找到 <strong>"Transform Sync"</strong> 部分</li>
+                                <li>确保 <strong><code>bEnableRealtimeSync</code></strong> 为 <strong><code>false</code></strong>（默认状态）</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">步骤 2: 手动调整小提琴位置</div>
+                        <div class="ui-panel-body">
+                            <ol>
+                                <li>在 Sequencer 或直接在 3D 视口中编辑 <code>controller_root</code> 的位置和旋转</li>
+                                <li>手动调整小提琴的 <code>violin_root</code> 变换，使其与人物处于合适的位置
+                                    <ul>
+                                        <li>小提琴应该看起来像是被人物正确地"拿着"</li>
+                                        <li>位置、旋转都应该看起来自然合理</li>
+                                    </ul>
+                                </li>
+                                <li><strong>不要触发任何同步逻辑</strong>——此时我们只是在做视觉微调</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">步骤 3: 保存初始化变换 ⭐</div>
+                        <div class="ui-panel-body">
+                            <p>这是关键步骤！<strong>复制当前的 <code>violin_root</code> 变换值:</strong></p>
+                            <ol>
+                                <li>在 Control Rig Blueprint 编辑器中打开小提琴的 Control Rig</li>
+                                <li>找到 <code>violin_root</code> 这个 Control</li>
+                                <li>在 Details 面板中查看其当前的变换值:
+                                    <ul>
+                                        <li><strong>Location</strong> (位置)</li>
+                                        <li><strong>Rotation</strong> (旋转)</li>
+                                        <li><strong>Scale</strong> (缩放，通常为 1,1,1)</li>
+                                    </ul>
+                                </li>
+                                <li><strong>复制这些值到 <code>violin_root</code> 的 "Init Transform" 字段</strong>
+                                    <ul>
+                                        <li>这定义了小提琴相对于 <code>controller_root</code> 的初始相对关系</li>
+                                        <li>这个值在实时同步启动后将作为基础参考</li>
+                                    </ul>
+                                </li>
+                            </ol>
+
+                            <div class="callout callout-important">
+                                <div class="callout-title">⚠️ 为什么这很重要？</div>
+                                <div class="callout-content">
+                                    <ul>
+                                        <li>初始化变换定义了小提琴与人物的 "偏移关系"</li>
+                                        <li>实时同步启用后，无论 <code>controller_root</code> 如何移动，小提琴都会保持这个偏移关系</li>
+                                        <li>如果初始化变换设置不正确，小提琴会"飞走"或位置错误</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">步骤 4: 启用实时同步</div>
+                        <div class="ui-panel-body">
+                            <ol>
+                                <li>返回包含小提琴的 Actor（<code>AStringFlowUnreal</code>）</li>
+                                <li>在 Details 面板中将 <strong><code>bEnableRealtimeSync</code></strong> 设置为 <strong><code>true</code></strong></li>
+                                <li>此时小提琴应该保持在你设置的位置，并开始跟随 <code>controller_root</code> 的运动</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <div class="ui-panel">
+                        <div class="ui-panel-header">步骤 5: 验证同步效果</div>
+                        <div class="ui-panel-body">
+                            <ol>
+                                <li>在 Sequencer 中移动 <code>controller_root</code> 的位置或旋转</li>
+                                <li>观察小提琴是否正确地跟随</li>
+                                <li>小提琴应该显示为 <code>controller_root</code> 的"子级"，保持初始偏移关系</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <h3>2.2 琴弓的设置（必须在启用实时同步后）</h3>
+
+                    <div class="callout callout-warning">
+                        <div class="callout-title">⚠️ 重要</div>
+                        <div class="callout-content">
+                            琴弓相关的设置 <strong>必须在启用实时同步的情况下进行</strong>！因为琴弓的位置和旋转依赖于人物的右手控制器（<code>bow_controller</code>），只有在实时同步启用后，这些关系才能正确建立和验证。
+                        </div>
+                    </div>
+
+                    <h4>琴弓设置步骤</h4>
+
+                    <ol>
+                        <li><strong>确保实时同步已启用</strong> (<code>bEnableRealtimeSync = true</code>)</li>
+
+                        <li><strong>设置琴弓驱动轴</strong> (<code>BowAxisTowardString</code>)
+                            <ul>
+                                <li>这定义了琴弓的哪个轴应该指向琴弦</li>
+                                <li>典型值:
+                                    <ul>
+                                        <li><code>(1, 0, 0)</code> - X 轴指向琴弦</li>
+                                        <li><code>(0, 1, 0)</code> - Y 轴指向琴弦</li>
+                                        <li><code>(0, 0, 1)</code> - Z 轴指向琴弦</li>
+                                    </ul>
+                                </li>
+                                <li>选择使琴弓看起来"自然"的轴</li>
+                            </ul>
+                        </li>
+
+                        <li><strong>设置琴弓向上轴</strong> (<code>BowUpAxis</code>)
+                            <ul>
+                                <li>定义琴弓的"上"方向</li>
+                                <li>这有助于消除旋转的歧义性</li>
+                                <li>典型值：<code>(0, 0, 1)</code> 或 <code>(0, 1, 0)</code></li>
+                            </ul>
+                        </li>
+
+                        <li><strong>在 Sequencer 中移动右手控制器</strong>
+                            <ul>
+                                <li>在启用实时同步的状态下编辑 <code>bow_controller</code> 和 <code>string_touch_point</code></li>
+                                <li>实时观察琴弓的位置和旋转如何响应</li>
+                                <li>琴弓应该:
+                                    <ul>
+                                        <li>位置跟随 <code>bow_controller</code></li>
+                                        <li>朝向始终指向 <code>string_touch_point</code></li>
+                                        <li>旋转看起来自然合理</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </li>
+
+                        <li><strong>微调参数直到满意</strong>
+                            <ul>
+                                <li>如果琴弓的朝向不对，调整 <code>BowAxisTowardString</code></li>
+                                <li>如果琴弓旋转有歧义，调整 <code>BowUpAxis</code></li>
+                            </ul>
+                        </li>
+                    </ol>
+                </section>
+
+                <section id="troubleshooting">
+                    <h3>2.3 重要提示与常见问题</h3>
+
+                    <details>
+                        <summary>为什么要在启用实时同步后再设置琴弓？</summary>
+                        <div class="details-content">
+                            <p>因为琴弓的同步在 <code>Tick</code> 中每帧运行。只有在启用实时同步后，你才能:</p>
+                            <ul>
+                                <li>实时看到琴弓的位置和旋转变化</li>
+                                <li>验证 <code>BowAxisTowardString</code> 和 <code>BowUpAxis</code> 的设置是否正确</li>
+                                <li>在编辑右手控制器时立即看到视觉反馈</li>
+                            </ul>
+                            <p>如果在禁用实时同步的状态下调整，你将无法看到正确的效果。</p>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>如果小提琴"飞走"了怎么办？</summary>
+                        <div class="details-content">
+                            <p>这通常意味着初始化变换设置不正确。解决方法:</p>
+                            <ol>
+                                <li>禁用实时同步</li>
+                                <li>手动调整 <code>violin_root</code> 回到正确位置</li>
+                                <li>重新复制其变换值到 Init Transform</li>
+                                <li>重新启用实时同步</li>
+                            </ol>
+                        </div>
+                    </details>
+
+                    <details>
+                        <summary>如果琴弓位置或旋转错误怎么办？</summary>
+                        <div class="details-content">
+                            <p>检查以下几点:</p>
+                            <ol>
+                                <li><strong>实时同步是否启用</strong>？琴弓同步需要启用才能工作</li>
+                                <li><strong><code>BowAxisTowardString</code> 是否设置正确</strong>？尝试不同的轴 <code>(1,0,0)</code>, <code>(0,1,0)</code>, <code>(0,0,1)</code></li>
+                                <li><strong><code>BowUpAxis</code> 是否合理</strong>？应该垂直于向前轴</li>
+                                <li><strong>右手控制器是否正确驱动</strong>？在 Sequencer 中验证 <code>bow_controller</code> 和 <code>string_touch_point</code> 的位置</li>
+                            </ol>
+                        </div>
+                    </details>
+
+                    <h3>2.4 总结工作流程</h3>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>阶段</th>
+                                <th>实时同步状态</th>
+                                <th>任务</th>
+                                <th>目标</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>初始化</td>
+                                <td>❌ 禁用</td>
+                                <td>调整小提琴位置至合适位置</td>
+                                <td>确定初始相对关系</td>
+                            </tr>
+                            <tr>
+                                <td>保存</td>
+                                <td>❌ 禁用</td>
+                                <td>复制 <code>violin_root</code> 变换到 Init Transform</td>
+                                <td>锁定初始偏移</td>
+                            </tr>
+                            <tr>
+                                <td>激活</td>
+                                <td>✅ 启用</td>
+                                <td>验证小提琴跟随人物运动</td>
+                                <td>确认同步有效</td>
+                            </tr>
+                            <tr>
+                                <td>琴弓设置</td>
+                                <td>✅ 启用</td>
+                                <td>调整右手控制器和琴弓参数</td>
+                                <td>实现正确的琴弓动作</td>
+                            </tr>
+                            <tr>
+                                <td>完成</td>
+                                <td>✅ 启用</td>
+                                <td>在 Sequencer 中编辑动画</td>
+                                <td>记录演奏动作</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section id="technical-details">
+                    <h2>技术细节补充</h2>
+
+                    <h3>实时同步的数学原理</h3>
+
+                    <p>实时同步的核心是矩阵变换的链式计算:</p>
+
+                    <div class="flow-diagram">Step 1: 获取 controller_root 的变换
+  init_transform = controller_root 蓝图中的初始化变换
+  current_transform = controller_root 当前的变换
+
+Step 2: 计算偏移
+  offset = init_transform^(-1) × current_transform
+
+Step 3: 应用到 violin_root
+  violin_root_new = violin_root_init × offset</div>
+
+                    <p>这确保了:</p>
+                    <ul>
+                        <li>如果 <code>controller_root</code> 在原地不动，<code>offset</code> = Identity，<code>violin_root</code> = <code>violin_root_init</code></li>
+                        <li>如果 <code>controller_root</code> 移动，<code>offset</code> 包含该移动，小提琴相应移动</li>
+                        <li>所有变换都是相对的，完全避免了坐标系转换的复杂性</li>
+                    </ul>
+                </section>
+
+                <section id="code-reference">
+                    <h2>相关代码位置</h2>
+                    <ul>
+                        <li><strong>核心实现</strong>: <code>Plugins/MusicDoll/Source/Common/Private/InstrumentControlRigUtility.cpp</code></li>
+                        <li><strong>同步处理</strong>: <code>Plugins/MusicDoll/Source/StringFlowUnreal/Private/StringFlowTransformSyncProcessor.cpp</code></li>
+                        <li><strong>配置类</strong>: <code>Plugins/MusicDoll/Source/StringFlowUnreal/Public/StringFlowUnreal.h</code></li>
+                    </ul>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="js/musicdoll-docs.js"></script>
+</body>
+</html>
