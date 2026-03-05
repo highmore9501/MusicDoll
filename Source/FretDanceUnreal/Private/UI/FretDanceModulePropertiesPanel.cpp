@@ -139,10 +139,17 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
 		5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("File Paths"))];
 
 	// IOFilePath comes from base class AInstrumentBase
+	// 修改：允许用户选择现有文件或输入新文件名来创建新文件
 	Container->AddSlot().AutoHeight().Padding(
 		5.0f)[FCommonPanelUtility::CreateFilePathPropertyRow(
 		TEXT("IO File Path"), FretDance->IOFilePath, TEXT("IOFilePath"),
-		TEXT("JSON Files (*.json)|*.json"), FSimpleDelegate())];
+		TEXT("JSON Files (*.json)|*.json"), 
+		FSimpleDelegate::CreateLambda([this, FretDance]() {
+			if (FretDanceActor.IsValid()) {
+				FretDanceActor->Modify();
+			}
+		}),
+		true)];  // bAllowCreateNew = true
 
 	// Initialization Operations
 	Container->AddSlot().AutoHeight().Padding(

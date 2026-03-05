@@ -117,7 +117,13 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateFilePathPropertyRow(
         TEXT("IO File Path"), KeyRipple->IOFilePath, TEXT("IOFilePath"),
-        TEXT("Avatar Files (*.avatar)|*.avatar"), FSimpleDelegate())];
+        TEXT("Avatar Files (*.avatar)|*.avatar"), 
+        FSimpleDelegate::CreateLambda([this, KeyRipple]() {
+            if (KeyRippleActor.IsValid()) {
+                KeyRippleActor->Modify();
+            }
+        }),
+        true)];  // bAllowCreateNew = true
 
     // Initialization Operations Section
     Container->AddSlot().AutoHeight().Padding(

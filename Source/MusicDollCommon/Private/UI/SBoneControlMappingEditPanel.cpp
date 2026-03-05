@@ -855,8 +855,9 @@ bool SBoneControlMappingEditPanel::BrowseForFile(const FString& FileExtension,
     FString DefaultPath = FPaths::ProjectDir();
 
     TArray<FString> OutFilenames;
-    bool bOpened = DesktopPlatform->OpenFileDialog(
-        nullptr, FString::Printf(TEXT("Select %s File"), *FileExtension),
+    // 改为使用SaveFileDialog，支持选择现有文件或输入新文件名
+    bool bOpened = DesktopPlatform->SaveFileDialog(
+        nullptr, FString::Printf(TEXT("Select or Create %s File"), *FileExtension),
         DefaultPath, TEXT(""), FileFilter, EFileDialogFlags::None,
         OutFilenames);
 

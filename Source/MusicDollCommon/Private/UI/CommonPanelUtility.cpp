@@ -1,4 +1,4 @@
-#include "UI/CommonPanelUtility.h"
+﻿#include "UI/CommonPanelUtility.h"
 
 #include "DesktopPlatformModule.h"
 #include "Widgets/Input/SButton.h"
@@ -70,10 +70,10 @@ TSharedRef<SWidget> FCommonPanelUtility::CreateFilePathPropertyRow(
 		+ SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
 			[SNew(SButton)
 				.Text(FText::FromString(TEXT("Browse")))
-				.OnClicked_Lambda([PropertyPath, FileExtension, OnPathChanged, TextBox]() -> FReply
+				.OnClicked_Lambda([PropertyPath, FileExtension, OnPathChanged, TextBox, bAllowCreateNew]() -> FReply
 				{
 					FString OutFilePath;
-					if (BrowseForFile(FileExtension, OutFilePath, false))
+					if (BrowseForFile(FileExtension, OutFilePath, bAllowCreateNew))
 					{
 						if (TextBox.IsValid())
 						{

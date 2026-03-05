@@ -84,6 +84,15 @@ struct FFretDanceRecorderTransform {
     FFretDanceRecorderTransform(const FVector& InLocation,
                                 const FQuat& InRotation)
         : Location(InLocation), Rotation(InRotation) {}
+
+    FTransform ToTransform() const {
+        return FTransform(Rotation, Location, FVector(1.0f));
+    }
+
+    void FromTransform(const FTransform& Transform) {
+        Location = Transform.GetLocation();
+        Rotation = Transform.GetRotation();
+    }
 };
 
 // 同步报告结构体

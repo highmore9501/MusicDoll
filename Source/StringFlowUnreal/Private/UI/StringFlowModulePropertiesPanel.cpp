@@ -159,7 +159,13 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateFilePathPropertyRow(
         TEXT("IO File Path"), StringFlow->IOFilePath, TEXT("IOFilePath"),
-        TEXT("Avatar Files (*.avatar)|*.avatar"), FSimpleDelegate())];
+        TEXT("Avatar Files (*.avatar)|*.avatar"), 
+        FSimpleDelegate::CreateLambda([this, StringFlow]() {
+            if (StringFlowActor.IsValid()) {
+                StringFlowActor->Modify();
+            }
+        }),
+        true)];  // bAllowCreateNew = true
 
     // Initialization Operations
     Container->AddSlot().AutoHeight().Padding(
