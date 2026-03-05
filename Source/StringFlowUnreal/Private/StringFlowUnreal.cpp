@@ -41,7 +41,7 @@ AStringFlowUnreal::AStringFlowUnreal() {
     StringNumber = 4;
     BowAxisTowardString = FVector(1.0f, 0.0f, 0.0f);  // Default: X axis
     BowUpAxis = FVector(0.0f, 0.0f, 1.0f);            // Default: Z axis (up)
-    bEnableRealtimeSync = true;
+    bEnableRealtimeSync = false;
 
     CachedStringInstrumentRelativeTransform = FTransform::Identity;    
 

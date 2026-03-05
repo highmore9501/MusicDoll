@@ -102,8 +102,6 @@ struct FFretDanceHelpers {
 
 // Sets default values
 AFretDanceUnreal::AFretDanceUnreal() {
-    // Set this actor to call Tick() every frame. You can turn this off to
-    // improve performance if you don't need it.
     PrimaryActorTick.bCanEverTick = true;
 
     // 默认配置
@@ -112,7 +110,12 @@ AFretDanceUnreal::AFretDanceUnreal() {
     CurrentBasePosition = EFretDanceBasePosition::P0;
     CurrentLeftHandState = EFretDanceLeftHandState::NORMAL;
     CurrentRightHandState = EFretDanceRightHandState::LOW;
-    bEnableRealtimeSync = true;
+    bEnableRealtimeSync = false;
+    
+    // 初始化所有控制器和记录器
+    InitializeControllersAndRecorders();
+    
+    InitializeRecorderTransforms();
 }
 
 // Called when the game starts or when spawned
@@ -120,9 +123,7 @@ void AFretDanceUnreal::BeginPlay() {
     Super::BeginPlay();
 
     UE_LOG(LogTemp, Warning, TEXT("FretDanceUnreal: BeginPlay called"));
-
-    // 初始化所有控制器和记录器
-    InitializeControllersAndRecorders();
+    
 }
 
 void AFretDanceUnreal::Tick(float DeltaTime) {
@@ -130,7 +131,7 @@ void AFretDanceUnreal::Tick(float DeltaTime) {
 
     // 实时同步逻辑将在后续阶段实现
     if (bEnableRealtimeSync) {
-        // TODO: 调用 UFretDanceTransformSyncProcessor::SyncAllInstrumentTransforms
+        UFretDanceTransformSyncProcessor::SyncAllInstrumentTransforms(this);
     }
 }
 
@@ -266,11 +267,11 @@ void AFretDanceUnreal::InitializeControllersAndRecorders() {
 
     // 初始化指板位置记录器
     GuitarFretPositions.Empty();
-    GuitarFretPositions.Add("P0", "Fret_P0");
-    GuitarFretPositions.Add("P1", "Fret_P1");
-    GuitarFretPositions.Add("P2", "Fret_P2");
-    GuitarFretPositions.Add("P3", "Fret_P3");
-    GuitarFretPositions.Add("P4", "Fret_P4");
+    GuitarFretPositions.Add("P0", "P0");
+    GuitarFretPositions.Add("P1", "P1");
+    GuitarFretPositions.Add("P2", "P2");
+    GuitarFretPositions.Add("P3", "P3");
+    GuitarFretPositions.Add("P4", "P4");
 
     // 初始化辅助线（乐器类型差异体现在辅助线上）
     GuideLines.Empty();

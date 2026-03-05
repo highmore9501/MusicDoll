@@ -250,37 +250,6 @@ bool FInstrumentControlRigUtility::GetControlRigControlGlobalInitTransform(
     return true;
 }
 
-bool FInstrumentControlRigUtility::GetControlRigControlCurrentGlobalTransform(
-    ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
-    FTransform& OutGlobalTransform) {
-    if (!InSkeletalMeshActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FInstrumentControlRigUtility::"
-                    "GetControlRigControlCurrentGlobalTransform: "
-                    "InSkeletalMeshActor is null"));
-        return false;
-    }
-
-    // 获取 Control Rig 实例和索引
-    UControlRig* ControlRigInstance = nullptr;
-    int32 ControlIndex = INDEX_NONE;
-
-    if (!GetControlRigAndIndex(InSkeletalMeshActor, ControlName,
-                               ControlRigInstance, ControlIndex)) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("FInstrumentControlRigUtility::"
-                    "GetControlRigControlCurrentGlobalTransform: "
-                    "Failed to get Control Rig instance or Control index"));
-        return false;
-    }
-
-    // 直接使用 GetGlobalTransform 获取当前全局变换（Control Rig 内部坐标系）
-    OutGlobalTransform =
-        ControlRigInstance->GetHierarchy()->GetGlobalTransform(ControlIndex);
-
-    return true;
-}
-
 bool FInstrumentControlRigUtility::GetControlRigAndIndex(
     ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
     UControlRig*& OutControlRigInstance, int32& OutControlIndex) {

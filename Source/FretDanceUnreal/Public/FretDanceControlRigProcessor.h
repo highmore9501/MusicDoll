@@ -55,64 +55,72 @@ class FRETDANCEUNREAL_API UFretDanceControlRigProcessor : public UObject {
     static bool SetupAllObjects(AFretDanceUnreal* FretDanceActor);
 
     /**
-     * 保存当前控制器状态（总入口）
+     * 保存当前控制器状态（总入口）- 保存到 RecorderTransforms
      *
      * @param FretDanceActor FretDance 实例
-     * @param OutStateData 输出的状态数据
+     * @param OutStateData 输出的状态数据（保留参数以兼容调用接口）
      * @return 是否保存成功
      */
     static bool SaveState(AFretDanceUnreal* FretDanceActor,
                           TMap<FString, FTransform>& OutStateData);
 
     /**
-     * 保存左手状态
+     * 保存左手状态到 RecorderTransforms
      *
      * @param FretDanceActor FretDance 实例
-     * @param OutStateData 输出的状态数据
      * @return 是否保存成功
      */
-    static bool SaveLeftHandState(AFretDanceUnreal* FretDanceActor,
-                                  TMap<FString, FTransform>& OutStateData);
+    static bool SaveLeftHandState(AFretDanceUnreal* FretDanceActor);
 
     /**
-     * 保存右手状态
+     * 保存右手状态到 RecorderTransforms
      *
      * @param FretDanceActor FretDance 实例
-     * @param OutStateData 输出的状态数据
      * @return 是否保存成功
      */
-    static bool SaveRightHandState(AFretDanceUnreal* FretDanceActor,
-                                   TMap<FString, FTransform>& OutStateData);
+    static bool SaveRightHandState(AFretDanceUnreal* FretDanceActor);
 
     /**
-     * 加载控制器状态（同时加载左右手）
+     * 从 RecorderTransforms 加载控制器状态（同时加载左右手）
      *
      * @param FretDanceActor FretDance 实例
-     * @param StateData 要加载的状态数据
+     * @param StateData 要加载的状态数据（保留参数以兼容调用接口）
      * @return 是否加载成功
      */
     static bool LoadState(AFretDanceUnreal* FretDanceActor,
                           const TMap<FString, FTransform>& StateData);
 
     /**
-     * 保存辅助线状态
+     * 保存辅助线状态到 RecorderTransforms
      *
      * @param FretDanceActor FretDance 实例
-     * @param OutStateData 输出的状态数据
      * @return 是否保存成功
      */
-    static bool SaveGuidelinesState(AFretDanceUnreal* FretDanceActor,
-                                    TMap<FString, FTransform>& OutStateData);
+    static bool SaveGuidelinesState(AFretDanceUnreal* FretDanceActor);
 
     /**
-     * 加载辅助线状态
+     * 从 RecorderTransforms 加载辅助线状态
      *
      * @param FretDanceActor FretDance 实例
-     * @param StateData 要加载的状态数据
      * @return 是否加载成功
      */
-    static bool LoadGuidelinesState(AFretDanceUnreal* FretDanceActor,
-                                    const TMap<FString, FTransform>& StateData);
+    static bool LoadGuidelinesState(AFretDanceUnreal* FretDanceActor);
+
+    /**
+     * 保存指板位置状态到 RecorderTransforms（与左手状态无关）
+     *
+     * @param FretDanceActor FretDance 实例
+     * @return 是否保存成功
+     */
+    static bool SaveFretPositionsState(AFretDanceUnreal* FretDanceActor);
+
+    /**
+     * 从 RecorderTransforms 加载指板位置状态（与左手状态无关）
+     *
+     * @param FretDanceActor FretDance 实例
+     * @return 是否加载成功
+     */
+    static bool LoadFretPositionsState(AFretDanceUnreal* FretDanceActor);
 
    private:
     /**

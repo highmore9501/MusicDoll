@@ -39,33 +39,19 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
 
     FString ActorName = Actor->GetName();
     FControlRigCacheKey CacheKey(ActorName, Sequence);
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("GetControlRig: Querying cache for Actor %s, Sequence %s"),
-           *ActorName, *Sequence->GetName());
-
     // 检查运行时缓存中是否存在
     FControlRigRuntimeCacheEntry* CacheEntry =
         RuntimeControlRigCache.Find(CacheKey);
-    if (CacheEntry) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("GetControlRig: Cache entry found for Actor %s"),
-               *ActorName);
+    if (CacheEntry) {        
         // 第一层：检查缓存条目是否有效
         if (CacheEntry->IsValid()) {
             CacheEntry->UpdateAccessTime();
             // 再次验证返回的 ControlRig 指针是否真的可用
             UControlRig* ResultControlRig = CacheEntry->GetControlRig();
             if (ResultControlRig) {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("GetControlRig: Successfully retrieved ControlRig from cache for Actor %s"),
-                       *ActorName);
-            } else {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("GetControlRig: ControlRig pointer is null in valid cache entry for Actor %s"),
-                       *ActorName);
-            }
-            return ResultControlRig;
+                return ResultControlRig;
+            } 
+            
         } else {
             UE_LOG(LogTemp, Warning,
                    TEXT("GetControlRig: Cache entry is INVALID for Actor %s"),
@@ -124,26 +110,14 @@ UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
         return nullptr;
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("GetControlRigBlueprint: Got ControlRig %s, extracting Blueprint"),
-           *ControlRig->GetName());
-
     // 从 ControlRig 实例获取 Blueprint
     UClass* ControlRigClass = ControlRig->GetClass();
     if (ControlRigClass) {
         UObject* ClassGeneratedBy = ControlRigClass->ClassGeneratedBy;
         UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(ClassGeneratedBy);
         if (Blueprint) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("GetControlRigBlueprint: Successfully extracted Blueprint %s"),
-                   *Blueprint->GetName());
-        } else {
-            UE_LOG(LogTemp, Error,
-                   TEXT("GetControlRigBlueprint: Failed to cast ClassGeneratedBy to ControlRigBlueprint for Actor %s, ClassGeneratedBy=%s"),
-                   *Actor->GetName(), 
-                   ClassGeneratedBy ? *ClassGeneratedBy->GetName() : TEXT("NULL"));
-        }
-        return Blueprint;
+            return Blueprint;
+        } 
     } else {
         UE_LOG(LogTemp, Error,
                TEXT("GetControlRigBlueprint: ControlRigClass is null for Actor %s"),
