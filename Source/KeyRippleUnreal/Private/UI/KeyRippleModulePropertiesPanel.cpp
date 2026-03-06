@@ -114,16 +114,19 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
         5.0f, 15.0f, 5.0f,
         5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("File Paths"))];
 
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRow(
-        TEXT("IO File Path"), KeyRipple->IOFilePath, TEXT("IOFilePath"),
-        TEXT("Avatar Files (*.avatar)|*.avatar"), 
-        FSimpleDelegate::CreateLambda([this, KeyRipple]() {
-            if (KeyRippleActor.IsValid()) {
-                KeyRippleActor->Modify();
-            }
-        }),
-        true)];  // bAllowCreateNew = true
+    // IOFilePath comes from base class AInstrumentBase
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+            TEXT("IO File Path"), KeyRipple->IOFilePath, TEXT("IOFilePath"),
+            TEXT(".avatar"),
+            [this](const FString& NewPath) {
+                if (KeyRippleActor.IsValid()) {
+                    KeyRippleActor->Modify();
+                    KeyRippleActor->IOFilePath = NewPath;
+                    UE_LOG(LogTemp, Warning, TEXT("KeyRipple: IO File Path updated to: %s"), *NewPath);
+                }
+            },
+            true)];
 
     // Initialization Operations Section
     Container->AddSlot().AutoHeight().Padding(

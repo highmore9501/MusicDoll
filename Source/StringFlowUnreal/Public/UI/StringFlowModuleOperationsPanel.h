@@ -37,6 +37,8 @@ class STRINGFLOWUNREAL_API SStringFlowModuleOperationsPanel
 
     // Operation button handlers
     FReply OnSaveState();
+    FReply OnSaveLeft();
+    FReply OnSaveRight();
     FReply OnLoadState();
     FReply OnGeneratePerformerAnimation();
     FReply OnGenerateStringAnimation();

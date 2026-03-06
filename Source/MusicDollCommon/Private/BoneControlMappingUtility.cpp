@@ -497,17 +497,17 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
         return Depth;
     };
 
-    // 按层级深度排序，先处理子级（深度大的），再处理父级（深度小的）
+    // 按层级深度排序，先处理父级（深度小的），再处理子级（深度大的）
     SortedPairs.Sort([&](const TPair<FRigElementKey, FBoneControlPair>& A,
                          const TPair<FRigElementKey, FBoneControlPair>& B) {
         int32 DepthA = GetControlDepth(A.Key, GetControlDepth);
         int32 DepthB = GetControlDepth(B.Key, GetControlDepth);
-        // 深度大的（子级）排在前面
-        return DepthA > DepthB;
+        // 深度大的（子级）排在后面
+        return DepthA < DepthB;
     });
 
     UE_LOG(LogTemp, Warning,
-           TEXT("SyncBoneControlPairs: Sorted pairs by depth (child first):"));
+           TEXT("SyncBoneControlPairs: Sorted pairs by depth (parent first):"));
     for (int32 i = 0; i < SortedPairs.Num(); i++) {
         FString ControlName = SortedPairs[i].Key.Name.ToString();
         int32 Depth = GetControlDepth(SortedPairs[i].Key, GetControlDepth);

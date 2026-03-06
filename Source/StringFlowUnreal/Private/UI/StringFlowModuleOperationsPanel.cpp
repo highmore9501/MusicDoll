@@ -223,15 +223,15 @@ void SStringFlowModuleOperationsPanel::CreateOperationWidgets() {
              0.0f, 0.0f, 5.0f,
              0.0f)[SNew(SButton)
                        .Text(LOCTEXT("SaveLeftButton", "Save Left"))
-                       .OnClicked(
-                           this, &SStringFlowModuleOperationsPanel::OnSaveState)
+                       .OnClicked(this,
+                                  &SStringFlowModuleOperationsPanel::OnSaveLeft)
                        .HAlign(HAlign_Center)] +
          SHorizontalBox::Slot().FillWidth(0.5f).Padding(
              5.0f, 0.0f, 0.0f,
              0.0f)[SNew(SButton)
                        .Text(LOCTEXT("SaveRightButton", "Save Right"))
                        .OnClicked(
-                           this, &SStringFlowModuleOperationsPanel::OnSaveState)
+                           this, &SStringFlowModuleOperationsPanel::OnSaveRight)
                        .HAlign(HAlign_Center)]];
 
     // Load State Button
@@ -373,6 +373,28 @@ FReply SStringFlowModuleOperationsPanel::OnSaveState() {
 
     UStringFlowControlRigProcessor::SaveState(StringFlowActor.Get());
     UE_LOG(LogTemp, Warning, TEXT("StringFlow: Save State operation triggered"));
+    return FReply::Handled();
+}
+
+FReply SStringFlowModuleOperationsPanel::OnSaveLeft() {
+    if (!StringFlowActor.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for save left"));
+        return FReply::Handled();
+    }
+
+    UStringFlowControlRigProcessor::SaveLeft(StringFlowActor.Get());
+    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Save Left operation triggered"));
+    return FReply::Handled();
+}
+
+FReply SStringFlowModuleOperationsPanel::OnSaveRight() {
+    if (!StringFlowActor.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for save right"));
+        return FReply::Handled();
+    }
+
+    UStringFlowControlRigProcessor::SaveRight(StringFlowActor.Get());
+    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Save Right operation triggered"));
     return FReply::Handled();
 }
 

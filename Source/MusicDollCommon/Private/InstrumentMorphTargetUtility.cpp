@@ -10,6 +10,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
+#include "ControlRigCreationUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "LevelSequence.h"
@@ -88,7 +89,6 @@ bool UInstrumentMorphTargetUtility::EnsureRootControlExists(
 
     // 检查Root Control是否存在
     if (RigHierarchy->Contains(RootControlKey)) {
-        // 验证它确实是一个有效的Control
         const FRigControlElement* ControlElement =
             RigHierarchy->Find<FRigControlElement>(RootControlKey);
 
@@ -101,11 +101,26 @@ bool UInstrumentMorphTargetUtility::EnsureRootControlExists(
         }
     }
 
-    UE_LOG(LogTemp, Error,
+    // 不存在则尝试创建
+    UE_LOG(LogTemp, Warning,
            TEXT("[InstrumentMorphTargetUtility] Root control '%s' does not "
-                "exist in hierarchy"),
+                "exist, attempting to create it"),
            *RootControlName);
-    return false;
+
+    if (!FControlRigCreationUtility::CreateControl(
+            ControlRigBlueprint, RootControlName, TEXT(""))) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Root control '%s' does not "
+                    "exist in hierarchy"),
+               *RootControlName);
+        return false;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentMorphTargetUtility] Root control '%s' created "
+                "successfully"),
+           *RootControlName);
+    return true;
 }
 
 int32 UInstrumentMorphTargetUtility::AddAnimationChannels(

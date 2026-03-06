@@ -287,6 +287,9 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
            TEXT("GenerateMappingRow: BoneNames list size: %d, ControlNames "
                 "list size: %d"),
            BoneNames.Num(), ControlNames.Num());
+    UE_LOG(LogTemp, Warning,
+           TEXT("GenerateMappingRow: FilteredBoneNames size: %d, FilteredControlNames size: %d"),
+           FilteredBoneNames.Num(), FilteredControlNames.Num());
 
     return SNew(STableRow<TSharedPtr<FBoneControlPair>>, OwnerTable)
         [SNew(SHorizontalBox) +
@@ -294,10 +297,14 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
              [SNew(SComboBox<TSharedPtr<FString>>)
                   .OptionsSource(&FilteredBoneNames)
                   .OnGenerateWidget_Lambda([](TSharedPtr<FString> InOption) {
+                      if (!InOption.IsValid()) {
+                          UE_LOG(LogTemp, Warning, TEXT("GenerateMappingRow: OnGenerateWidget_Lambda called with invalid InOption (Bone)"));
+                          return SNew(STextBlock)
+                              .Text(FText::FromString(TEXT("Invalid")));
+                      }
+                      UE_LOG(LogTemp, Verbose, TEXT("GenerateMappingRow: OnGenerateWidget_Lambda generating bone item: %s"), **InOption);
                       return SNew(STextBlock)
-                          .Text(FText::FromString(
-                              InOption.IsValid() ? *InOption
-                                                 : FString(TEXT("Invalid"))));
+                          .Text(FText::FromString(*InOption));
                   })
                   .OnSelectionChanged(
                       this,
@@ -334,10 +341,14 @@ TSharedRef<ITableRow> SBoneControlMappingEditPanel::GenerateMappingRow(
              [SNew(SComboBox<TSharedPtr<FString>>)
                   .OptionsSource(&FilteredControlNames)
                   .OnGenerateWidget_Lambda([](TSharedPtr<FString> InOption) {
+                      if (!InOption.IsValid()) {
+                          UE_LOG(LogTemp, Warning, TEXT("GenerateMappingRow: OnGenerateWidget_Lambda called with invalid InOption (Control)"));
+                          return SNew(STextBlock)
+                              .Text(FText::FromString(TEXT("Invalid")));
+                      }
+                      UE_LOG(LogTemp, Verbose, TEXT("GenerateMappingRow: OnGenerateWidget_Lambda generating control item: %s"), **InOption);
                       return SNew(STextBlock)
-                          .Text(FText::FromString(
-                              InOption.IsValid() ? *InOption
-                                                 : FString(TEXT("Invalid"))));
+                          .Text(FText::FromString(*InOption));
                   })
                   .OnSelectionChanged(
                       this,
@@ -684,9 +695,16 @@ void SBoneControlMappingEditPanel::ApplyBoneFilter(const FText& InFilterText) {
     FilteredBoneNames.Reset();
     FString FilterString = InFilterText.ToString().ToLower();
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("ApplyBoneFilter: Called with filter text: '%s'"), *FilterString);
+    UE_LOG(LogTemp, Warning,
+           TEXT("ApplyBoneFilter: Total BoneNames available: %d"), BoneNames.Num());
+
     // 如果过滤文本为空，显示所有项
     if (FilterString.IsEmpty()) {
         FilteredBoneNames = BoneNames;
+        UE_LOG(LogTemp, Warning,
+               TEXT("ApplyBoneFilter: Filter is empty, showing all %d bones"), FilteredBoneNames.Num());
         return;
     }
 
@@ -709,11 +727,13 @@ void SBoneControlMappingEditPanel::ApplyBoneFilter(const FText& InFilterText) {
 
             if (bMatchAll) {
                 FilteredBoneNames.Add(BoneName);
+                UE_LOG(LogTemp, Verbose,
+                       TEXT("ApplyBoneFilter: Bone '%s' matched filter"), *LowerBoneName);
             }
         }
     }
 
-    UE_LOG(LogTemp, Verbose,
+    UE_LOG(LogTemp, Warning,
            TEXT("ApplyBoneFilter: Filtered %d bones from %d total with %d "
                 "keywords"),
            FilteredBoneNames.Num(), BoneNames.Num(), Keywords.Num());
@@ -724,9 +744,16 @@ void SBoneControlMappingEditPanel::ApplyControlFilter(
     FilteredControlNames.Reset();
     FString FilterString = InFilterText.ToString().ToLower();
 
+    UE_LOG(LogTemp, Warning,
+           TEXT("ApplyControlFilter: Called with filter text: '%s'"), *FilterString);
+    UE_LOG(LogTemp, Warning,
+           TEXT("ApplyControlFilter: Total ControlNames available: %d"), ControlNames.Num());
+
     // 如果过滤文本为空，显示所有项
     if (FilterString.IsEmpty()) {
         FilteredControlNames = ControlNames;
+        UE_LOG(LogTemp, Warning,
+               TEXT("ApplyControlFilter: Filter is empty, showing all %d controls"), FilteredControlNames.Num());
         return;
     }
 
@@ -749,11 +776,13 @@ void SBoneControlMappingEditPanel::ApplyControlFilter(
 
             if (bMatchAll) {
                 FilteredControlNames.Add(ControlName);
+                UE_LOG(LogTemp, Verbose,
+                       TEXT("ApplyControlFilter: Control '%s' matched filter"), *LowerControlName);
             }
         }
     }
 
-    UE_LOG(LogTemp, Verbose,
+    UE_LOG(LogTemp, Warning,
            TEXT("ApplyControlFilter: Filtered %d controls from %d total with "
                 "%d keywords"),
            FilteredControlNames.Num(), ControlNames.Num(), Keywords.Num());

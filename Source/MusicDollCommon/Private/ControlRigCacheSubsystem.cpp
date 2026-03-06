@@ -42,7 +42,7 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
     // 检查运行时缓存中是否存在
     FControlRigRuntimeCacheEntry* CacheEntry =
         RuntimeControlRigCache.Find(CacheKey);
-    if (CacheEntry) {        
+    if (CacheEntry) {
         // 第一层：检查缓存条目是否有效
         if (CacheEntry->IsValid()) {
             CacheEntry->UpdateAccessTime();
@@ -50,8 +50,8 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
             UControlRig* ResultControlRig = CacheEntry->GetControlRig();
             if (ResultControlRig) {
                 return ResultControlRig;
-            } 
-            
+            }
+
         } else {
             UE_LOG(LogTemp, Warning,
                    TEXT("GetControlRig: Cache entry is INVALID for Actor %s"),
@@ -69,43 +69,45 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
                 "triggering registration"),
            *ActorName);
     TriggerRegistrationIfNeeded(Actor, Sequence);
-    
+
     // 触发注册后，再次尝试查询
-    UE_LOG(LogTemp, Warning,
-           TEXT("GetControlRig: Re-querying cache after registration for Actor %s"),
-           *ActorName);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT(
+            "GetControlRig: Re-querying cache after registration for Actor %s"),
+        *ActorName);
     CacheEntry = RuntimeControlRigCache.Find(CacheKey);
     if (CacheEntry && CacheEntry->IsValid()) {
         UControlRig* ResultControlRig = CacheEntry->GetControlRig();
         if (ResultControlRig) {
             UE_LOG(LogTemp, Warning,
-                   TEXT("GetControlRig: Successfully retrieved ControlRig after re-query for Actor %s"),
+                   TEXT("GetControlRig: Successfully retrieved ControlRig "
+                        "after re-query for Actor %s"),
                    *ActorName);
         } else {
             UE_LOG(LogTemp, Warning,
-                   TEXT("GetControlRig: ControlRig still null after re-query for Actor %s"),
+                   TEXT("GetControlRig: ControlRig still null after re-query "
+                        "for Actor %s"),
                    *ActorName);
         }
         return ResultControlRig;
     } else {
         UE_LOG(LogTemp, Error,
-               TEXT("GetControlRig: Still NO valid cache entry after registration for Actor %s"),
+               TEXT("GetControlRig: Still NO valid cache entry after "
+                    "registration for Actor %s"),
                *ActorName);
     }
-    
+
     return nullptr;
 }
 
 UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {
-    UE_LOG(LogTemp, Warning,
-           TEXT("GetControlRigBlueprint: Calling for Actor %s"),
-           *Actor->GetName());
-    
     UControlRig* ControlRig = GetControlRig(Actor, Sequence);
     if (!ControlRig) {
         UE_LOG(LogTemp, Error,
-               TEXT("GetControlRigBlueprint: GetControlRig returned null for Actor %s"),
+               TEXT("GetControlRigBlueprint: GetControlRig returned null for "
+                    "Actor %s"),
                *Actor->GetName());
         return nullptr;
     }
@@ -114,14 +116,17 @@ UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
     UClass* ControlRigClass = ControlRig->GetClass();
     if (ControlRigClass) {
         UObject* ClassGeneratedBy = ControlRigClass->ClassGeneratedBy;
-        UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(ClassGeneratedBy);
+        UControlRigBlueprint* Blueprint =
+            Cast<UControlRigBlueprint>(ClassGeneratedBy);
         if (Blueprint) {
             return Blueprint;
-        } 
+        }
     } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("GetControlRigBlueprint: ControlRigClass is null for Actor %s"),
-               *Actor->GetName());
+        UE_LOG(
+            LogTemp, Error,
+            TEXT(
+                "GetControlRigBlueprint: ControlRigClass is null for Actor %s"),
+            *Actor->GetName());
     }
 
     return nullptr;
@@ -140,7 +145,8 @@ void UControlRigCacheSubsystem::RegisterControlRig(
     FControlRigCacheKey CacheKey(ActorName, Sequence);
 
     UE_LOG(LogTemp, Warning,
-           TEXT("RegisterControlRig: Starting registration for Actor %s, ControlRig %s"),
+           TEXT("RegisterControlRig: Starting registration for Actor %s, "
+                "ControlRig %s"),
            *ActorName, *ControlRig->GetName());
 
     // 查找 ControlRig 绑定代理
@@ -156,7 +162,8 @@ void UControlRigCacheSubsystem::RegisterControlRig(
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("RegisterControlRig: Found valid proxy, creating cache entry for Actor %s"),
+           TEXT("RegisterControlRig: Found valid proxy, creating cache entry "
+                "for Actor %s"),
            *ActorName);
 
     FControlRigRuntimeCacheEntry CacheEntry(ControlRigProxy);
@@ -415,17 +422,19 @@ void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
     UControlRigBlueprint* Blueprint = nullptr;
 
     UE_LOG(LogTemp, Warning,
-           TEXT("TriggerRegistrationIfNeeded: Calling FindControlRigFromActorAndSequence for Actor %s"),
+           TEXT("TriggerRegistrationIfNeeded: Calling "
+                "FindControlRigFromActorAndSequence for Actor %s"),
            *ActorName);
 
     if (FindControlRigFromActorAndSequence(Actor, Sequence, ControlRig,
                                            Blueprint)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("TriggerRegistrationIfNeeded: FindControlRigFromActorAndSequence SUCCESS for Actor %s, ControlRig=%s, Blueprint=%s"),
-               *ActorName, 
-               ControlRig ? *ControlRig->GetName() : TEXT("NULL"),
+               TEXT("TriggerRegistrationIfNeeded: "
+                    "FindControlRigFromActorAndSequence SUCCESS for Actor %s, "
+                    "ControlRig=%s, Blueprint=%s"),
+               *ActorName, ControlRig ? *ControlRig->GetName() : TEXT("NULL"),
                Blueprint ? *Blueprint->GetName() : TEXT("NULL"));
-        
+
         RegisterControlRig(Actor, Sequence, ControlRig, Blueprint);
         UE_LOG(LogTemp, Log,
                TEXT("TriggerRegistrationIfNeeded: Successfully registered "
@@ -433,7 +442,8 @@ void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
                *ActorName);
     } else {
         UE_LOG(LogTemp, Error,
-               TEXT("TriggerRegistrationIfNeeded: FindControlRigFromActorAndSequence FAILED for Actor %s"),
+               TEXT("TriggerRegistrationIfNeeded: "
+                    "FindControlRigFromActorAndSequence FAILED for Actor %s"),
                *ActorName);
         UE_LOG(LogTemp, Error,
                TEXT("TriggerRegistrationIfNeeded: ControlRig=%s, Blueprint=%s"),

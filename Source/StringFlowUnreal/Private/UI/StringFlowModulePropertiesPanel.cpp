@@ -156,16 +156,20 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
         5.0f, 15.0f, 5.0f,
         5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("File Paths"))];
 
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRow(
-        TEXT("IO File Path"), StringFlow->IOFilePath, TEXT("IOFilePath"),
-        TEXT("Avatar Files (*.avatar)|*.avatar"), 
-        FSimpleDelegate::CreateLambda([this, StringFlow]() {
-            if (StringFlowActor.IsValid()) {
-                StringFlowActor->Modify();
-            }
-        }),
-        true)];  // bAllowCreateNew = true
+    // IOFilePath comes from base class AInstrumentBase
+    // 直接创建文件路径编辑UI，确保路径能被正确保存
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+            TEXT("IO File Path"), StringFlow->IOFilePath, TEXT("IOFilePath"),
+            TEXT(".avatar"),
+            [this](const FString& NewPath) {
+                if (StringFlowActor.IsValid()) {
+                    StringFlowActor->Modify();
+                    StringFlowActor->IOFilePath = NewPath;
+                    UE_LOG(LogTemp, Warning, TEXT("StringFlow: IO File Path updated to: %s"), *NewPath);
+                }
+            },
+            true)];  // bAllowCreateNew = true
 
     // Initialization Operations
     Container->AddSlot().AutoHeight().Padding(

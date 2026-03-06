@@ -44,12 +44,12 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringInstrument Started =========="));
 
-    // 初始化弦乐器同步关系（controller_root <-> violin_root）
-    StringFlowActor->InitializeStringInstrumentSync();
-
     // 注册ControlRig
     StringFlowActor->TriggerControlRigReregistration(
         TEXT("Reregist while InitializeStringInstrument"));
+
+    // 初始化弦乐器同步关系（controller_root <-> violin_root）
+    StringFlowActor->InitializeStringInstrumentSync();
 
     // 清理现有的动画数据
     CleanupExistingStringAnimations(StringFlowActor);

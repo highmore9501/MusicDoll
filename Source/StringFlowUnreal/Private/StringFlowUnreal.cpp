@@ -12,6 +12,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "ControlRigCacheSubsystem.h"
+#include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Editor/EditorEngine.h"
 #include "Engine/Engine.h"
@@ -22,6 +23,7 @@
 #include "ISequencer.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
+#include "InstrumentMorphTargetUtility.h"
 #include "LevelEditorSequencerIntegration.h"
 #include "LevelSequenceActor.h"
 #include "MoviePipelineQueueSubsystem.h"
@@ -43,7 +45,7 @@ AStringFlowUnreal::AStringFlowUnreal() {
     BowUpAxis = FVector(0.0f, 0.0f, 1.0f);            // Default: Z axis (up)
     bEnableRealtimeSync = false;
 
-    CachedStringInstrumentRelativeTransform = FTransform::Identity;    
+    CachedStringInstrumentRelativeTransform = FTransform::Identity;
 
     // 初始化缓存的初始化值数组，共4个元素
     CachedInitializationValues.SetNum(4);
@@ -975,30 +977,112 @@ void AStringFlowUnreal::SyncInstrumentTransforms() {
     if (StringInstrument && Bow && SkeletalMeshActor) {
         // 只有当所有组件都有效时才执行同步
         UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    } 
+    }
 }
 
 bool AStringFlowUnreal::InitializeStringInstrumentSync() {
     if (!SkeletalMeshActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("InitializeStringInstrumentSync: SkeletalMeshActor is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("InitializeStringInstrumentSync: SkeletalMeshActor is null"));
         return false;
     }
 
     if (!StringInstrument) {
-        UE_LOG(LogTemp, Error,
-               TEXT("InitializeStringInstrumentSync: StringInstrument is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("InitializeStringInstrumentSync: StringInstrument is null"));
         return false;
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeStringInstrumentSync Started =========="));
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== InitializeStringInstrumentSync Started =========="));
+
+    // Step 2: 检查各骨骼的ControlRig Blueprint中是否存在所需的control
+
+    // --- 检查 SkeletalMeshActor 的 controller_root ---
+    UControlRigBlueprint* PerformerBlueprint =
+        GetCachedControlRigBlueprint(TEXT("Performer"));
+    if (!PerformerBlueprint || !PerformerBlueprint->Hierarchy ||
+        !PerformerBlueprint->Hierarchy->Contains(FRigElementKey(
+            TEXT("controller_root"), ERigElementType::Control))) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("InitializeStringInstrumentSync: 'controller_root' does not "
+                 "exist in SkeletalMeshActor's ControlRig Blueprint. "
+                 "Please create it manually."));
+        return false;
+    }
+
+    // --- 检查 StringInstrument 的 violin_root，不存在则尝试创建 ---
+    UControlRigBlueprint* InstrumentBlueprint =
+        GetCachedControlRigBlueprint(TEXT("StringInstrument"));
+    if (InstrumentBlueprint) {
+        if (!InstrumentBlueprint->Hierarchy ||
+            !InstrumentBlueprint->Hierarchy->Contains(FRigElementKey(
+                TEXT("violin_root"), ERigElementType::Control))) {
+            UE_LOG(
+                LogTemp, Warning,
+                TEXT("InitializeStringInstrumentSync: 'violin_root' not found "
+                     "in StringInstrument's ControlRig Blueprint. Attempting "
+                     "to create it."));
+            if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
+                    InstrumentBlueprint, TEXT("violin_root"))) {
+                UE_LOG(LogTemp, Error,
+                       TEXT("InitializeStringInstrumentSync: Failed to create "
+                            "'violin_root' in StringInstrument's ControlRig "
+                            "Blueprint."));
+                return false;
+            }
+            UE_LOG(LogTemp, Warning,
+                   TEXT("InitializeStringInstrumentSync: 'violin_root' created "
+                        "successfully."));
+        }
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeStringInstrumentSync: Could not retrieve "
+                    "ControlRig Blueprint for StringInstrument."));
+        return false;
+    }
+
+    // --- 检查 Bow 的 bow_ctrl，不存在则尝试创建 ---
+    if (Bow) {
+        UControlRigBlueprint* BowBlueprint =
+            GetCachedControlRigBlueprint(TEXT("Bow"));
+        if (BowBlueprint) {
+            if (!BowBlueprint->Hierarchy ||
+                !BowBlueprint->Hierarchy->Contains(FRigElementKey(
+                    TEXT("bow_ctrl"), ERigElementType::Control))) {
+                UE_LOG(
+                    LogTemp, Warning,
+                    TEXT("InitializeStringInstrumentSync: 'bow_ctrl' not found "
+                         "in Bow's ControlRig Blueprint. Attempting to create "
+                         "it."));
+                if (!FControlRigCreationUtility::CreateControl(
+                        BowBlueprint, TEXT("bow_ctrl"), TEXT(""))) {
+                    UE_LOG(
+                        LogTemp, Error,
+                        TEXT("InitializeStringInstrumentSync: Failed to create "
+                             "'bow_ctrl' in Bow's ControlRig Blueprint."));
+                    return false;
+                }
+                UE_LOG(LogTemp, Warning,
+                       TEXT("InitializeStringInstrumentSync: 'bow_ctrl' "
+                            "created successfully."));
+            }
+        } else {
+            UE_LOG(LogTemp, Error,
+                   TEXT("InitializeStringInstrumentSync: Could not retrieve "
+                        "ControlRig Blueprint for Bow."));
+            return false;
+        }
+    }
 
     // 计算并缓存相对变换矩阵
     if (!FInstrumentControlRigUtility::InitializeControlRelationship(
-            SkeletalMeshActor, TEXT("controller_root"),
-            StringInstrument, TEXT("violin_root"),
-            CachedStringInstrumentRelativeTransform)) {
+            SkeletalMeshActor, TEXT("controller_root"), StringInstrument,
+            TEXT("violin_root"), CachedStringInstrumentRelativeTransform)) {
         UE_LOG(LogTemp, Error,
                TEXT("InitializeStringInstrumentSync: Failed to initialize "
                     "control relationship"));
@@ -1008,8 +1092,9 @@ bool AStringFlowUnreal::InitializeStringInstrumentSync() {
     UE_LOG(LogTemp, Warning,
            TEXT("InitializeStringInstrumentSync: Control relationship "
                 "initialized and cached successfully"));
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeStringInstrumentSync Completed =========="));
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== InitializeStringInstrumentSync Completed =========="));
 
     return true;
 }
@@ -1129,34 +1214,45 @@ UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
     return ControlRigBlueprint;
 }
 
-void AStringFlowUnreal::TriggerControlRigReregistration(const FString& ErrorMessage) {
-    UE_LOG(LogTemp, Warning, 
-           TEXT("TriggerControlRigReregistration: %s, triggering ControlRig re-registration for all components"), 
+void AStringFlowUnreal::TriggerControlRigReregistration(
+    const FString& ErrorMessage) {
+    UE_LOG(LogTemp, Warning,
+           TEXT("TriggerControlRigReregistration: %s, triggering ControlRig "
+                "re-registration for all components"),
            *ErrorMessage);
-    
+
     // 触发所有组件的ControlRig重新注册
     if (GEngine) {
         UControlRigCacheSubsystem* CacheSubsystem =
             GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
         if (CacheSubsystem) {
-            ULevelSequence* CurrentSequence = UInstrumentAnimationUtility::GetCurrentLevelSequence();
+            ULevelSequence* CurrentSequence =
+                UInstrumentAnimationUtility::GetCurrentLevelSequence();
             if (CurrentSequence) {
                 // 为演奏者组件重新注册
                 if (SkeletalMeshActor) {
-                    CacheSubsystem->TriggerRegistrationIfNeeded(SkeletalMeshActor, CurrentSequence);
-                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for Performer component"));
+                    CacheSubsystem->TriggerRegistrationIfNeeded(
+                        SkeletalMeshActor, CurrentSequence);
+                    UE_LOG(LogTemp, Log,
+                           TEXT("Re-registering ControlRig for Performer "
+                                "component"));
                 }
-                
+
                 // 为乐器组件重新注册
                 if (StringInstrument) {
-                    CacheSubsystem->TriggerRegistrationIfNeeded(StringInstrument, CurrentSequence);
-                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for StringInstrument component"));
+                    CacheSubsystem->TriggerRegistrationIfNeeded(
+                        StringInstrument, CurrentSequence);
+                    UE_LOG(LogTemp, Log,
+                           TEXT("Re-registering ControlRig for "
+                                "StringInstrument component"));
                 }
-                
+
                 // 为琴弓组件重新注册
                 if (Bow) {
-                    CacheSubsystem->TriggerRegistrationIfNeeded(Bow, CurrentSequence);
-                    UE_LOG(LogTemp, Log, TEXT("Re-registering ControlRig for Bow component"));
+                    CacheSubsystem->TriggerRegistrationIfNeeded(
+                        Bow, CurrentSequence);
+                    UE_LOG(LogTemp, Log,
+                           TEXT("Re-registering ControlRig for Bow component"));
                 }
             }
         }
