@@ -1,4 +1,4 @@
-using UnrealBuildTool;
+﻿using UnrealBuildTool;
 
 public class FretDanceUnreal : ModuleRules
 {
@@ -27,6 +27,7 @@ public class FretDanceUnreal : ModuleRules
                 "Slate",
                 "SlateCore",
                 "AssetRegistry",
+                "MovieRenderPipelineCore",
                 "MusicDollCommon"
             }
         );

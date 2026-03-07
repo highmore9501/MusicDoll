@@ -298,7 +298,7 @@ void SKeyRippleModuleOperationsPanel::CreateOperationWidgets() {
                       }
 
                       FString FilePath;
-                      if (FCommonPanelUtility::BrowseForFile(TEXT(".json"),
+                      if (FCommonPanelUtility::BrowseForFile(TEXT(".keyripple"),
                                                              FilePath, false)) {
                           if (AnimationFilePathBox.IsValid()) {
                               AnimationFilePathBox->SetText(

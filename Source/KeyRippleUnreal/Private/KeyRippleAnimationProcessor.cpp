@@ -1,9 +1,9 @@
 ﻿#include "KeyRippleAnimationProcessor.h"
 
 #include "ControlRigCacheSubsystem.h"
-#include "InstrumentAnimationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentAnimationUtility.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "KeyRipplePianoProcessor.h"
 
@@ -227,9 +227,6 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(
         LevelSequence, ControlRigInstance, ControlKeyframeData, Settings);
 
-    // 11. 标记为已修改
-    LevelSequence->MarkPackageDirty();
-
     UE_LOG(
         LogTemp, Warning,
         TEXT("========== GeneratePerformerAnimationDirect Summary =========="));
@@ -241,29 +238,6 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
     UE_LOG(LogTemp, Warning,
            TEXT("========== GeneratePerformerAnimationDirect Completed "
                 "=========="));
-}
-
-// 批量插入控制关键帧 - 现在直接调用通用方法
-void UKeyRippleAnimationProcessor::BatchInsertControlRigKeys(
-    ULevelSequence* LevelSequence, UControlRig* ControlRigInstance,
-    const TMap<FString, TArray<FControlKeyframe>>& ControlKeyframeData) {
-    if (!LevelSequence) {
-        UE_LOG(LogTemp, Error, TEXT("LevelSequence is null"));
-        return;
-    }
-
-    if (!ControlRigInstance) {
-        UE_LOG(LogTemp, Error, TEXT("ControlRigInstance is null"));
-        return;
-    }
-
-    FBatchInsertKeyframesSettings Settings;
-    Settings.FramePadding = 300;
-    Settings.SpecialControllerRules.Add(TEXT("Tar_"), true);
-
-    // 调用通用方法
-    UInstrumentAnimationUtility::BatchInsertControlRigKeys(
-        LevelSequence, ControlRigInstance, ControlKeyframeData, Settings);
 }
 
 bool UKeyRippleAnimationProcessor::ParseKeyRippleFile(

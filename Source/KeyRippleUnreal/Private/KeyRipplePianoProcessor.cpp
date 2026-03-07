@@ -142,7 +142,7 @@ void UKeyRipplePianoProcessor::InitPiano(AKeyRippleUnreal* KeyRippleActor) {
 
     UE_LOG(LogTemp, Warning, TEXT("========== InitPiano Started =========="));
 
-    // 🔧 新增：清理现有的动画数据
+    // 清理现有的动画数据
     CleanupExistingPianoAnimations(KeyRippleActor);
 
     // 更新钢琴材质
@@ -632,10 +632,11 @@ int32 UKeyRipplePianoProcessor::GenerateInstrumentMaterialAnimation(
         if (KeyNumber >= 0) {
             // 创建材质参数关键帧数据
             FMaterialParameterKeyframeData ParamData;
-            ParamData.ParameterName = TEXT("Pressed");  // 固定使用Pressed参数
+            ParamData.ParameterName = TEXT("Pressed");  // 固定使用 Pressed 参数
             ParamData.FrameNumbers = FrameNumbers;
 
-            // 转换FloatValue到普通float数组
+            // 从 FMovieSceneFloatValue 提取 float 值
+            // 注意：FMovieSceneFloatValue::Value 是实际的 float 值
             ParamData.Values.Reserve(FrameValues.Num());
             for (const FMovieSceneFloatValue& FloatValue : FrameValues) {
                 ParamData.Values.Add(FloatValue.Value);
@@ -860,6 +861,27 @@ int32 UKeyRipplePianoProcessor::GenerateInstrumentMaterialAnimation(
     LevelSequence->MarkPackageDirty();
 
 #if WITH_EDITOR
+    // 先刷新序列，再通知数据变更，最后再刷新 UI
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                ActiveLevelSequence, ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                UE_LOG(LogTemp, Warning,
+                       TEXT("[COMMON] Notified sequencer of data change to "
+                            "trigger template recompilation"));
+            }
+        }
+    }
+
+    // 刷新 UI 以显示更新
     ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
 #endif
 

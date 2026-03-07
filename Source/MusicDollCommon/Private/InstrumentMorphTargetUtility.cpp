@@ -7,10 +7,10 @@
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
+#include "ControlRigCreationUtility.h"
 #include "Engine/SkeletalMesh.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
-#include "ControlRigCreationUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "LevelSequence.h"
@@ -21,7 +21,7 @@
 #include "Rigs/RigHierarchy.h"
 #include "Rigs/RigHierarchyController.h"
 #include "Sequencer/ControlRigSequencerHelpers.h"
-#include "Sequencer/MovieSceneControlRigParameterTrack.h"
+#include "Sequencer/MovieSceneControlRigParameterSection.h"
 
 bool UInstrumentMorphTargetUtility::GetMorphTargetNames(
     USkeletalMeshComponent* SkeletalMeshComp, TArray<FString>& OutNames) {
@@ -107,8 +107,8 @@ bool UInstrumentMorphTargetUtility::EnsureRootControlExists(
                 "exist, attempting to create it"),
            *RootControlName);
 
-    if (!FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, RootControlName, TEXT(""))) {
+    if (!FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                   RootControlName, TEXT(""))) {
         UE_LOG(LogTemp, Error,
                TEXT("[InstrumentMorphTargetUtility] Root control '%s' does not "
                     "exist in hierarchy"),
@@ -299,7 +299,6 @@ bool UInstrumentMorphTargetUtility::ProcessMorphTargetKeyframeData(
 
         // 完善FMorphTargetKeyframeData的追加逻辑
         if (MorphTargetKeyframeData.Contains(MorphTargetName)) {
-            // 追加数据而不是替换 - 这是关键修复
             FMorphTargetKeyframeData& ExistingData =
                 MorphTargetKeyframeData[MorphTargetName];
 
@@ -350,7 +349,15 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(
         return 0;
     }
 
-    FMovieSceneChannelProxy& ChannelProxy = Section->GetChannelProxy();
+    UMovieSceneControlRigParameterSection* ParameterSection =
+        Cast<UMovieSceneControlRigParameterSection>(Section);
+    if (!ParameterSection) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Section is not a "
+                    "UMovieSceneControlRigParameterSection"));
+        return 0;
+    }
+
     int32 SuccessCount = 0;
 
     for (const FMorphTargetKeyframeData& Data : KeyframeData) {
@@ -378,30 +385,22 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(
             continue;
         }
 
-        // 查找对应的Float Channel
-        FName ChannelName(*Data.MorphTargetName);
-        TMovieSceneChannelHandle<FMovieSceneFloatChannel> ChannelHandle =
-            ChannelProxy.GetChannelByName<FMovieSceneFloatChannel>(ChannelName);
+        FName ChannelFName(*Data.MorphTargetName);
 
-        FMovieSceneFloatChannel* FloatChannel = ChannelHandle.Get();
-
-        if (!FloatChannel) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("[InstrumentMorphTargetUtility] Channel '%s' not found "
-                        "after all search methods"),
-                   *Data.MorphTargetName);
-            continue;
+        // 确保 scalar parameter 存在（若已存在则 bReconstructChannel=false
+        // 跳过重建）
+        if (!ParameterSection->HasScalarParameter(ChannelFName)) {
+            ParameterSection->AddScalarParameter(ChannelFName,
+                                                 TOptional<float>(0.0f), true);
         }
 
-        // 转换Values为FMovieSceneFloatValue数组
-        TArray<FMovieSceneFloatValue> FloatValues;
-        FloatValues.Reserve(Data.Values.Num());
-        for (float Value : Data.Values) {
-            FloatValues.Add(FMovieSceneFloatValue(Value));
+        // 逐帧写入，走 GetInterpolationMode + AddKeyToChannel
+        // 路径，与材质动画对齐
+        for (int32 i = 0; i < Data.FrameNumbers.Num(); ++i) {
+            ParameterSection->AddScalarParameterKey(
+                ChannelFName, Data.FrameNumbers[i], Data.Values[i],
+                EMovieSceneKeyInterpolation::Linear);
         }
-
-        // 批量写入关键帧
-        FloatChannel->AddKeys(Data.FrameNumbers, FloatValues);
 
         SuccessCount++;
 
@@ -495,7 +494,7 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
         return 0;
     }
 
-    // 查找或创建Control Rig轨道
+    // 查找或创建 Control Rig 轨道
     UMovieSceneControlRigParameterTrack* ControlRigTrack =
         FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
                                                          ControlRigInstance);
@@ -507,17 +506,26 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
         return 0;
     }
 
-    // 清理所有现有Section
+    // 删除所有现有 Sections 并创建新的（与材质动画处理保持一致）
     TArray<UMovieSceneSection*> AllExistingSections =
         ControlRigTrack->GetAllSections();
 
-    for (UMovieSceneSection* ExistingSection : AllExistingSections) {
-        if (ExistingSection) {
-            ControlRigTrack->RemoveSection(*ExistingSection);
+    if (AllExistingSections.Num() > 0) {
+        // 删除所有现有 Section 以确保完全清理
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT(
+                "[InstrumentMorphTargetUtility] Removing %d existing sections"),
+            AllExistingSections.Num());
+
+        for (UMovieSceneSection* Section : AllExistingSections) {
+            if (Section) {
+                ControlRigTrack->RemoveSection(*Section);
+            }
         }
     }
 
-    // 创建新的Section
+    // 创建新的 Section
     UMovieSceneSection* Section = ControlRigTrack->CreateNewSection();
     if (!Section) {
         UE_LOG(
@@ -528,6 +536,10 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
     }
 
     ControlRigTrack->AddSection(*Section);
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentMorphTargetUtility] Created new section for morph "
+                "target animation"));
 
     // 计算帧数范围
     FFrameNumber MinFrame(MAX_int32);
@@ -558,11 +570,35 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
                MinFrame.Value, (MaxFrame + 1).Value);
     }
 
-    // 标记为修改并刷新
+    // 对 Section 和 Track 调用 Modify 确保更改被追踪
+    Section->Modify();
+    ControlRigTrack->Modify();
     MovieScene->Modify();
     LevelSequence->MarkPackageDirty();
 
 #if WITH_EDITOR
+    // 先刷新序列，再通知数据变更以触发完整的评估模板重建
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                ActiveLevelSequence, ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                UE_LOG(
+                    LogTemp, Warning,
+                    TEXT("[InstrumentMorphTargetUtility] Notified sequencer of "
+                         "data change to trigger template recompilation"));
+            }
+        }
+    }
+
+    // 刷新 UI 以显示更新
     ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
 #endif
 

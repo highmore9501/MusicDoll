@@ -3,12 +3,12 @@
 #include "Animation/SkeletalMeshActor.h"
 #include "Channels/MovieSceneFloatChannel.h"
 #include "ControlRigCacheSubsystem.h"
-#include "InstrumentControlRigUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EngineUtils.h"
 #include "ISequencer.h"
 #include "ISequencerModule.h"
+#include "InstrumentControlRigUtility.h"
 #include "LevelEditorSequencerIntegration.h"
 #include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
@@ -425,6 +425,53 @@ int32 UInstrumentAnimationUtility::WriteMaterialParameterKeyframes(
         SuccessCount);
 
     return SuccessCount;
+}
+
+// ========== 辅助方法：处理材质参数关键帧写入后的同步操作 ==========
+
+void UInstrumentAnimationUtility::SyncMaterialParameterKeyframesAfterWrite(
+    UMovieSceneComponentMaterialParameterSection* Section,
+    UMovieSceneComponentMaterialTrack* Track, ULevelSequence* LevelSequence) {
+#if WITH_EDITOR
+    if (!Section || !Track || !LevelSequence) {
+        return;
+    }
+
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        return;
+    }
+
+    // 对 Section、Track 和 MovieScene 都调用 Modify 确保更改被追踪
+    Section->Modify();
+    Track->Modify();
+    MovieScene->Modify();
+    LevelSequence->MarkPackageDirty();
+
+    // 先刷新序列，再通知数据变更，最后再刷新 UI
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                UE_LOG(
+                    LogTemp, Warning,
+                    TEXT("[InstrumentAnimationUtility] Notified sequencer of "
+                         "data change to trigger template recompilation"));
+            }
+        }
+    }
+
+    // 刷新 UI 以显示更新
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+#endif
 }
 
 // ========== 组件绑定管理 ==========
@@ -874,25 +921,28 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                                                          ControlRigInstance);
 
     if (!TargetControlRigTrack) {
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("ControlRigParameterTrack not found for ControlRig: %s, attempting to create one"),
-            *ControlRigInstance->GetName());
+        UE_LOG(LogTemp, Warning,
+               TEXT("ControlRigParameterTrack not found for ControlRig: %s, "
+                    "attempting to create one"),
+               *ControlRigInstance->GetName());
 
         // 尝试创建新的 Control Rig Parameter Track
-        TargetControlRigTrack = MovieScene->AddTrack<UMovieSceneControlRigParameterTrack>();
+        TargetControlRigTrack =
+            MovieScene->AddTrack<UMovieSceneControlRigParameterTrack>();
         if (TargetControlRigTrack) {
             TargetControlRigTrack->Modify();
             // 使用 CreateControlRigSection 关联 ControlRig 并创建 Section
-            TargetControlRigTrack->CreateControlRigSection(FFrameNumber(0), ControlRigInstance, false);
+            TargetControlRigTrack->CreateControlRigSection(
+                FFrameNumber(0), ControlRigInstance, false);
             UE_LOG(LogTemp, Warning,
-                   TEXT("Successfully created new ControlRigParameterTrack for ControlRig: %s"),
+                   TEXT("Successfully created new ControlRigParameterTrack for "
+                        "ControlRig: %s"),
                    *ControlRigInstance->GetName());
         } else {
-            UE_LOG(
-                LogTemp, Error,
-                TEXT("Failed to create ControlRigParameterTrack for ControlRig: %s"),
-                *ControlRigInstance->GetName());
+            UE_LOG(LogTemp, Error,
+                   TEXT("Failed to create ControlRigParameterTrack for "
+                        "ControlRig: %s"),
+                   *ControlRigInstance->GetName());
             return;
         }
     }
@@ -1067,22 +1117,37 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                MinFrame.Value, MaxFrame.Value);
     }
 
+    // 对 Section、Track 和 MovieScene 都调用 Modify 确保更改被追踪
+    Section->Modify();
+    TargetControlRigTrack->Modify();
     MovieScene->Modify();
     LevelSequence->MarkPackageDirty();
+
 #if WITH_EDITOR
-    // 通知Sequencer数据已变更，强制重新编译评估模板
-    // 这是让新写入的关键帧立即生效的关键步骤
+    // 先刷新序列，再通知数据变更，最后再刷新 UI
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
     {
         TSharedPtr<ISequencer> ActiveSequencer = nullptr;
         ULevelSequence* ActiveLevelSequence = nullptr;
-        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence, ActiveSequencer)) {
-            if (ActiveSequencer.IsValid() && ActiveLevelSequence == LevelSequence) {
-                ActiveSequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                UE_LOG(LogTemp, Warning,
+                       TEXT("[COMMON] Notified sequencer of data change to "
+                            "trigger template recompilation"));
             }
         }
     }
+
+    // 刷新 UI 以显示更新
     ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
 #endif
+
     UE_LOG(LogTemp, Warning,
            TEXT("[COMMON] Batch keyframe insertion finished."));
 }
@@ -1182,26 +1247,45 @@ void UInstrumentAnimationUtility::ClearControlRigKeyframes(
            TEXT("[COMMON] Cleared %d channels from Control Rig track"),
            ClearedChannelsCount);
 
+    // 对 Section 和 Track 调用 Modify 确保更改被追踪
+    for (UMovieSceneSection* Section : AllSections) {
+        if (Section) {
+            Section->Modify();
+        }
+    }
+    TargetTrack->Modify();
+
     LevelSequence->MarkPackageDirty();
 
 #if WITH_EDITOR
-    // 通知Sequencer数据已变更，强制重新编译评估模板
+    // 先刷新序列，再通知数据变更，最后再刷新 UI
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
     {
         TSharedPtr<ISequencer> ActiveSequencer = nullptr;
         ULevelSequence* ActiveLevelSequence = nullptr;
-        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence, ActiveSequencer)) {
-            if (ActiveSequencer.IsValid() && ActiveLevelSequence == LevelSequence) {
-                ActiveSequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                UE_LOG(LogTemp, Warning,
+                       TEXT("[COMMON] Notified sequencer of data change to "
+                            "trigger template recompilation"));
             }
         }
     }
+
+    // 刷新 UI 以显示更新
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
 #endif
 
     UE_LOG(
         LogTemp, Warning,
         TEXT("[COMMON] Control Rig keyframes cleared for specified controls"));
 }
-
 // ========== 控制器验证 ==========
 
 FString UInstrumentAnimationUtility::ValidateControllerName(

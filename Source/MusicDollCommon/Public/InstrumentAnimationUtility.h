@@ -272,6 +272,24 @@ public:
         UMovieSceneComponentMaterialParameterSection* Section,
         const TArray<FMaterialParameterKeyframeData>& KeyframeData);
 
+    /**
+     * 同步材质参数关键帧写入后的操作
+     * 
+     * 在WriteMaterialParameterKeyframes后调用此方法以确保Sequencer正确更新评估模板。
+     * 包括调用Modify()、MarkPackageDirty()以及通知Sequencer数据变更。
+     * 
+     * @param Section 材质参数Section
+     * @param Track 材质轨道
+     * @param LevelSequence Level Sequence
+     * 
+     * @note 此方法必须在编辑器中调用，运行时无效
+     * @note 自动处理Sequencer的刷新和模板重建
+     */
+    static void SyncMaterialParameterKeyframesAfterWrite(
+        UMovieSceneComponentMaterialParameterSection* Section,
+        UMovieSceneComponentMaterialTrack* Track,
+        ULevelSequence* LevelSequence);
+
     // ===== 绑定查找与管理 =====
 
     /**

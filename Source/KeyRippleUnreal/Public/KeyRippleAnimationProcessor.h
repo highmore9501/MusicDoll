@@ -73,15 +73,4 @@ class KEYRIPPLEUNREAL_API UKeyRippleAnimationProcessor : public UObject {
     static void ClearControlRigKeyframes(ULevelSequence* LevelSequence,
                                          UControlRig* ControlRigInstance,
                                          AKeyRippleUnreal* KeyRippleActor);
-
-    // ===== 向后兼容性包装方法 =====
-    // 以下方法现在直接调用 Common 模块的通用方法，仅用于向后兼容
-
-    /**
-     * 批量插入Control Rig关键帧
-     * 已弃用：请使用 UInstrumentAnimationUtility::BatchInsertControlRigKeys()
-     */
-    static void BatchInsertControlRigKeys(
-        ULevelSequence* LevelSequence, UControlRig* ControlRigInstance,
-        const TMap<FString, TArray<FControlKeyframe>>& ControlKeyframeData);
 };

@@ -33,6 +33,7 @@ public class KeyRippleUnreal : ModuleRules
                 "SlateCore",
                 "AssetTools",
                 "AssetRegistry",
+                "MovieRenderPipelineCore",
                 "MusicDollCommon"
             }
         );
