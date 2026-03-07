@@ -759,7 +759,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     ExportRecordersCategory(TEXT("right_finger_recorders"));
     ExportRecordersCategory(TEXT("other_recorders"));
 
-    // 导出辅助线（不包括位置）
+    // 导出辅助线
     TSharedPtr<FJsonObject> GuideLinesObj =
         CategoryObjects[TEXT("guide_lines_rotations")];
     for (const auto& GuidePair : GuideLines) {
@@ -768,7 +768,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
             RecorderTransforms.Find(GuideLineName);
         if (Transform) {
             TSharedPtr<FJsonObject> RecorderObj =
-                CreateRecorderObject(Transform, false);
+                CreateRecorderObject(Transform, true);
             GuideLinesObj->SetObjectField(*GuideLineName, RecorderObj);
         }
     }

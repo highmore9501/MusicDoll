@@ -685,6 +685,15 @@ struct FStringFlowControlRigHelpers {
             SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
                                  RecorderName, SavedCount, FailedCount);
         }
+
+        // 保存 GuideLines 控制器
+        for (const auto& GuidePair : StringFlowActor->GuideLines) {
+            FString ControlName = GuidePair.Value;
+            FString RecorderName = GuidePair.Value;
+
+            SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
+                                 RecorderName, SavedCount, FailedCount);
+        }
     }
 
     static void LoadStatelessOtherControllers(

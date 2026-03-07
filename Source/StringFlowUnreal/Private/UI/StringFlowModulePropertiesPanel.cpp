@@ -158,18 +158,20 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
 
     // IOFilePath comes from base class AInstrumentBase
     // 直接创建文件路径编辑UI，确保路径能被正确保存
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
-            TEXT("IO File Path"), StringFlow->IOFilePath, TEXT("IOFilePath"),
-            TEXT(".avatar"),
-            [this](const FString& NewPath) {
-                if (StringFlowActor.IsValid()) {
-                    StringFlowActor->Modify();
-                    StringFlowActor->IOFilePath = NewPath;
-                    UE_LOG(LogTemp, Warning, TEXT("StringFlow: IO File Path updated to: %s"), *NewPath);
-                }
-            },
-            true)];  // bAllowCreateNew = true
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("IO File Path"), StringFlow->IOFilePath, TEXT("IOFilePath"),
+        TEXT(".violinist"),
+        [this](const FString& NewPath) {
+            if (StringFlowActor.IsValid()) {
+                StringFlowActor->Modify();
+                StringFlowActor->IOFilePath = NewPath;
+                UE_LOG(LogTemp, Warning,
+                       TEXT("StringFlow: IO File Path updated to: %s"),
+                       *NewPath);
+            }
+        },
+        true)];  // bAllowCreateNew = true
 
     // Initialization Operations
     Container->AddSlot().AutoHeight().Padding(
@@ -274,29 +276,34 @@ void SStringFlowModulePropertiesPanel::OnInstrumentTypeChanged(
 
 FReply SStringFlowModulePropertiesPanel::OnCheckObjectsStatus() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for check objects status"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for check objects status"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::CheckObjectsStatus(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Check Objects Status operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Check Objects Status operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModulePropertiesPanel::OnSetupAllObjects() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for setup all objects"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for setup all objects"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::SetupAllObjects(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Setup All Objects operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Setup All Objects operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModulePropertiesPanel::OnExportRecorderInfo() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for export recorder info"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for export recorder info"));
         return FReply::Handled();
     }
 
@@ -306,13 +313,15 @@ FReply SStringFlowModulePropertiesPanel::OnExportRecorderInfo() {
     }
 
     StringFlowActor->ExportRecorderInfo(StringFlowActor->IOFilePath);
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Export Recorder Info operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Export Recorder Info operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModulePropertiesPanel::OnImportRecorderInfo() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for import recorder info"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for import recorder info"));
         return FReply::Handled();
     }
 
@@ -322,7 +331,8 @@ FReply SStringFlowModulePropertiesPanel::OnImportRecorderInfo() {
     }
 
     StringFlowActor->ImportRecorderInfo(StringFlowActor->IOFilePath);
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Import Recorder Info operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Import Recorder Info operation triggered"));
     return FReply::Handled();
 }
 #undef LOCTEXT_NAMESPACE

@@ -222,49 +222,7 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
         5.0f, 0.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
         TEXT("Animation File Path"))];
 
-    TSharedPtr<SEditableTextBox> AnimationFilePathBox;
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SHorizontalBox) +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
-             [SAssignNew(AnimationFilePathBox, SEditableTextBox)
-                  .Text_Lambda([this]() -> FText {
-                      if (FretDanceActor.IsValid()) {
-                          return FText::FromString(
-                              FretDanceActor->AnimationFilePath);
-                      }
-                      return FText::FromString(TEXT(""));
-                  })
-                  .OnTextCommitted_Lambda([this](const FText& InText,
-                                                 ETextCommit::Type CommitType) {
-                      if (CommitType == ETextCommit::OnEnter ||
-                          CommitType == ETextCommit::OnUserMovedFocus) {
-                          if (FretDanceActor.IsValid()) {
-                              FretDanceActor->AnimationFilePath =
-                                  InText.ToString();
-                              FretDanceActor->Modify();
-                          }
-                      }
-                  })] +
-         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-             [SNew(SButton)
-                  .Text(LOCTEXT("BrowseButton", "Browse"))
-                  .OnClicked_Lambda([this, AnimationFilePathBox]() -> FReply {
-                      if (!FretDanceActor.IsValid()) {
-                          return FReply::Handled();
-                      }
-
-                      FString FilePath;
-                      if (FCommonPanelUtility::BrowseForFile(TEXT(".json"),
-                                                             FilePath, false)) {
-                          if (AnimationFilePathBox.IsValid()) {
-                              AnimationFilePathBox->SetText(
-                                  FText::FromString(FilePath));
-                              FretDanceActor->AnimationFilePath = FilePath;
-                              FretDanceActor->Modify();
-                          }
-                      }
-                      return FReply::Handled();
-                  })]];
+    
 
     // State Management Buttons
     Container->AddSlot().AutoHeight().Padding(
@@ -295,6 +253,51 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
                              &SFretDanceModuleOperationsPanel::OnLoadState)
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    
+                  
+                  TSharedPtr<SEditableTextBox> AnimationFilePathBox;
+                  Container->AddSlot().AutoHeight().Padding(5.0f)
+                      [SNew(SHorizontalBox) +
+                       SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
+                           [SAssignNew(AnimationFilePathBox, SEditableTextBox)
+                                .Text_Lambda([this]() -> FText {
+                                    if (FretDanceActor.IsValid()) {
+                                        return FText::FromString(
+                                            FretDanceActor->AnimationFilePath);
+                                    }
+                                    return FText::FromString(TEXT(""));
+                                })
+                                .OnTextCommitted_Lambda([this](const FText& InText,
+                                                               ETextCommit::Type CommitType) {
+                                    if (CommitType == ETextCommit::OnEnter ||
+                                        CommitType == ETextCommit::OnUserMovedFocus) {
+                                        if (FretDanceActor.IsValid()) {
+                                            FretDanceActor->AnimationFilePath =
+                                                InText.ToString();
+                                            FretDanceActor->Modify();
+                                        }
+                                    }
+                                })] +
+                       SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("BrowseButton", "Browse"))
+                                .OnClicked_Lambda([this, AnimationFilePathBox]() -> FReply {
+                                    if (!FretDanceActor.IsValid()) {
+                                        return FReply::Handled();
+                                    }
+              
+                                    FString FilePath;
+                                    if (FCommonPanelUtility::BrowseForFile(TEXT(".json"),
+                                                                           FilePath, false)) {
+                                        if (AnimationFilePathBox.IsValid()) {
+                                            AnimationFilePathBox->SetText(
+                                                FText::FromString(FilePath));
+                                            FretDanceActor->AnimationFilePath = FilePath;
+                                            FretDanceActor->Modify();
+                                        }
+                                    }
+                                    return FReply::Handled();
+                                })]];
 
     // Animation Generation Section
     Container->AddSlot().AutoHeight().Padding(
