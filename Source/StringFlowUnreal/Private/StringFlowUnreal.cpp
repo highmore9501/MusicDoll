@@ -968,11 +968,6 @@ void AStringFlowUnreal::SyncInstrumentTransforms() {
     // 此方法被加载到level sequnece里调用，相当于渲染环境下的tick方法。
     bool bIsRendering = UInstrumentAnimationUtility::IsInRenderingScenario();
 
-    if (bIsRendering) {
-        // 渲染场景下直接使用现有的组件引用
-        // 原有的Actor映射恢复逻辑已被移除
-    }
-
     // 执行正常的同步逻辑
     if (StringInstrument && Bow && SkeletalMeshActor) {
         // 只有当所有组件都有效时才执行同步

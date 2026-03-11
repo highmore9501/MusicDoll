@@ -99,6 +99,11 @@ private:
 	FReply OnInitBoneControlMappingClicked();
 	
 	/**
+	 * 手动刷新 Bone 和 Control 列表
+	 */
+	FReply OnRefreshClicked();
+	
+	/**
 	 * 同步 Bone 与 Control 的位置变换
 	 */
 	FReply OnSyncBoneControlPairsClicked();

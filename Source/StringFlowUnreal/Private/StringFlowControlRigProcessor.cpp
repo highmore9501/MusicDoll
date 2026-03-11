@@ -1006,8 +1006,6 @@ void UStringFlowControlRigProcessor::SetupAllObjects(
         return;
     }
 
-    // 关键修复：先通过 StringInstrument 触发 ControlRig 注册机制
-    // 这样可以确保在获取 ControlRig 之前，它已经被正确注册到缓存子系统
     if (StringFlowActor->StringInstrument && GEngine) {
         UControlRigCacheSubsystem* CacheSubsystem =
             GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
@@ -1307,7 +1305,19 @@ void UStringFlowControlRigProcessor::SaveLeft(
             StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint"));
-        return;
+        // 尝试重新注册 ControlRig
+        UE_LOG(LogTemp, Warning,
+               TEXT("SaveLeft: Attempting to re-register ControlRig..."));
+        StringFlowActor->TriggerControlRigReregistration(
+            TEXT("ControlRig not found during SaveLeft"));
+        
+        // 重新尝试获取 ControlRig
+        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
+                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Still failed to get ControlRig after re-registration"));
+            return;
+        }
     }
 
     if (!ControlRigInstance) {
@@ -1406,7 +1416,19 @@ void UStringFlowControlRigProcessor::SaveRight(
             StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint"));
-        return;
+        // 尝试重新注册 ControlRig
+        UE_LOG(LogTemp, Warning,
+               TEXT("SaveRight: Attempting to re-register ControlRig..."));
+        StringFlowActor->TriggerControlRigReregistration(
+            TEXT("ControlRig not found during SaveRight"));
+        
+        // 重新尝试获取 ControlRig
+        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
+                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Still failed to get ControlRig after re-registration"));
+            return;
+        }
     }
 
     if (!ControlRigInstance) {
@@ -1496,7 +1518,19 @@ void UStringFlowControlRigProcessor::LoadState(
             StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to get Control Rig Instance or Blueprint"));
-        return;
+        // 尝试重新注册 ControlRig
+        UE_LOG(LogTemp, Warning,
+               TEXT("LoadState: Attempting to re-register ControlRig..."));
+        StringFlowActor->TriggerControlRigReregistration(
+            TEXT("ControlRig not found during LoadState"));
+        
+        // 重新尝试获取 ControlRig
+        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
+                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Still failed to get ControlRig after re-registration"));
+            return;
+        }
     }
 
     if (!ControlRigInstance) {

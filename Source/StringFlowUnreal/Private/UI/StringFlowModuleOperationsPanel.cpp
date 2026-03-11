@@ -339,9 +339,8 @@ void SStringFlowModuleOperationsPanel::CreateOperationWidgets() {
         5.0f)[SNew(SButton)
                   .Text(LOCTEXT("TriggerControlRigReregistrationButton",
                                 "Trigger Control Rig Re-registration"))
-                  .OnClicked(
-                      this,
-                      &SStringFlowModuleOperationsPanel::OnTriggerControlRigReregistration)
+                  .OnClicked(this, &SStringFlowModuleOperationsPanel::
+                                       OnTriggerControlRigReregistration)
                   .HAlign(HAlign_Center)];
 }
 
@@ -367,18 +366,21 @@ void SStringFlowModuleOperationsPanel::RefreshOperations() {
 
 FReply SStringFlowModuleOperationsPanel::OnSaveState() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for save state"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for save state"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::SaveState(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Save State operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Save State operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnSaveLeft() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for save left"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for save left"));
         return FReply::Handled();
     }
 
@@ -389,78 +391,107 @@ FReply SStringFlowModuleOperationsPanel::OnSaveLeft() {
 
 FReply SStringFlowModuleOperationsPanel::OnSaveRight() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for save right"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for save right"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::SaveRight(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Save Right operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Save Right operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnLoadState() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for load state"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for load state"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::LoadState(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Load State operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Load State operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnGeneratePerformerAnimation() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for generate performer animation"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for generate performer "
+                    "animation"));
         return FReply::Handled();
     }
 
-    UStringFlowAnimationProcessor::GeneratePerformerAnimation(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Generate Performer Animation operation triggered"));
+    UStringFlowAnimationProcessor::GeneratePerformerAnimation(
+        StringFlowActor.Get());
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("StringFlow: Generate Performer Animation operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnGenerateStringAnimation() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for generate string animation"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT(
+                "StringFlow: No actor selected for generate string animation"));
         return FReply::Handled();
     }
 
-    UStringFlowAnimationProcessor::GenerateInstrumentAnimation(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Generate String Animation operation triggered"));
+    UStringFlowAnimationProcessor::GenerateInstrumentAnimation(
+        StringFlowActor.Get());
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Generate String Animation operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnGenerateAllAnimation() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for generate all animation"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("StringFlow: No actor selected for generate all animation"));
         return FReply::Handled();
     }
 
     UStringFlowAnimationProcessor::GenerateAllAnimation(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Generate All Animation operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Generate All Animation operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnInitStringInstrument() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for initialize string instrument"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for initialize string "
+                    "instrument"));
         return FReply::Handled();
     }
 
-    UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(StringFlowActor.Get());
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Initialize String Instrument operation triggered"));
+    UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(
+        StringFlowActor.Get());
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("StringFlow: Initialize String Instrument operation triggered"));
     return FReply::Handled();
 }
 
 FReply SStringFlowModuleOperationsPanel::OnTriggerControlRigReregistration() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: No actor selected for ControlRig re-registration"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for ControlRig "
+                    "re-registration"));
         return FReply::Handled();
     }
 
-    StringFlowActor->TriggerControlRigReregistration(TEXT("Manual trigger from UI panel"));
-    UE_LOG(LogTemp, Warning, TEXT("StringFlow: Trigger ControlRig Re-registration operation triggered"));
+    StringFlowActor->TriggerControlRigReregistration(
+        TEXT("Manual trigger from UI panel"));
+
+    StringFlowActor->bEnableRealtimeSync = true;
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Trigger ControlRig Re-registration operation "
+                "triggered"));
     return FReply::Handled();
 }
 #undef LOCTEXT_NAMESPACE

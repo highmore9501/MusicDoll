@@ -186,14 +186,16 @@ FString FControlRigCreationUtility::DetermineShapeName(
     const FString& ControlName) {
     if (ControlName.Contains(TEXT("hand"), ESearchCase::IgnoreCase) &&
         !ControlName.Contains(TEXT("rotation"), ESearchCase::IgnoreCase)) {
-        return TEXT("Cube");
+        return TEXT("Box_Thick");
     } else if (ControlName.Contains(TEXT("rotation"),
                                     ESearchCase::IgnoreCase)) {
-        return TEXT("Circle");
-    } else if (ControlName.StartsWith(TEXT("pole_"))) {
-        return TEXT("Diamond");
+        return TEXT("Circle_Thin");
+    } else if (ControlName.Contains(TEXT("pole"), ESearchCase::IgnoreCase)) {
+        return TEXT("QuarterCircle_Thin");
+    } else if (ControlName.Contains(TEXT("line"), ESearchCase::IgnoreCase)) {
+        return TEXT("Arrow_Solid");
     } else {
-        return TEXT("Sphere");
+        return TEXT("Default");
     }
 }
 
@@ -284,4 +286,57 @@ int32 FControlRigCreationUtility::CleanupDuplicateControls(
     }
 
     return DuplicatesFound;
+}
+
+// 辅助函数：获取所有可用的 Shape 名称列表
+TArray<FName> FControlRigCreationUtility::GetAvailableShapeNames(
+    const UControlRig* InControlRig) {
+    TArray<FName> AvailableShapeNames;
+
+    if (!InControlRig) {
+        return AvailableShapeNames;
+    }
+
+    // 获取所有 Shape Libraries
+    const TArray<TSoftObjectPtr<UControlRigShapeLibrary>>& ShapeLibraries =
+        InControlRig->GetShapeLibraries();
+
+    const TMap<FString, FString>& LibraryNameMap =
+        InControlRig->GetShapeLibraryNameMap();
+
+    // 遍历所有 Shape Library
+    for (const TSoftObjectPtr<UControlRigShapeLibrary>& ShapeLibrary :
+         ShapeLibraries) {
+        if (!ShapeLibrary.IsValid()) {
+            ShapeLibrary.LoadSynchronous();
+        }
+
+        if (!ShapeLibrary.IsValid()) {
+            continue;
+        }
+
+        // 确定是否使用命名空间（当有多个 Shape Library 时）
+        const bool bUseNameSpace = ShapeLibraries.Num() > 1;
+
+        FString LibraryName = ShapeLibrary->GetName();
+        if (const FString* RemappedName = LibraryNameMap.Find(LibraryName)) {
+            LibraryName = *RemappedName;
+        }
+
+        const FString NameSpace =
+            bUseNameSpace ? LibraryName + TEXT(".") : FString();
+
+        // 添加默认形状
+        AvailableShapeNames.Add(*UControlRigShapeLibrary::GetShapeName(
+            ShapeLibrary.Get(), bUseNameSpace, LibraryNameMap,
+            ShapeLibrary->DefaultShape));
+
+        // 添加所有自定义形状
+        for (const FControlRigShapeDefinition& Shape : ShapeLibrary->Shapes) {
+            AvailableShapeNames.Add(*UControlRigShapeLibrary::GetShapeName(
+                ShapeLibrary.Get(), bUseNameSpace, LibraryNameMap, Shape));
+        }
+    }
+
+    return AvailableShapeNames;
 }

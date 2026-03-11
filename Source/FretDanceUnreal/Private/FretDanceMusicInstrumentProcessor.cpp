@@ -6,6 +6,7 @@
 #include "ControlRigCacheSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "FretDanceTransformSyncProcessor.h"
 #include "FretDanceUnreal.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
@@ -41,6 +42,10 @@ void UFretDanceMusicInstrumentProcessor::InitializeGuitarInstrument(
 
     // 使用统一的注册方法注册所有 ControlRig（演奏者 + 吉他）
     FretDanceActor->RegisterAllControlRigs();
+
+    // 0. 初始化吉他同步关系（controller_root <-> guitar_root）
+    // 这会在开始每帧同步前计算并缓存相对变换矩阵
+    UFretDanceTransformSyncProcessor::InitializeGuitarSync(FretDanceActor);
 
     // 1. 清理现有动画数据
     CleanupExistingGuitarAnimations(FretDanceActor);
@@ -259,34 +264,88 @@ void UFretDanceMusicInstrumentProcessor::
 }
 
 void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
-    AFretDanceUnreal* FretDanceActor) {
+    AFretDanceUnreal* FretDanceActor,
+    const FString& StringVibrationDataPath) {
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateInstrumentAnimation: FretDanceActor is null"));
         return;
     }
 
-    // TODO: 从 FretDanceActor 获取 StringRecorder 文件路径
-    FString StringRecorderPath = FretDanceActor->AnimationFilePath;  // 临时占位
+    if (!FretDanceActor->Guitar) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GenerateInstrumentAnimation: Guitar is null"));
+        return;
+    }
 
-    if (StringRecorderPath.IsEmpty()) {
-        UE_LOG(
-            LogTemp, Error,
-            TEXT("StringRecorderPath is empty in GenerateInstrumentAnimation"));
+    if (StringVibrationDataPath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("StringVibrationDataPath is empty in GenerateInstrumentAnimation"));
         return;
     }
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== GenerateInstrumentAnimation Started =========="));
+    UE_LOG(LogTemp, Warning, TEXT("Generating from: %s"),
+           *StringVibrationDataPath);
 
-    // 调用内部方法实现
+#if WITH_EDITOR
+    // 使用新的 Morph Target 生成方法
     TMap<FString, TTuple<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>>
         VibrationKeyframeData;
-    LoadAndGenerateStringVibrationAnimation(FretDanceActor, StringRecorderPath,
-                                            VibrationKeyframeData);
+
+    if (!LoadAndGenerateStringVibrationAnimation(
+            FretDanceActor, StringVibrationDataPath, VibrationKeyframeData)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to load and generate string vibration animation"));
+        return;
+    }
+
+    // 获取 LevelSequence 和 Sequencer
+    ULevelSequence* LevelSequence = nullptr;
+    TSharedPtr<ISequencer> Sequencer = nullptr;
+
+    if (!UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+            LevelSequence, Sequencer)) {
+        UE_LOG(LogTemp, Error, TEXT("请确保已打开 Level Sequence"));
+        return;
+    }
+
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error, TEXT("MovieScene is null"));
+        return;
+    }
+
+    // 计算帧范围
+    FFrameNumber MinFrame = FFrameNumber(INT_MAX);
+    FFrameNumber MaxFrame = FFrameNumber(INT_MIN);
+
+    for (const auto& Pair : VibrationKeyframeData) {
+        const TArray<FFrameNumber>& FrameNumbers = Pair.Value.Key;
+        if (FrameNumbers.Num() > 0) {
+            MinFrame = FMath::Min(MinFrame, FrameNumbers[0]);
+            MaxFrame = FMath::Max(MaxFrame, FrameNumbers.Last());
+        }
+    }
+
+    if (MinFrame.Value == INT_MAX || MaxFrame.Value == INT_MIN) {
+        UE_LOG(LogTemp, Error, TEXT("Invalid frame range"));
+        return;
+    }
 
     UE_LOG(LogTemp, Warning,
+           TEXT("========== GenerateInstrumentAnimation Report =========="));
+    UE_LOG(LogTemp, Warning,
+           TEXT("Successfully processed string vibration data"));
+    UE_LOG(LogTemp, Warning, TEXT("Processed %d morph target channels"),
+           VibrationKeyframeData.Num());
+    UE_LOG(LogTemp, Warning, TEXT("Frame range: %d - %d"), MinFrame.Value,
+           MaxFrame.Value);
+    UE_LOG(LogTemp, Warning,
            TEXT("========== GenerateInstrumentAnimation Completed =========="));
+
+#endif
 }
 
 bool UFretDanceMusicInstrumentProcessor::

@@ -40,4 +40,17 @@ public:
 	 * Refresh/update the panel content
 	 */
 	virtual void RefreshPanel() = 0;
+
+	/**
+	 * Show a specific panel by index
+	 * @param PanelIndex The index of the panel to show
+	 * @param bForceRefresh If true, will refresh the panel content even if already active
+	 */
+	virtual void ShowPanel(int32 PanelIndex, bool bForceRefresh = false) {}
+
+	/**
+	 * Show the first registered panel(typically the properties tab)
+	 * This is called after panel initialization to ensure content is properly loaded
+	 */
+	virtual void ShowFirstPanel() { ShowPanel(0, true); }
 };

@@ -134,7 +134,7 @@ AInstrumentBase* SActorSelectorPanel::GetSelectedActor() const {
 void SMusicDollMainPanel::Construct(const FArguments& InArgs) {
     // Create bake queue panel
     SAssignNew(BakeQueuePanel, SBakeQueuePanel);
-    
+
     ChildSlot[SNew(SVerticalBox) +
               SVerticalBox::Slot().AutoHeight().Padding(5.0f)
                   [SNew(SHorizontalBox) +
@@ -224,9 +224,11 @@ const FSlateBrush* SMusicDollMainPanel::GetSelectedActorIcon() const {
 }
 
 void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
-    UE_LOG(LogTemp, Warning, TEXT("SMusicDollMainPanel::OnActorSelected() - Switching to actor: %s"), 
-           InActor ? *InActor->GetName() : TEXT("nullptr"));
-    
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("SMusicDollMainPanel::OnActorSelected() - Switching to actor: %s"),
+        InActor ? *InActor->GetName() : TEXT("nullptr"));
+
     SelectedInstrumentActor = InActor;
 
     if (!PropertiesPanelWidget.IsValid()) {
@@ -235,10 +237,12 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
 
     // 完全清理旧的面板
     PropertiesPanelWidget->ClearChildren();
-    
+
     // 显式重置模块面板指针，确保触发析构
     if (CurrentModulePanel.IsValid()) {
-        UE_LOG(LogTemp, Warning, TEXT("SMusicDollMainPanel::OnActorSelected() - Resetting CurrentModulePanel"));
+        UE_LOG(LogTemp, Warning,
+               TEXT("SMusicDollMainPanel::OnActorSelected() - Resetting "
+                    "CurrentModulePanel"));
         CurrentModulePanel.Reset();
     }
 
@@ -266,7 +270,7 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         return;
     }
 
-    // 检查选中的对象是否为AStringFlowUnreal类型
+    // 检查选中的对象是否为 AStringFlowUnreal 类型
     AStringFlowUnreal* StringFlowActor = Cast<AStringFlowUnreal>(InActor);
     if (StringFlowActor) {
         // Create StringFlow module main panel using new architecture
@@ -286,16 +290,20 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         return;
     }
 
-    // 检查选中的对象是否为AFretDanceUnreal类型
+    // 检查选中的对象是否为 AFretDanceUnreal 类型
     AFretDanceUnreal* FretDanceActor = Cast<AFretDanceUnreal>(InActor);
     if (FretDanceActor) {
-        TSharedPtr<SModuleMainPanelBase> ModulePanel = SNew(SFretDanceModuleMainPanel);
-        if (ModulePanel.IsValid() && ModulePanel->CanHandleActor(FretDanceActor)) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SFretDanceModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(FretDanceActor)) {
             ModulePanel->SetActor(FretDanceActor);
-            CurrentModulePanel = StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 
             if (PropertiesPanelWidget.IsValid()) {
-                PropertiesPanelWidget->AddSlot().FillHeight(1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
             }
         }
         return;

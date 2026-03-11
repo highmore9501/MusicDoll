@@ -1,8 +1,9 @@
-#include "FretDanceTransformSyncProcessor.h"
+﻿#include "FretDanceTransformSyncProcessor.h"
 
 #include "Animation/SkeletalMeshActor.h"
 #include "ControlRig/Public/ControlRig.h"
 #include "Engine/Engine.h"
+#include "FretDanceControlRigProcessor.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
 
@@ -23,6 +24,14 @@ bool UFretDanceTransformSyncProcessor::SyncAllInstrumentTransforms(
 
     bool bGuitarSuccess = SyncGuitarTransform(FretDanceActor, bIsRendering);
 
+    if (!bGuitarSuccess) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SyncAllInstrumentTransforms: Failed to sync "
+                    "guitar transform"));
+        FretDanceActor->bEnableRealtimeSync =
+            false;  // 禁用后续帧的同步以节省性能
+    }
+
     return bGuitarSuccess;
 }
 
@@ -39,41 +48,69 @@ bool UFretDanceTransformSyncProcessor::InitializeGuitarSync(
         return false;
     }
 
-    // 计算并缓存吉他相对于 SkeletalMeshActor 的初始变换
-    USkeletalMeshComponent* GuitarComponent =
-        FretDanceActor->Guitar->GetSkeletalMeshComponent();
-    USkeletalMeshComponent* PerformerComponent =
-        FretDanceActor->SkeletalMeshActor->GetSkeletalMeshComponent();
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeGuitarSync Started =========="));
 
-    if (!GuitarComponent || !PerformerComponent) {
+    // Step 1: 检查 Performer 的 controller_root 是否存在
+    UControlRigBlueprint* PerformerBlueprint =
+        FretDanceActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+    if (!PerformerBlueprint || !PerformerBlueprint->Hierarchy ||
+        !PerformerBlueprint->Hierarchy->Contains(FRigElementKey(
+            TEXT("controller_root"), ERigElementType::Control))) {
         UE_LOG(LogTemp, Error,
-               TEXT("InitializeGuitarSync: Failed to get skeletal mesh components"));
+               TEXT("InitializeGuitarSync: 'controller_root' does not "
+                    "exist in Performer's ControlRig Blueprint. "
+                    "Please create it manually."));
         return false;
     }
 
-    // 获取吉他的 root 骨骼变换（在吉他 Actor 的组件空间中）
-    int32 RootBoneIndex = GuitarComponent->GetBoneIndex(TEXT("root"));
-    if (RootBoneIndex == INDEX_NONE) {
+    // Step 2: 检查 Guitar 的 guitar_root 是否存在，不存在则尝试创建
+    UControlRigBlueprint* GuitarBlueprint =
+        FretDanceActor->GetCachedControlRigBlueprint(TEXT("Guitar"));
+    if (GuitarBlueprint) {
+        if (!GuitarBlueprint->Hierarchy ||
+            !GuitarBlueprint->Hierarchy->Contains(FRigElementKey(
+                TEXT("guitar_root"), ERigElementType::Control))) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("InitializeGuitarSync: 'guitar_root' not found "
+                        "in Guitar's ControlRig Blueprint. Attempting "
+                        "to create it."));
+            if (!FControlRigCreationUtility::CreateControl(
+                    GuitarBlueprint, TEXT("guitar_root"), TEXT(""))) {
+                UE_LOG(LogTemp, Error,
+                       TEXT("InitializeGuitarSync: Failed to create "
+                            "'guitar_root' in Guitar's ControlRig "
+                            "Blueprint."));
+                return false;
+            }
+            UE_LOG(LogTemp, Warning,
+                   TEXT("InitializeGuitarSync: 'guitar_root' created "
+                        "successfully."));
+        }
+    } else {
         UE_LOG(LogTemp, Error,
-               TEXT("InitializeGuitarSync: 'root' bone not found in Guitar"));
+               TEXT("InitializeGuitarSync: Could not retrieve "
+                    "ControlRig Blueprint for Guitar."));
         return false;
     }
 
-    // 获取 root 骨骼在吉他组件空间中的变换
-    const FTransform& RootBoneComponentSpaceTransform =
-        GuitarComponent->GetComponentSpaceTransforms()[RootBoneIndex];
-
-    // 转换为世界空间变换
-    FTransform RootBoneWorldTransform =
-        RootBoneComponentSpaceTransform * FretDanceActor->Guitar->GetActorTransform();
-
-    // 转换为相对于 Performer 的变换
-    FTransform PerformerWorldTransform = PerformerComponent->GetComponentToWorld();
-    FretDanceActor->CachedGuitarRelativeTransform =
-        RootBoneWorldTransform.Inverse() * PerformerWorldTransform;
+    // Step 3: 使用 FInstrumentControlRigUtility::InitializeControlRelationship
+    // 计算并缓存相对变换矩阵
+    if (!FInstrumentControlRigUtility::InitializeControlRelationship(
+            FretDanceActor->SkeletalMeshActor, TEXT("controller_root"),
+            FretDanceActor->Guitar, TEXT("guitar_root"),
+            FretDanceActor->CachedGuitarRelativeTransform)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InitializeGuitarSync: Failed to initialize "
+                    "control relationship"));
+        return false;
+    }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("InitializeGuitarSync: Successfully cached guitar relative transform"));
+           TEXT("InitializeGuitarSync: Control relationship "
+                "initialized and cached successfully"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeGuitarSync Completed =========="));
 
     return true;
 }
@@ -87,8 +124,7 @@ bool UFretDanceTransformSyncProcessor::SyncGuitarTransform(
     }
 
     if (!FretDanceActor->Guitar) {
-        UE_LOG(LogTemp, Error,
-               TEXT("SyncGuitarTransform: Guitar is null"));
+        UE_LOG(LogTemp, Error, TEXT("SyncGuitarTransform: Guitar is null"));
         return false;
     }
 
@@ -96,9 +132,6 @@ bool UFretDanceTransformSyncProcessor::SyncGuitarTransform(
     UControlRig* PerformerControlRig =
         FretDanceActor->GetCachedControlRig(TEXT("Performer"));
     if (!PerformerControlRig) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("SyncGuitarTransform: Failed to get cached "
-                    "Performer ControlRig"));
         return false;
     }
 
@@ -106,9 +139,8 @@ bool UFretDanceTransformSyncProcessor::SyncGuitarTransform(
     bool bUpdateResult =
         FInstrumentControlRigUtility::UpdateChildControlFromParent(
             PerformerControlRig, TEXT("controller_root"),
-            FretDanceActor->SkeletalMeshActor,
-            FretDanceActor->Guitar, TEXT("root"),
-            FretDanceActor->CachedGuitarRelativeTransform);
+            FretDanceActor->SkeletalMeshActor, FretDanceActor->Guitar,
+            TEXT("guitar_root"), FretDanceActor->CachedGuitarRelativeTransform);
 
     if (!bUpdateResult) {
         UE_LOG(LogTemp, Warning,

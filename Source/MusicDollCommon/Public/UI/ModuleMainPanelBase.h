@@ -52,6 +52,7 @@ public:
 	virtual void SetActor(AActor* InActor) override {}
 	virtual bool CanHandleActor(const AActor* InActor) const override { return false; }
 	virtual FString GetModuleName() const override { return ModuleName; }
+	virtual void ShowFirstPanel() override;
 
 protected:
 	/**
@@ -69,13 +70,9 @@ protected:
 	/**
 	 * Show a specific panel by index
 	 * @param PanelIndex The index of the panel to show
+	 * @param bForceRefresh If true, will refresh the panel content even if already active
 	 */
-	void ShowPanel(int32 PanelIndex);
-
-	/**
-	 * Show the first registered panel
-	 */
-	void ShowFirstPanel();
+	void ShowPanel(int32 PanelIndex, bool bForceRefresh = false);
 
 	/**
 	 * Get the number of registered panels

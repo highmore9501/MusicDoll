@@ -1,12 +1,12 @@
 ﻿#include "StringFlowAnimationProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
-#include "InstrumentAnimationUtility.h"
-#include "InstrumentControlRigUtility.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentControlRigUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "StringFlowControlRigProcessor.h"
@@ -313,12 +313,16 @@ void UStringFlowAnimationProcessor::MakeStringAnimation(
            JsonArray.Num());
 
     // 3. 获取 Control Rig Instance (弦乐器模型) - 使用缓存机制
-    UControlRig* ControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
-    UControlRigBlueprint* ControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("StringInstrument"));
-    
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("StringInstrument"));
+
     // 不再提供后备查询，如果缓存未命中则直接失败
     if (!ControlRigInstance || !ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlowAnimationProcessor: Failed to get ControlRig for StringInstrument - cache miss"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlowAnimationProcessor: Failed to get ControlRig "
+                    "for StringInstrument - cache miss"));
         return;
     }
 
@@ -369,7 +373,6 @@ void UStringFlowAnimationProcessor::MakeStringAnimation(
 
     // 8. 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
-    Settings.FramePadding = 1;  // StringFlow 使用 MaxFrame + 1
 
     // 9. 批量插入关键帧（使用通用方法）
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(
@@ -442,12 +445,16 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
            JsonArray.Num());
 
     // 3. 获取演奏者模型的 Control Rig Instance - 使用缓存机制
-    UControlRig* ControlRigInstance = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
-    UControlRigBlueprint* ControlRigBlueprint = StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-    
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+
     // 不再提供后备查询，如果缓存未命中则直接失败
     if (!ControlRigInstance || !ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlowAnimationProcessor: Failed to get ControlRig for Performer - cache miss"));
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlowAnimationProcessor: Failed to get ControlRig "
+                    "for Performer - cache miss"));
         return;
     }
 
@@ -534,7 +541,6 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
 
     // 8. 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
-    Settings.FramePadding = 1;  // StringFlow 使用 MaxFrame + 1
 
     // 9. 批量插入关键帧（使用通用方法）
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(

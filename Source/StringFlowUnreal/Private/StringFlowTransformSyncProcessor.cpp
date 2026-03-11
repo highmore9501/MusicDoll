@@ -26,6 +26,14 @@ bool UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(
         SyncStringInstrumentTransform(StringFlowActor, bIsRendering);
     bool bBowSuccess = SyncBowTransform(StringFlowActor);
 
+    if (!bStringSuccess || !bBowSuccess) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("SyncAllInstrumentTransforms: SyncStringInstrumentTransform "
+                 "or SyncBowTransform failed"));
+        StringFlowActor->bEnableRealtimeSync = false;
+    }
+
     return bStringSuccess && bBowSuccess;
 }
 
@@ -41,15 +49,12 @@ bool UStringFlowTransformSyncProcessor::SyncStringInstrumentTransform(
         UE_LOG(LogTemp, Error,
                TEXT("SyncStringInstrumentTransform: StringInstrument is null"));
         return false;
-    }    
+    }
 
     // 获取 Performer 的 ControlRig 实例（与 SyncBowTransform 相同路径）
     UControlRig* PerformerControlRig =
         StringFlowActor->GetCachedControlRig(TEXT("Performer"));
     if (!PerformerControlRig) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("SyncStringInstrumentTransform: Failed to get cached "
-                    "Performer ControlRig"));
         return false;
     }
 
@@ -92,10 +97,6 @@ bool UStringFlowTransformSyncProcessor::SyncBowTransform(
     UControlRig* PerformerControlRig =
         StringFlowActor->GetCachedControlRig(TEXT("Performer"));
     if (!PerformerControlRig) {
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT(
-                "SyncBowTransform: Failed to get cached Performer ControlRig"));
         return false;
     }
 

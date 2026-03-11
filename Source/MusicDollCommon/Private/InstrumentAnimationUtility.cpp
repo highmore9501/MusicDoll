@@ -337,7 +337,7 @@ bool UInstrumentAnimationUtility::AddMaterialParameter(
         FFrameNumber InitialFrame(0);
         ParameterSection->AddScalarParameterKey(
             ParameterInfo, InitialFrame, InitialValue, TEXT(""), TEXT(""),
-            EMovieSceneKeyInterpolation::Auto);
+            EMovieSceneKeyInterpolation::Constant);
 
         UE_LOG(LogTemp, Log,
                TEXT("[InstrumentAnimationUtility] Added scalar parameter '%s' "
@@ -406,9 +406,9 @@ int32 UInstrumentAnimationUtility::WriteMaterialParameterKeyframes(
 
         // 逐个写入关键帧
         for (int32 i = 0; i < Data.FrameNumbers.Num(); ++i) {
-            Section->AddScalarParameterKey(ParameterInfo, Data.FrameNumbers[i],
-                                           Data.Values[i], TEXT(""), TEXT(""),
-                                           EMovieSceneKeyInterpolation::Linear);
+            Section->AddScalarParameterKey(
+                ParameterInfo, Data.FrameNumbers[i], Data.Values[i], TEXT(""),
+                TEXT(""), EMovieSceneKeyInterpolation::Constant);
         }
 
         SuccessCount++;
@@ -461,6 +461,8 @@ void UInstrumentAnimationUtility::SyncMaterialParameterKeyframesAfterWrite(
                 // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
                 ActiveSequencer->NotifyMovieSceneDataChanged(
                     EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                // 强制在当前时间重新评估，确保视口立即反映变更
+                ActiveSequencer->ForceEvaluate();
                 UE_LOG(
                     LogTemp, Warning,
                     TEXT("[InstrumentAnimationUtility] Notified sequencer of "
@@ -1023,11 +1025,30 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
             continue;
         }
 
-        TArray<FFrameNumber> Times;
+        TArray<FFrameNumber> LocationTimes;
+        TArray<FFrameNumber> RotationTimes;
         TArray<FMovieSceneFloatValue> LocationXValues, LocationYValues,
             LocationZValues;
         TArray<FMovieSceneFloatValue> RotationXValues, RotationYValues,
             RotationZValues;
+
+        // 四元数符号一致性处理（hemisphere alignment）：
+        // 确保相邻帧的四元数在同一半球上，避免 q/-q 歧义导致欧拉角跳变。
+        // q 和 -q 表示相同旋转，但转换为欧拉角后可能差异巨大。
+        // 构建已对齐的四元数序列副本，不修改原始数据。
+        TArray<FQuat> AlignedQuaternions;
+        AlignedQuaternions.Reserve(Keyframes.Num());
+        for (int32 AlignIdx = 0; AlignIdx < Keyframes.Num(); ++AlignIdx) {
+            FQuat CurrentQuat = Keyframes[AlignIdx].Rotation;
+            if (AlignIdx > 0) {
+                const FQuat& PrevQuat = AlignedQuaternions[AlignIdx - 1];
+                if ((PrevQuat | CurrentQuat) < 0.0f) {
+                    CurrentQuat = FQuat(-CurrentQuat.X, -CurrentQuat.Y,
+                                        -CurrentQuat.Z, -CurrentQuat.W);
+                }
+            }
+            AlignedQuaternions.Add(CurrentQuat);
+        }
 
         for (int32 KeyIdx = 0; KeyIdx < Keyframes.Num(); ++KeyIdx) {
             const FAnimationKeyframe& Keyframe = Keyframes[KeyIdx];
@@ -1038,23 +1059,42 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                 (TickResolution.Denominator * DisplayRate.Numerator);
 
             FFrameNumber FrameNum(ScaledFrameNumber);
-            Times.Add(FrameNum);
 
-            if (FrameNum < MinFrame) {
-                MinFrame = FrameNum;
+            // ✅ 只收集有位置数据的关键帧时间点和值
+            if (Keyframe.bHasLocation) {
+                LocationTimes.Add(FrameNum);
+
+                if (FrameNum < MinFrame) {
+                    MinFrame = FrameNum;
+                }
+                if (FrameNum > MaxFrame) {
+                    MaxFrame = FrameNum;
+                }
+
+                LocationXValues.Add(
+                    FMovieSceneFloatValue(Keyframe.Translation.X));
+                LocationYValues.Add(
+                    FMovieSceneFloatValue(Keyframe.Translation.Y));
+                LocationZValues.Add(
+                    FMovieSceneFloatValue(Keyframe.Translation.Z));
             }
-            if (FrameNum > MaxFrame) {
-                MaxFrame = FrameNum;
+
+            // ✅ 只收集有旋转数据的关键帧时间点和值
+            if (Keyframe.bHasRotation) {
+                RotationTimes.Add(FrameNum);
+
+                if (FrameNum < MinFrame) {
+                    MinFrame = FrameNum;
+                }
+                if (FrameNum > MaxFrame) {
+                    MaxFrame = FrameNum;
+                }
+
+                FRotator EulerRotation = AlignedQuaternions[KeyIdx].Rotator();
+                RotationXValues.Add(FMovieSceneFloatValue(EulerRotation.Roll));
+                RotationYValues.Add(FMovieSceneFloatValue(EulerRotation.Pitch));
+                RotationZValues.Add(FMovieSceneFloatValue(EulerRotation.Yaw));
             }
-
-            LocationXValues.Add(FMovieSceneFloatValue(Keyframe.Translation.X));
-            LocationYValues.Add(FMovieSceneFloatValue(Keyframe.Translation.Y));
-            LocationZValues.Add(FMovieSceneFloatValue(Keyframe.Translation.Z));
-
-            FRotator EulerRotation = Keyframe.Rotation.Rotator();
-            RotationXValues.Add(FMovieSceneFloatValue(EulerRotation.Roll));
-            RotationYValues.Add(FMovieSceneFloatValue(EulerRotation.Pitch));
-            RotationZValues.Add(FMovieSceneFloatValue(EulerRotation.Yaw));
         }
 
         if (Settings.bUnwrapRotationInterpolation) {
@@ -1084,19 +1124,19 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
         }
 
         if (bIsSpecialControl && bOnlyInsertXAxis) {
-            LocationX->AddKeys(Times, LocationXValues);
+            LocationX->AddKeys(LocationTimes, LocationXValues);
             UE_LOG(
                 LogTemp, Warning,
                 TEXT("[COMMON] Special control '%s': Only X-axis keys added"),
                 *ControlName);
         } else {
-            LocationX->AddKeys(Times, LocationXValues);
-            LocationY->AddKeys(Times, LocationYValues);
-            LocationZ->AddKeys(Times, LocationZValues);
+            LocationX->AddKeys(LocationTimes, LocationXValues);
+            LocationY->AddKeys(LocationTimes, LocationYValues);
+            LocationZ->AddKeys(LocationTimes, LocationZValues);
 
-            RotationX->AddKeys(Times, RotationXValues);
-            RotationY->AddKeys(Times, RotationYValues);
-            RotationZ->AddKeys(Times, RotationZValues);
+            RotationX->AddKeys(RotationTimes, RotationXValues);
+            RotationY->AddKeys(RotationTimes, RotationYValues);
+            RotationZ->AddKeys(RotationTimes, RotationZValues);
         }
 
         UE_LOG(LogTemp, Warning,
@@ -1137,6 +1177,8 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                 // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
                 ActiveSequencer->NotifyMovieSceneDataChanged(
                     EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                // 强制在当前时间重新评估，确保视口立即反映变更
+                ActiveSequencer->ForceEvaluate();
                 UE_LOG(LogTemp, Warning,
                        TEXT("[COMMON] Notified sequencer of data change to "
                             "trigger template recompilation"));
@@ -1271,6 +1313,8 @@ void UInstrumentAnimationUtility::ClearControlRigKeyframes(
                 // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
                 ActiveSequencer->NotifyMovieSceneDataChanged(
                     EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                // 强制在当前时间重新评估，确保视口立即反映变更
+                ActiveSequencer->ForceEvaluate();
                 UE_LOG(LogTemp, Warning,
                        TEXT("[COMMON] Notified sequencer of data change to "
                             "trigger template recompilation"));
@@ -1286,6 +1330,7 @@ void UInstrumentAnimationUtility::ClearControlRigKeyframes(
         LogTemp, Warning,
         TEXT("[COMMON] Control Rig keyframes cleared for specified controls"));
 }
+
 // ========== 控制器验证 ==========
 
 FString UInstrumentAnimationUtility::ValidateControllerName(
@@ -1327,6 +1372,7 @@ void UInstrumentAnimationUtility::ExtractRotationData(
                 Rotation.X = DataArray[1]->AsNumber();
                 Rotation.Y = DataArray[2]->AsNumber();
                 Rotation.Z = DataArray[3]->AsNumber();
+                Rotation.Normalize();
                 OutRotations.Add(TEXT("H_L"), FRotationData(Rotation, true));
             }
         }
@@ -1345,6 +1391,7 @@ void UInstrumentAnimationUtility::ExtractRotationData(
                 Rotation.X = DataArray[1]->AsNumber();
                 Rotation.Y = DataArray[2]->AsNumber();
                 Rotation.Z = DataArray[3]->AsNumber();
+                Rotation.Normalize();
                 OutRotations.Add(TEXT("H_R"), FRotationData(Rotation, true));
             }
         }
@@ -1403,7 +1450,7 @@ void UInstrumentAnimationUtility::ProcessControlsContainer(
         }
 
         if (DataArray.Num() == 3) {
-            // 3维数据 - 位置
+            // 3 维数据 - 位置
             FVector Location;
             Location.X = DataArray[0]->AsNumber();
             Location.Y = DataArray[1]->AsNumber();
@@ -1412,32 +1459,34 @@ void UInstrumentAnimationUtility::ProcessControlsContainer(
             FAnimationKeyframe Keyframe;
             Keyframe.FrameNumber = FrameNumber;
             Keyframe.Translation = Location;
+            Keyframe.bHasLocation = true;  // ✅ 明确标记有位置数据
 
             // 尝试使用提前提取的旋转数据
             if (FRotationData* RotationData =
                     RotationDataMap.Find(ControlName)) {
                 if (RotationData->bIsValid) {
                     Keyframe.Rotation = RotationData->Rotation;
-                } else {
-                    Keyframe.Rotation = FQuat::Identity;
+                    Keyframe.bHasRotation = true;  // ✅ 明确标记有旋转数据
                 }
-            } else {
-                Keyframe.Rotation = FQuat::Identity;
+                // 如果 bIsValid == false，不设置旋转，bHasRotation 保持 false
             }
+            // 如果没有找到旋转数据，也不设置旋转，bHasRotation 保持 false
 
             ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
         } else if (DataArray.Num() == 4) {
-            // 4维数据 - 旋转
+            // 4 维数据 - 旋转
             FQuat Rotation;
             Rotation.W = DataArray[0]->AsNumber();
             Rotation.X = DataArray[1]->AsNumber();
             Rotation.Y = DataArray[2]->AsNumber();
             Rotation.Z = DataArray[3]->AsNumber();
+            Rotation.Normalize();
 
             FAnimationKeyframe Keyframe;
             Keyframe.FrameNumber = FrameNumber;
-            Keyframe.Translation = FVector::ZeroVector;
             Keyframe.Rotation = Rotation;
+            Keyframe.bHasRotation = true;  // ✅ 明确标记有旋转数据
+            // ✅ 不设置位置，bHasLocation 保持 false
 
             ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
         } else {

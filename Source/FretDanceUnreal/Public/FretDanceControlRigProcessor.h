@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "FretDanceUnreal.h"
 #include "UObject/Object.h"
+#include "ControlRigBlueprintLegacy.h"
 #include "FretDanceControlRigProcessor.generated.h"
 
 /**

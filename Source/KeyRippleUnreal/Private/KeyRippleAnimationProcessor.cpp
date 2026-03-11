@@ -218,7 +218,6 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
 
     // 9. 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
-    Settings.FramePadding = 300;  // KeyRipple 使用 MaxFrame + 300
 
     // 配置特殊控制器处理（Tar_ 控制器只插入 X 轴）
     Settings.SpecialControllerRules.Add(TEXT("Tar_"), true);

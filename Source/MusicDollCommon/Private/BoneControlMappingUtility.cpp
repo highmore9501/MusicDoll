@@ -580,6 +580,11 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
                                           bAffectChildren, bSetupUndo,
                                           bPrintPythonCommand);
 
+            // 设置offset
+            Hierarchy->SetControlOffsetTransform(
+                ControlKey, FTransform::Identity, bAffectChildren, bSetupUndo,
+                bPrintPythonCommand);
+
             OutSyncedCount++;
         } else {
             UE_LOG(LogTemp, Warning,

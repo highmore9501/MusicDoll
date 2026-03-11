@@ -52,11 +52,13 @@ bool UAnimationBaker::GetControlRigsForActor(
     return OutControlRig != nullptr && OutBlueprint != nullptr;
 }
 
-bool UAnimationBaker::EvaluateSequenceAtFrame(TSharedPtr<ISequencer> Sequencer, ULevelSequence* LevelSequence,
+bool UAnimationBaker::EvaluateSequenceAtFrame(TSharedPtr<ISequencer> Sequencer,
+                                              ULevelSequence* LevelSequence,
                                               int32 Frame) {
     if (!Sequencer.IsValid() || !LevelSequence) {
         UE_LOG(LogTemp, Warning,
-               TEXT("[AnimationBaker] Invalid Sequencer or LevelSequence for frame evaluation"));
+               TEXT("[AnimationBaker] Invalid Sequencer or LevelSequence for "
+                    "frame evaluation"));
         return false;
     }
 
@@ -93,13 +95,15 @@ void UAnimationBaker::TriggerInstrumentSync() {
     }
 
     if (!World) {
-        UE_LOG(LogTemp, Verbose,
-               TEXT("[AnimationBaker] No editor world found for instrument sync"));
+        UE_LOG(
+            LogTemp, Verbose,
+            TEXT("[AnimationBaker] No editor world found for instrument sync"));
         return;
     }
 
     // 遍历世界中所有AInstrumentBase子类Actor，调用其Tick/同步方法
-    for (TActorIterator<AInstrumentBase> ActorItr(World); ActorItr; ++ActorItr) {
+    for (TActorIterator<AInstrumentBase> ActorItr(World); ActorItr;
+         ++ActorItr) {
         AInstrumentBase* InstrumentActor = *ActorItr;
         if (!InstrumentActor) {
             continue;
@@ -166,13 +170,13 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
 
     if (ActiveLevelSequence != LevelSequence) {
         UE_LOG(LogTemp, Error,
-               TEXT("[AnimationBaker] LevelSequence does not match current Sequencer"));
+               TEXT("[AnimationBaker] LevelSequence does not match current "
+                    "Sequencer"));
         return 0;
     }
 
     if (!Sequencer.IsValid()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("[AnimationBaker] Sequencer is not valid"));
+        UE_LOG(LogTemp, Error, TEXT("[AnimationBaker] Sequencer is not valid"));
         return 0;
     }
 
@@ -246,17 +250,19 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
     int32 CompletedFrames = 0;
 
     UE_LOG(LogTemp, Log,
-           TEXT("[AnimationBaker] Starting frame-by-frame collection: %d frames (range %d-%d, step %d)"),
-           TotalFrames, Settings.StartFrame, Settings.EndFrame, Settings.FrameStep);
+           TEXT("[AnimationBaker] Starting frame-by-frame collection: %d "
+                "frames (range %d-%d, step %d)"),
+           TotalFrames, Settings.StartFrame, Settings.EndFrame,
+           Settings.FrameStep);
 
     for (int32 Frame = Settings.StartFrame; Frame <= Settings.EndFrame;
          Frame += Settings.FrameStep) {
-
         // 步骤1：移动播放光标到当前帧（等同于人类拖动光标）
         if (!EvaluateSequenceAtFrame(Sequencer, LevelSequence, Frame)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("[AnimationBaker] Failed to evaluate frame %d, skipping"),
-                   Frame);
+            UE_LOG(
+                LogTemp, Warning,
+                TEXT("[AnimationBaker] Failed to evaluate frame %d, skipping"),
+                Frame);
             continue;
         }
 
@@ -300,10 +306,9 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
 
         // 进度回调
         if (ProgressCallback) {
-            ProgressCallback(
-                CompletedFrames, TotalFrames,
-                FString::Printf(TEXT("Collecting frame %d/%d"),
-                                CompletedFrames, TotalFrames));
+            ProgressCallback(CompletedFrames, TotalFrames,
+                             FString::Printf(TEXT("Collecting frame %d/%d"),
+                                             CompletedFrames, TotalFrames));
         }
 
         if (CompletedFrames % 1000 == 0) {
@@ -313,9 +318,11 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
         }
     }
 
-    UE_LOG(LogTemp, Log,
-           TEXT("[AnimationBaker] Frame collection completed: %d frames collected"),
-           CompletedFrames);
+    UE_LOG(
+        LogTemp, Log,
+        TEXT(
+            "[AnimationBaker] Frame collection completed: %d frames collected"),
+        CompletedFrames);
 
     // 恢复播放头到烘焙前的位置
     Sequencer->SetGlobalTime(OriginalGlobalTime);
@@ -405,8 +412,6 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
 
         // 配置批量插入设置
         FBatchInsertKeyframesSettings BatchSettings;
-        BatchSettings.FramePadding = 1;
-        BatchSettings.bUnwrapRotationInterpolation = true;
 
         // 批量插入该Instance的所有Control关键帧
         UInstrumentAnimationUtility::BatchInsertControlRigKeys(

@@ -297,6 +297,20 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // 设置乐器类型（会自动更新 GuideLines 等配置）
     void SetInstrumentType(EFretDanceInstrumentType NewType);
 
+    // ========== 统一的键名映射工具函数 ==========
+    /**
+     * 获取右手位置键名映射表（JSON 名称 → 内部名称）
+     * @return TMap: {"p0"->"p_low", "p3"->"p_high", "pend"->"p_end"}
+     */
+    static TMap<FString, FString> GetRightHandPositionKeyMapping();
+    
+    /**
+     * 将 JSON 中的右手位置键名转换为内部使用的键名
+     * @param JsonKeyName JSON 中的键名（如 "p0", "p3", "pend"）
+     * @return 内部使用的键名（如 "p_low", "p_high", "p_end"）
+     */
+    static FString MapRightHandPositionKeyName(const FString& JsonKeyName);
+
     // 检查是否已初始化
     bool IsInitialized() const { return bIsInitialized; }
 

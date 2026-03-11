@@ -874,6 +874,8 @@ int32 UKeyRipplePianoProcessor::GenerateInstrumentMaterialAnimation(
                 // MovieSceneStructureItemsChanged 会触发完整的评估模板重建
                 ActiveSequencer->NotifyMovieSceneDataChanged(
                     EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                // 强制在当前时间重新评估，确保视口立即反映变更
+                ActiveSequencer->ForceEvaluate();
                 UE_LOG(LogTemp, Warning,
                        TEXT("[COMMON] Notified sequencer of data change to "
                             "trigger template recompilation"));

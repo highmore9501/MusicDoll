@@ -57,57 +57,48 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
                    TEXT("GetControlRig: Cache entry is INVALID for Actor %s"),
                    *ActorName);
         }
-    } else {
-        UE_LOG(LogTemp, Warning,
-               TEXT("GetControlRig: NO cache entry found for Actor %s"),
-               *ActorName);
     }
 
-    // 缓存中没有找到或需要完全重建，触发注册
+    // 第一次查询失败，尝试注册后再查询
     UE_LOG(LogTemp, Warning,
-           TEXT("GetControlRig: No valid cache entry found for Actor %s, "
-                "triggering registration"),
+           TEXT("GetControlRig: First query failed, attempting to register ControlRig for Actor %s"),
            *ActorName);
+    
     TriggerRegistrationIfNeeded(Actor, Sequence);
-
-    // 触发注册后，再次尝试查询
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT(
-            "GetControlRig: Re-querying cache after registration for Actor %s"),
-        *ActorName);
+    
+    // 再次查询缓存
     CacheEntry = RuntimeControlRigCache.Find(CacheKey);
     if (CacheEntry && CacheEntry->IsValid()) {
+        CacheEntry->UpdateAccessTime();
         UControlRig* ResultControlRig = CacheEntry->GetControlRig();
         if (ResultControlRig) {
             UE_LOG(LogTemp, Warning,
-                   TEXT("GetControlRig: Successfully retrieved ControlRig "
-                        "after re-query for Actor %s"),
+                   TEXT("GetControlRig: Successfully got ControlRig after registration for Actor %s"),
                    *ActorName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("GetControlRig: ControlRig still null after re-query "
-                        "for Actor %s"),
-                   *ActorName);
+            return ResultControlRig;
         }
-        return ResultControlRig;
-    } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("GetControlRig: Still NO valid cache entry after "
-                    "registration for Actor %s"),
-               *ActorName);
     }
-
+    
+    UE_LOG(LogTemp, Error,
+           TEXT("GetControlRig: Still failed to get ControlRig after registration for Actor %s"),
+           *ActorName);
     return nullptr;
 }
 
 UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {
+    if (!Actor || !Sequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRigBlueprint: Invalid input parameters"));
+        return nullptr;
+    }
+
+    // GetControlRig 已经包含了注册重试逻辑
     UControlRig* ControlRig = GetControlRig(Actor, Sequence);
     if (!ControlRig) {
         UE_LOG(LogTemp, Error,
                TEXT("GetControlRigBlueprint: GetControlRig returned null for "
-                    "Actor %s"),
+                    "Actor %s after registration attempt"),
                *Actor->GetName());
         return nullptr;
     }
@@ -391,7 +382,6 @@ FControlRigSequencerBindingProxy UControlRigCacheSubsystem::FindControlRigProxy(
     return FControlRigSequencerBindingProxy();
 }
 
-// 移除旧的GetControlRigFromBindingID和ReconstructControlRigFromPersistentData方法，现在使用ControlRigSequencerBindingProxy
 
 void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {

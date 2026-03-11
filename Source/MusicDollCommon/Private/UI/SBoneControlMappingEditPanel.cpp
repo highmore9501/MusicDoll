@@ -58,6 +58,10 @@ void SBoneControlMappingEditPanel::Construct(const FArguments& InArgs) {
                                 .OnClicked(this, &SBoneControlMappingEditPanel::OnInitBoneControlMappingClicked)]
                      + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
                            [SNew(SButton)
+                                .Text(LOCTEXT("RefreshButton", "Refresh"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnRefreshClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
                                 .Text(LOCTEXT("AddButton", "Add"))
                                 .OnClicked(this, &SBoneControlMappingEditPanel::OnAddRowClicked)]
                      + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
@@ -531,6 +535,72 @@ FReply SBoneControlMappingEditPanel::OnSaveClicked() {
     }
 
     DetectDuplicates();
+
+    return FReply::Handled();
+}
+
+FReply SBoneControlMappingEditPanel::OnRefreshClicked() {
+    UE_LOG(LogTemp, Warning, TEXT("OnRefreshClicked: Starting manual refresh"));
+
+   if (!InstrumentActor.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("OnRefreshClicked: InstrumentActor is not valid"));
+        return FReply::Handled();
+    }
+
+    AInstrumentBase* Instrument = InstrumentActor.Get();
+   if (!Instrument || !Instrument->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnRefreshClicked: Instrument or SkeletalMeshActor is null"));
+        return FReply::Handled();
+    }
+
+    // 关键步骤：重新获取最新的 ControlRigBlueprint（从 Subsystem 获取最新引用）
+   if (!RetrieveControlRigBlueprint(Instrument)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("OnRefreshClicked: Failed to re-retrieve ControlRigBlueprint"));
+        return FReply::Handled();
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnRefreshClicked: Successfully retrieved latest ControlRigBlueprint"));
+
+    // 重置所有缓存的列表
+    BoneNames.Reset();
+    ControlNames.Reset();
+    FilteredBoneNames.Reset();
+    FilteredControlNames.Reset();
+    BoneFilterText.Reset();
+    ControlFilterText.Reset();
+
+    // 重新获取 Bone 和 Control 名称
+    TArray<FString> BoneNameList = GetAllBoneNames();
+    TArray<FString> ControlNameList = GetAllControlNames();
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnRefreshClicked: Found %d bones and %d controls"),
+           BoneNameList.Num(), ControlNameList.Num());
+
+    for (const FString& BoneName : BoneNameList) {
+        BoneNames.Add(MakeShareable(new FString(BoneName)));
+    }
+
+    for (const FString& ControlName : ControlNameList) {
+        ControlNames.Add(MakeShareable(new FString(ControlName)));
+    }
+
+    // 初始化过滤列表（显示所有项）
+    FilteredBoneNames = BoneNames;
+    FilteredControlNames = ControlNames;
+
+    // 刷新 UI 列表显示
+   if (MappingListView.IsValid()) {
+        MappingListView->RequestListRefresh();
+        UE_LOG(LogTemp, Warning, TEXT("OnRefreshClicked: RequestListRefresh called"));
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnRefreshClicked: Manual refresh completed - Bones: %d, Controls: %d"),
+           BoneNames.Num(), ControlNames.Num());
 
     return FReply::Handled();
 }

@@ -1,13 +1,14 @@
-#include "FretDanceAnimationProcessor.h"
+﻿#include "FretDanceAnimationProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "FretDanceMusicInstrumentProcessor.h"
+#include "FretDanceUnreal.h"
 #include "InstrumentAnimationUtility.h"
 #include "Json.h"
 #include "JsonUtilities.h"
 #include "LevelSequence.h"
-#include "FretDanceUnreal.h"
 
 #define LOCTEXT_NAMESPACE "FretDanceAnimationProcessor"
 
@@ -25,24 +26,18 @@ static const TSet<FString>& GetValidFretDanceControllerNames() {
         TSet<FString> ValidSet;
 
         // 左手控制器 (9 个)
-        ValidSet.Append({
-            TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-            TEXT("T_L"), TEXT("TP_L"),
-            TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")
-        });
+        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
+                         TEXT("T_L"), TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"),
+                         TEXT("R_L"), TEXT("P_L")});
 
         // 右手控制器 (2-7 个，取决于乐器类型)
         // 基础右手控制器 (所有类型都有)
-        ValidSet.Append({
-            TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"),
-            TEXT("T_R")
-        });
+        ValidSet.Append(
+            {TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"), TEXT("T_R")});
 
         // 指弹/Bass 特有的右手手指
-        ValidSet.Append({
-            TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"), 
-            TEXT("R_R"), TEXT("P_R")
-        });
+        ValidSet.Append(
+            {TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")});
 
         return ValidSet;
     }();
@@ -53,8 +48,8 @@ static const TSet<FString>& GetValidFretDanceControllerNames() {
 /**
  * 收集 FretDance 中的所有控制器名称
  */
-static void CollectFretDanceControllerNames(
-    AFretDanceUnreal* FretDanceActor, TSet<FString>& OutControllerNames) {
+static void CollectFretDanceControllerNames(AFretDanceUnreal* FretDanceActor,
+                                            TSet<FString>& OutControllerNames) {
     if (!FretDanceActor) {
         return;
     }
@@ -166,8 +161,7 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
-                                  RightHandAnimationPath,
-                                  StringRecorderPath)) {
+                                  RightHandAnimationPath, StringRecorderPath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GeneratePerformerAnimation"));
@@ -195,25 +189,59 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
     } else {
         UE_LOG(LogTemp, Warning, TEXT("Right hand animation path is empty"));
     }
+
+    FretDanceActor->TriggerControlRigReregistration(
+        TEXT("Generate Performer Animation"));
 }
 
 void UFretDanceAnimationProcessor::GenerateInstrumentAnimation(
     AFretDanceUnreal* FretDanceActor) {
-    // TODO - Phase 7: 实现弦振动动画生成
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateInstrumentAnimation: FretDanceActor is null"));
         return;
     }
 
+    if (!FretDanceActor->Guitar) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GenerateInstrumentAnimation: Guitar is null"));
+        return;
+    }
+
+    FString LeftHandAnimationPath;
+    FString RightHandAnimationPath;
+    FString StringRecorderPath;
+
+    // 解析配置文件获取弦记录器路径
+    if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
+                                  RightHandAnimationPath, StringRecorderPath)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to parse FretDance config file in "
+                    "GenerateInstrumentAnimation"));
+        return;
+    }
+
+    if (StringRecorderPath.IsEmpty()) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("String recorder path is empty, skipping instrument "
+                    "animation"));
+        return;
+    }
+
     UE_LOG(LogTemp, Warning,
-           TEXT("GenerateInstrumentAnimation: NOT YET IMPLEMENTED (Phase 7)"));
-    
-    // 后续实现步骤：
-    // 1. 从 FretDanceActor 获取 StringRecorder 文件路径
-    // 2. 解析 string_recorder JSON 文件
-    // 3. 将数据转换为弦振动动画格式
-    // 4. 调用 UFretDanceMusicInstrumentProcessor 生成动画
+           TEXT("========== GenerateInstrumentAnimation Started =========="));
+    UE_LOG(LogTemp, Warning, TEXT("Generating instrument animation from: %s"),
+           *StringRecorderPath);
+
+    // 调用 FretDanceMusicInstrumentProcessor 生成弦振动动画
+    UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
+        FretDanceActor, StringRecorderPath);
+
+    FretDanceActor->TriggerControlRigReregistration(
+        TEXT("Generate Instrument Animation"));
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== GenerateInstrumentAnimation Completed =========="));
 }
 
 void UFretDanceAnimationProcessor::GenerateAllAnimation(
@@ -230,8 +258,7 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
-                                  RightHandAnimationPath,
-                                  StringRecorderPath)) {
+                                  RightHandAnimationPath, StringRecorderPath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GenerateAllAnimation"));
@@ -244,14 +271,13 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
     // 生成演奏动画
     GeneratePerformerAnimation(FretDanceActor);
 
-    // TODO - Phase 7: 生成弦动画
+    // 生成弦动画
     if (!StringRecorderPath.IsEmpty()) {
         UE_LOG(LogTemp, Warning,
-               TEXT("String recorder path found: %s"),
+               TEXT("Generating instrument animation from: %s"),
                *StringRecorderPath);
-        // GenerateInstrumentAnimation(FretDanceActor);
-        UE_LOG(LogTemp, Warning,
-               TEXT("弦动画生成将在 Phase 7 实现"));
+        GenerateInstrumentAnimation(FretDanceActor);
+
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("String recorder path is empty, skipping instrument "
@@ -372,12 +398,16 @@ void UFretDanceAnimationProcessor::MakePerformerAnimation(
            JsonArray.Num());
 
     // 3. 获取演奏者模型的 Control Rig Instance - 使用缓存机制
-    UControlRig* ControlRigInstance = FretDanceActor->GetCachedControlRig(TEXT("Performer"));
-    UControlRigBlueprint* ControlRigBlueprint = FretDanceActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-    
+    UControlRig* ControlRigInstance =
+        FretDanceActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        FretDanceActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+
     // 不再提供后备查询，如果缓存未命中则直接失败
     if (!ControlRigInstance || !ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error, TEXT("FretDanceAnimationProcessor: Failed to get ControlRig for Performer - cache miss"));
+        UE_LOG(LogTemp, Error,
+               TEXT("FretDanceAnimationProcessor: Failed to get ControlRig for "
+                    "Performer - cache miss"));
         return;
     }
 
@@ -408,29 +438,26 @@ void UFretDanceAnimationProcessor::MakePerformerAnimation(
 
     if (bIsLeftHand) {
         // 只收集左手控制器
-        ControlNamesToClean.Append({
-            TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-            TEXT("T_L"), TEXT("TP_L"),
-            TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")
-        });
+        ControlNamesToClean.Append(
+            {TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"), TEXT("T_L"),
+             TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")});
         UE_LOG(LogTemp, Warning,
                TEXT("Detected LEFT HAND animation, will only clear %d left "
                     "hand controllers"),
                ControlNamesToClean.Num());
     } else if (bIsRightHand) {
         // 只收集右手控制器
-        ControlNamesToClean.Append({
-            TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"),
-            TEXT("T_R"), TEXT("TP_R"),
-            TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")
-        });
+        ControlNamesToClean.Append(
+            {TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"), TEXT("T_R"),
+             TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")});
         UE_LOG(LogTemp, Warning,
                TEXT("Detected RIGHT HAND animation, will only clear %d right "
                     "hand controllers"),
                ControlNamesToClean.Num());
     } else {
         // 如果无法判断，收集所有控制器
-        ControlNamesToClean = FretDanceAnimationHelper::GetValidFretDanceControllerNames();
+        ControlNamesToClean =
+            FretDanceAnimationHelper::GetValidFretDanceControllerNames();
         UE_LOG(LogTemp, Warning,
                TEXT("Could not determine hand type from path, clearing all %d "
                     "controllers"),
@@ -466,7 +493,6 @@ void UFretDanceAnimationProcessor::MakePerformerAnimation(
 
     // 8. 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
-    Settings.FramePadding = 1;
 
     // 9. 批量插入关键帧（使用通用方法）
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(
