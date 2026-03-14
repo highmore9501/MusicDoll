@@ -135,7 +135,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Objects Status"))
+             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Player Control Rig Status"))
              .OnClicked(this,
                         &SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus)
              .HAlign(HAlign_Center)
@@ -143,7 +143,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
-                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup All Objects"))
+                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
                   .OnClicked(
                       this, &SKeyRippleModulePropertiesPanel::OnSetupAllObjects)
                   .HAlign(HAlign_Center)
@@ -156,7 +156,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("ExportRecorderInfoButton", "Export Recorder Info"))
+             .Text(LOCTEXT("ExportRecorderInfoButton", "Export Player Info"))
              .OnClicked(this,
                         &SKeyRippleModulePropertiesPanel::OnExportRecorderInfo)
              .HAlign(HAlign_Center)
@@ -164,7 +164,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("ImportRecorderInfoButton", "Import Recorder Info"))
+             .Text(LOCTEXT("ImportRecorderInfoButton", "Import Player Info"))
              .OnClicked(this,
                         &SKeyRippleModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
@@ -245,7 +245,7 @@ void SKeyRippleModulePropertiesPanel::OnVector3PropertyChanged(
 
 FReply SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for check objects status"));
+        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for check player control rig status"))
         return FReply::Handled();
     }
 
@@ -255,7 +255,7 @@ FReply SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus() {
 
 FReply SKeyRippleModulePropertiesPanel::OnSetupAllObjects() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for setup all objects"));
+        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for setup player control rig"))
         return FReply::Handled();
     }
 
@@ -265,7 +265,7 @@ FReply SKeyRippleModulePropertiesPanel::OnSetupAllObjects() {
 
 FReply SKeyRippleModulePropertiesPanel::OnExportRecorderInfo() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for export recorder info"));
+        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for export player info"))
         return FReply::Handled();
     }
 
@@ -275,7 +275,7 @@ FReply SKeyRippleModulePropertiesPanel::OnExportRecorderInfo() {
 
 FReply SKeyRippleModulePropertiesPanel::OnImportRecorderInfo() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for import recorder info"));
+        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for import player info"))
         return FReply::Handled();
     }
 

@@ -212,7 +212,6 @@ void UFretDanceMusicInstrumentProcessor::
         ChannelNamesToCreate.Num());
 
     // 使用 Common 模块的通用方法：检查 Root Control 是否存在
-    // TODO: 需要确认吉他的 root control 名称，这里暂时使用 'guitar_root'
     if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
             ControlRigBlueprint, TEXT("guitar_root"))) {
         UE_LOG(LogTemp, Error, TEXT("====== INITIALIZATION FAILED ======"));
@@ -551,8 +550,17 @@ void UFretDanceMusicInstrumentProcessor::CleanupExistingGuitarAnimations(
 
     UE_LOG(LogTemp, Warning, TEXT("Cleaning up existing guitar animations..."));
 
-    // TODO: 清理 Control Rig 轨道上的旧关键帧
-    // TODO: 清理材质参数轨道上的旧关键帧
+    // 清理 Control Rig 轨道上的旧关键帧
+    if (FretDanceActor->SkeletalMeshActor) {
+        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+            FretDanceActor->SkeletalMeshActor);
+    }
+
+    // 清理材质参数轨道上的旧关键帧
+    if (FretDanceActor->Guitar) {
+        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+            FretDanceActor->Guitar);
+    }
 }
 
 #undef LOCTEXT_NAMESPACE

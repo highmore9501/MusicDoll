@@ -159,7 +159,7 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
 
 	Container->AddSlot().AutoHeight().Padding(5.0f)
 		[SNew(SButton)
-			 .Text(LOCTEXT("CheckObjectsStatusButton", "Check Objects Status"))
+			 .Text(LOCTEXT("CheckObjectsStatusButton", "Check Player Control Rig Status"))
 			 .OnClicked(this,
 				&SFretDanceModulePropertiesPanel::OnCheckObjectsStatus)
 			 .HAlign(HAlign_Center)
@@ -167,7 +167,7 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
 
 	Container->AddSlot().AutoHeight().Padding(
 		5.0f)[SNew(SButton)
-				  .Text(LOCTEXT("SetupAllObjectsButton", "Setup All Objects"))
+				  .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
 				  .OnClicked(
 					  this,
 					  &SFretDanceModulePropertiesPanel::OnSetupAllObjects)
@@ -181,7 +181,7 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
 
 	Container->AddSlot().AutoHeight().Padding(5.0f)
 		[SNew(SButton)
-			 .Text(LOCTEXT("ExportRecorderInfoButton", "Export Recorder Info"))
+			 .Text(LOCTEXT("ExportRecorderInfoButton", "Export Player Info"))
 			 .OnClicked(this,
 				&SFretDanceModulePropertiesPanel::OnExportRecorderInfo)
 			 .HAlign(HAlign_Center)
@@ -189,7 +189,7 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
 
 	Container->AddSlot().AutoHeight().Padding(5.0f)
 		[SNew(SButton)
-			 .Text(LOCTEXT("ImportRecorderInfoButton", "Import Recorder Info"))
+			 .Text(LOCTEXT("ImportRecorderInfoButton", "Import Player Info"))
 			 .OnClicked(this,
 				&SFretDanceModulePropertiesPanel::OnImportRecorderInfo)
 			 .HAlign(HAlign_Center)
@@ -262,18 +262,18 @@ FReply SFretDanceModulePropertiesPanel::OnCheckObjectsStatus() {
 
 FReply SFretDanceModulePropertiesPanel::OnSetupAllObjects() {
 	if (!FretDanceActor.IsValid()) {
-		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for setup all objects"));
+		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for setup player control rig"));
 		return FReply::Handled();
 	}
 
 	UFretDanceControlRigProcessor::SetupAllObjects(FretDanceActor.Get());
-	UE_LOG(LogTemp, Warning, TEXT("FretDance: Setup All Objects operation triggered"));
+	UE_LOG(LogTemp, Warning, TEXT("FretDance: Setup Player Control Rig operation triggered"));
 	return FReply::Handled();
 }
 
 FReply SFretDanceModulePropertiesPanel::OnExportRecorderInfo() {
 	if (!FretDanceActor.IsValid()) {
-		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for export recorder info"));
+		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for export player info"))
 		return FReply::Handled();
 	}
 
@@ -283,13 +283,13 @@ FReply SFretDanceModulePropertiesPanel::OnExportRecorderInfo() {
 	}
 
 	FretDanceActor->ExportRecorderInfo(FretDanceActor->IOFilePath);
-	UE_LOG(LogTemp, Warning, TEXT("FretDance: Export Recorder Info operation triggered"));
+	UE_LOG(LogTemp, Warning, TEXT("FretDance: Export Player Info operation triggered"));
 	return FReply::Handled();
 }
 
 FReply SFretDanceModulePropertiesPanel::OnImportRecorderInfo() {
 	if (!FretDanceActor.IsValid()) {
-		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for import recorder info"));
+		UE_LOG(LogTemp, Error, TEXT("FretDance: No actor selected for import player info"));
 		return FReply::Handled();
 	}
 
@@ -299,7 +299,7 @@ FReply SFretDanceModulePropertiesPanel::OnImportRecorderInfo() {
 	}
 
 	FretDanceActor->ImportRecorderInfo(FretDanceActor->IOFilePath);
-	UE_LOG(LogTemp, Warning, TEXT("FretDance: Import Recorder Info operation triggered"));
+	UE_LOG(LogTemp, Warning, TEXT("FretDance: Import Player Info operation triggered"));
 	return FReply::Handled();
 }
 

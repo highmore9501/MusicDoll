@@ -51,6 +51,28 @@ void FMusicDollStyle::Initialize()
             "MusicDoll.StringFlow.Icon.Small",
             new FSlateImageBrush(ContentDir / TEXT("StringFlow.png"), FVector2D(16.0f, 16.0f))
         );
+        
+        // Register the FretDance icon
+        StyleSet->Set(
+            "MusicDoll.FretDance.Icon",
+            new FSlateImageBrush(ContentDir / TEXT("FretDance.png"), FVector2D(40.0f, 40.0f))
+        );
+
+        StyleSet->Set(
+            "MusicDoll.FretDance.Icon.Small",
+            new FSlateImageBrush(ContentDir / TEXT("FretDance.png"), FVector2D(16.0f, 16.0f))
+        );
+        
+        // Register the BeatBloom icon
+        StyleSet->Set(
+            "MusicDoll.BeatBloom.Icon",
+            new FSlateImageBrush(ContentDir / TEXT("BeatBloom.png"), FVector2D(40.0f, 40.0f))
+        );
+
+        StyleSet->Set(
+            "MusicDoll.BeatBloom.Icon.Small",
+            new FSlateImageBrush(ContentDir / TEXT("BeatBloom.png"), FVector2D(16.0f, 16.0f))
+        );
 
         FSlateStyleRegistry::RegisterSlateStyle(*StyleSet);
     }

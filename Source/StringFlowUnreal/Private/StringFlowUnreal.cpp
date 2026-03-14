@@ -959,15 +959,6 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
 }
 
 void AStringFlowUnreal::SyncInstrumentTransforms() {
-    FString ActorName = GetName();
-
-    if (ActorName.StartsWith(TEXT("Default_"))) {
-        // Default_开头的并非真实实例，不需要处理
-        return;
-    }
-    // 此方法被加载到level sequnece里调用，相当于渲染环境下的tick方法。
-    bool bIsRendering = UInstrumentAnimationUtility::IsInRenderingScenario();
-
     // 执行正常的同步逻辑
     if (StringInstrument && Bow && SkeletalMeshActor) {
         // 只有当所有组件都有效时才执行同步

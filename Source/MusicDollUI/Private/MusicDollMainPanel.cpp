@@ -1,13 +1,17 @@
 ﻿#include "MusicDollMainPanel.h"
 
 #include "Animation/SkeletalMeshActor.h"
+#include "BeatBloomUnreal.h"
 #include "EngineUtils.h"
-#include "InstrumentBase.h"  // 包含InstrumentBase头文件
+#include "FretDanceUnreal.h"
+#include "InstrumentBase.h"
 #include "KeyRippleUnreal.h"
 #include "Misc/Paths.h"
 #include "MusicDollStyle.h"
 #include "StringFlowUnreal.h"
 #include "UI/BakeQueuePanel.h"
+#include "UI/BeatBloomModuleMainPanel.h"
+#include "UI/FretDanceModuleMainPanel.h"
 #include "UI/KeyRippleModuleMainPanel.h"
 #include "UI/ModuleMainPanelInterface.h"
 #include "UI/StringFlowModuleMainPanel.h"
@@ -17,10 +21,6 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
-// FretDance module main panel
-#include "UI/FretDanceModuleMainPanel.h"
-// FretDance actor
-#include "FretDanceUnreal.h"
 
 #define LOCTEXT_NAMESPACE "SMusicDollMainPanel"
 
@@ -135,23 +135,32 @@ void SMusicDollMainPanel::Construct(const FArguments& InArgs) {
     // Create bake queue panel
     SAssignNew(BakeQueuePanel, SBakeQueuePanel);
 
-    ChildSlot[SNew(SVerticalBox) +
-              SVerticalBox::Slot().AutoHeight().Padding(5.0f)
-                  [SNew(SHorizontalBox) +
-                   SHorizontalBox::Slot().AutoWidth().Padding(
-                       10.0f, 0.0f)[SNew(SImage).Image(
-                       this, &SMusicDollMainPanel::GetSelectedActorIcon)]] +
-              SVerticalBox::Slot().AutoHeight().Padding(
+    ChildSlot
+        [SNew(SVerticalBox)
+         // Top row: Icon + Actor Selector
+         +
+         SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+             [SNew(SHorizontalBox) +
+              SHorizontalBox::Slot()
+                  .AutoWidth()
+                  .Padding(10.0f, 0.0f)
+                  .VAlign(VAlign_Center)
+                      [SNew(SBox).WidthOverride(32.0f).HeightOverride(
+                          32.0f)[SNew(SImage).Image(
+                          this, &SMusicDollMainPanel::GetSelectedActorIcon)]] +
+              SHorizontalBox::Slot().FillWidth(1.0f).Padding(
                   5.0f)[SAssignNew(ActorSelectorPanel, SActorSelectorPanel)
                             .OnActorSelected_Lambda([this]() {
                                 AInstrumentBase* SelectedActor =
                                     ActorSelectorPanel->GetSelectedActor();
                                 OnActorSelected(SelectedActor);
-                            })] +
-              SVerticalBox::Slot().FillHeight(0.8f).Padding(
-                  5.0f)[SAssignNew(PropertiesPanelWidget, SVerticalBox)] +
-              SVerticalBox::Slot().AutoHeight().Padding(
-                  5.0f)[BakeQueuePanel.ToSharedRef()]];
+                            })]]
+         // Properties panel
+         + SVerticalBox::Slot().FillHeight(0.8f).Padding(
+               5.0f)[SAssignNew(PropertiesPanelWidget, SVerticalBox)]
+         // Bake queue panel
+         + SVerticalBox::Slot().AutoHeight().Padding(
+               5.0f)[BakeQueuePanel.ToSharedRef()]];
 }
 
 SMusicDollMainPanel::~SMusicDollMainPanel() {
@@ -194,6 +203,11 @@ FText SMusicDollMainPanel::GetSelectedActorTypeLabel() const {
         return FText::FromString(TEXT("StringFlow"));
     }
 
+    // 检查是否为 BeatBloom
+    if (Actor->IsA<ABeatBloomUnreal>()) {
+        return FText::FromString(TEXT("BeatBloom"));
+    }
+
     // 默认情况
     return FText::FromString(TEXT(""));
 }
@@ -217,6 +231,16 @@ const FSlateBrush* SMusicDollMainPanel::GetSelectedActorIcon() const {
     // 检查是否为 StringFlow
     if (Actor->IsA<AStringFlowUnreal>()) {
         return FMusicDollStyle::Get()->GetBrush("MusicDoll.StringFlow.Icon");
+    }
+
+    // 检查是否为 BeatBloom
+    if (Actor->IsA<ABeatBloomUnreal>()) {
+        return FMusicDollStyle::Get()->GetBrush("MusicDoll.BeatBloom.Icon");
+    }
+
+    // 检查是否为 FretDance
+    if (Actor->IsA<AFretDanceUnreal>()) {
+        return FMusicDollStyle::Get()->GetBrush("MusicDoll.FretDance.Icon");
     }
 
     // 默认情况
@@ -298,6 +322,26 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         if (ModulePanel.IsValid() &&
             ModulePanel->CanHandleActor(FretDanceActor)) {
             ModulePanel->SetActor(FretDanceActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中的对象是否为 ABeatBloomUnreal 类型
+    ABeatBloomUnreal* BeatBloomActor = Cast<ABeatBloomUnreal>(InActor);
+    if (BeatBloomActor) {
+        // Create BeatBloom module main panel
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SBeatBloomModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(BeatBloomActor)) {
+            ModulePanel->SetActor(BeatBloomActor);
             CurrentModulePanel =
                 StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 

@@ -10,6 +10,7 @@ class AActor;
 class AInstrumentBase;
 class AKeyRippleUnreal;
 class AStringFlowUnreal;
+class ABeatBloomUnreal;
 
 // Forward declarations for subpanels
 class SActorSelectorPanel;

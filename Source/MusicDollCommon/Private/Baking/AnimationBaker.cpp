@@ -378,6 +378,8 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
                 Keyframe.FrameNumber = Snapshot.FrameNumber;
                 Keyframe.Translation = Snapshot.Location;
                 Keyframe.Rotation = Snapshot.Rotation.Quaternion();
+                Keyframe.bHasLocation = true;
+                Keyframe.bHasRotation = true;
                 Keyframes.Add(Keyframe);
             }
         }

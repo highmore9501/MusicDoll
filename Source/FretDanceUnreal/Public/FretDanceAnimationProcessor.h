@@ -82,7 +82,7 @@ class ULevelSequence;
  *    - 调用 MakePerformerAnimation(FretDanceActor, AnimationFilePath)
  *    - 读取 JSON 文件 -> 解析帧数据 -> 收集关键帧 -> 批量写入 Sequencer
  *
- * 3. 生成弦动画 (TODO - Phase 7):
+ * 3. 生成弦动画:
  *    - 调用 GenerateInstrumentAnimation(FretDanceActor)
  *    - 需要从 string_recorder 文件转换数据格式
  *
@@ -108,8 +108,6 @@ class FRETDANCEUNREAL_API UFretDanceAnimationProcessor : public UObject {
 
     /**
      * 生成乐器动画（弦振动）
-     *
-     * TODO - Phase 7 实现
      *
      * @param FretDanceActor 吉他 Actor 实例
      * @return 无

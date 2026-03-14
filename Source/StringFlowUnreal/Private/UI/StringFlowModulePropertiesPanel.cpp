@@ -180,7 +180,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Objects Status"))
+             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Player Control Rig Status"))
              .OnClicked(this,
                         &SStringFlowModulePropertiesPanel::OnCheckObjectsStatus)
              .HAlign(HAlign_Center)
@@ -188,7 +188,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
-                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup All Objects"))
+                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
                   .OnClicked(
                       this,
                       &SStringFlowModulePropertiesPanel::OnSetupAllObjects)
@@ -202,7 +202,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("ExportRecorderInfoButton", "Export Recorder Info"))
+             .Text(LOCTEXT("ExportRecorderInfoButton", "Export Player Info"))
              .OnClicked(this,
                         &SStringFlowModulePropertiesPanel::OnExportRecorderInfo)
              .HAlign(HAlign_Center)
@@ -210,7 +210,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
-             .Text(LOCTEXT("ImportRecorderInfoButton", "Import Recorder Info"))
+             .Text(LOCTEXT("ImportRecorderInfoButton", "Import Player Info"))
              .OnClicked(this,
                         &SStringFlowModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
@@ -290,13 +290,13 @@ FReply SStringFlowModulePropertiesPanel::OnCheckObjectsStatus() {
 FReply SStringFlowModulePropertiesPanel::OnSetupAllObjects() {
     if (!StringFlowActor.IsValid()) {
         UE_LOG(LogTemp, Error,
-               TEXT("StringFlow: No actor selected for setup all objects"));
+               TEXT("StringFlow: No actor selected for setup player control rig"));
         return FReply::Handled();
     }
 
     UStringFlowControlRigProcessor::SetupAllObjects(StringFlowActor.Get());
     UE_LOG(LogTemp, Warning,
-           TEXT("StringFlow: Setup All Objects operation triggered"));
+           TEXT("StringFlow: Setup Player Control Rig operation triggered"));
     return FReply::Handled();
 }
 

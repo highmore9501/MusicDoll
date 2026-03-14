@@ -62,6 +62,12 @@
       "Type": "Runtime",
       "LoadingPhase": "Default",
       "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
+      "Name": "BeatBloomUnreal",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
     }
 
   ]

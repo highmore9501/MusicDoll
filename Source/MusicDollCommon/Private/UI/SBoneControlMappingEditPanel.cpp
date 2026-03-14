@@ -199,10 +199,7 @@ void SBoneControlMappingEditPanel::RefreshMappingList() {
             TEXT(
                 "RefreshMappingList: Instrument or SkeletalMeshActor is null"));
         return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("RefreshMappingList: Instrument found: %s"),
-           *Instrument->GetName());
+    }    
 
     // 尝试获取 ControlRigBlueprint
     if (!RetrieveControlRigBlueprint(Instrument)) {
@@ -250,10 +247,7 @@ void SBoneControlMappingEditPanel::RefreshMappingList() {
                    TEXT("RefreshMappingList: Found %d existing pairs"),
                    ExistingPairs.Num());
             for (const FBoneControlPair& Pair : ExistingPairs) {
-                MappingPairs.Add(MakeShareable(new FBoneControlPair(Pair)));
-                UE_LOG(LogTemp, Verbose,
-                       TEXT("  Loaded pair: Bone=%s, Control=%s"),
-                       *Pair.BoneName.ToString(), *Pair.ControlName.ToString());
+                MappingPairs.Add(MakeShareable(new FBoneControlPair(Pair)));                
             }
         } else {
             UE_LOG(LogTemp, Warning,
