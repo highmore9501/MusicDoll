@@ -13,12 +13,12 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 
 ### 核心乐器模块
 
-| 模块名称 | 乐器类型 | 状态 |
-|---------|---------|------|
-| **KeyRippleUnreal** | 钢琴 | ✅ 已发布 |
+| 模块名称             | 乐器类型    | 状态      |
+| -------------------- | ----------- | --------- |
+| **KeyRippleUnreal**  | 钢琴        | ✅ 已发布 |
 | **StringFlowUnreal** | 小提琴/弦乐 | ✅ 已发布 |
-| **FretDanceUnreal** | 吉他/贝斯 | 🚧 开发中 |
-| **BeatBloomUnreal** | 打击乐/鼓组 | 🚧 开发中 |
+| **FretDanceUnreal**  | 吉他/贝斯   | 🚧 开发中 |
+| **BeatBloomUnreal**  | 打击乐/鼓组 | 🚧 开发中 |
 
 ### 公共模块
 
@@ -28,6 +28,7 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 ## ✨ 主要特性
 
 ### 通用功能
+
 - 支持从 MIDI 文件生成演奏动画
 - 集成 Control Rig 实现精确骨骼控制
 - 支持 Morph Target 形变动画
@@ -39,24 +40,28 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 ### 各模块特色
 
 #### KeyRippleUnreal（钢琴）
+
 - 黑白键识别
 - 多位置类型（高/中/低）
 - 钢琴键形变动画系统
 - 左右手独立控制
 
 #### StringFlowUnreal（弦乐）
+
 - 实时同步系统
 - 弓法控制
 - 触弦点控制
 - 多种演奏技法
 
 #### FretDanceUnreal（吉他/贝斯）
+
 - 指弹吉他/电吉他/贝斯支持
 - 左手把位系统
 - 右手拨弦/扫弦控制
 - 品丝检测
 
 #### BeatBloomUnreal（打击乐）
+
 - 多肢体协调（双手双脚）
 - 节拍器系统
 - 多种击打模式
@@ -83,6 +88,7 @@ MusicDoll Plugin
 ## 🔧 依赖项
 
 ### 必需引擎模块
+
 - Core, CoreUObject, Engine
 - InputCore, EnhancedInput
 - AnimationCore, AnimGraphRuntime
@@ -95,6 +101,7 @@ MusicDoll Plugin
 - AssetTools, AssetRegistry
 
 ### 编辑器模块
+
 - LevelEditor, UnrealEd
 - MovieSceneTools
 - EditorStyle, PropertyEditor
@@ -144,12 +151,14 @@ MusicDoll Plugin
 详细文档请参阅 [Documentation](Documentation/) 目录：
 
 ### 用户指南
+
 - [MusicDoll 动画生成指南](Documentation/MusicDollAnimationGuide.md) - 动画生成原理详解
 - [钢琴用户指南](Documentation/BakeUserGuide.md) - KeyRipple 使用教程
 - [Control Rig 缓存子系统指南](Documentation/ControlRigCacheSubsystemGuide.md)
 - [弦乐实时同步系统](Documentation/StringFlowRealtimeSyncSystem.md)
 
 ### 开发者资源
+
 - [动画生成原则](Documentation/AnimationGenerationPrinciples.md) - 底层实现原理
 
 ## 📝 数据结构
@@ -188,7 +197,7 @@ Control Rig 控制器
 
 ## 📄 许可证
 
-本项目采用 [请指定许可证类型] 许可证。
+本项目采用 [MIT 许可证](LICENSE)。允许任何人免费使用、复制、修改、合并、发布、分发本软件及其副本，前提是保留本版权声明。
 
 ---
 
