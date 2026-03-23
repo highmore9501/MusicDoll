@@ -143,6 +143,10 @@ void UBeatBloomDrumKitProcessor::GenerateDrumKitAnimationFromPath(
            TEXT("========== GenerateDrumKitAnimation Started =========="));
     
 #if WITH_EDITOR
+    // 清理乐器动画轨道
+    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+        BeatBloomActor->DrumKit);
+    
     // ========== 读取 JSON 文件 ==========
     FString JsonContent;
     if (!FFileHelper::LoadFileToString(JsonContent, *ShapeKeyAnimationPath)) {

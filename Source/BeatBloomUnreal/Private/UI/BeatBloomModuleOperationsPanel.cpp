@@ -65,13 +65,12 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentLeftHandDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target
-                                     BeatBloom->CurrentTargetDrumKit =
-                                         *NewSelection;
+                                     // 同步到 Target: 同时更新 DrumKit 和 State
+                                     BeatBloom->CurrentTargetDrumKit = *NewSelection;
+                                     BeatBloom->CurrentTargetState = BeatBloom->CurrentLeftHandState;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: LeftHandDrumKit "
-                                                 "changed to %s, TargetDrumKit "
-                                                 "synced"),
+                                                 "changed to %s, TargetDrumKit and TargetState synced"),
                                             **NewSelection);
                                  }
                              })
@@ -107,14 +106,14 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                        BeatBloom->CurrentLeftHandState =
                                            EBeatBloomState::REST;
 
-                                   // 同步到 Target
-                                   BeatBloom->CurrentTargetState =
-                                       BeatBloom->CurrentLeftHandState;
+                                   // 同步到 Target: 同时更新 State 和 DrumKit
+                                   BeatBloom->CurrentTargetState = BeatBloom->CurrentLeftHandState;
+                                   BeatBloom->CurrentTargetDrumKit = BeatBloom->CurrentLeftHandDrumKit;
                                    UE_LOG(
                                        LogTemp, Warning,
                                        TEXT(
                                            "BeatBloom: LeftHandState "
-                                           "changed to %s, TargetState synced"),
+                                           "changed to %s, TargetState and TargetDrumKit synced"),
                                        **NewSelection);
                                }
                            })
@@ -153,13 +152,12 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentRightHandDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target
-                                     BeatBloom->CurrentTargetDrumKit =
-                                         *NewSelection;
+                                     // 同步到 Target: 同时更新 DrumKit 和 State
+                                     BeatBloom->CurrentTargetDrumKit = *NewSelection;
+                                     BeatBloom->CurrentTargetState = BeatBloom->CurrentRightHandState;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: RightHandDrumKit "
-                                                 "changed to %s, TargetDrumKit "
-                                                 "synced"),
+                                                 "changed to %s, TargetDrumKit and TargetState synced"),
                                             **NewSelection);
                                  }
                              })
@@ -195,14 +193,14 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                        BeatBloom->CurrentRightHandState =
                                            EBeatBloomState::REST;
 
-                                   // 同步到 Target
-                                   BeatBloom->CurrentTargetState =
-                                       BeatBloom->CurrentRightHandState;
+                                   // 同步到 Target: 同时更新 State 和 DrumKit
+                                   BeatBloom->CurrentTargetState = BeatBloom->CurrentRightHandState;
+                                   BeatBloom->CurrentTargetDrumKit = BeatBloom->CurrentRightHandDrumKit;
                                    UE_LOG(
                                        LogTemp, Warning,
                                        TEXT(
                                            "BeatBloom: RightHandState "
-                                           "changed to %s, TargetState synced"),
+                                           "changed to %s, TargetState and TargetDrumKit synced"),
                                        **NewSelection);
                                }
                            })
@@ -249,13 +247,9 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentLeftFootDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target
-                                     BeatBloom->CurrentTargetDrumKit =
-                                         *NewSelection;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: LeftFootDrumKit "
-                                                 "changed to %s, TargetDrumKit "
-                                                 "synced"),
+                                                 "changed to %s"),
                                             **NewSelection);
                                  }
                              })
@@ -291,14 +285,10 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                        BeatBloom->CurrentLeftFootState =
                                            EBeatBloomState::REST;
 
-                                   // 同步到 Target
-                                   BeatBloom->CurrentTargetState =
-                                       BeatBloom->CurrentLeftFootState;
                                    UE_LOG(
                                        LogTemp, Warning,
                                        TEXT(
-                                           "BeatBloom: LeftFootState "
-                                           "changed to %s, TargetState synced"),
+                                           "BeatBloom: LeftFootState changed to %s"),
                                        **NewSelection);
                                }
                            })
@@ -337,13 +327,9 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentRightFootDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target
-                                     BeatBloom->CurrentTargetDrumKit =
-                                         *NewSelection;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: RightFootDrumKit "
-                                                 "changed to %s, TargetDrumKit "
-                                                 "synced"),
+                                                 "changed to %s"),
                                             **NewSelection);
                                  }
                              })
@@ -357,49 +343,43 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                  BeatBloomActor->CurrentRightFootDrumKit);
                          })]]
               // Right Foot State
-              +
-              SVerticalBox::Slot().AutoHeight().Padding(5.0f, 2.0f)
-                  [SNew(SComboBox<TSharedPtr<FString>>)
-                       .OptionsSource(&StateOptions)
-                       .OnSelectionChanged_Lambda(
-                           [this](TSharedPtr<FString> NewSelection,
-                                  ESelectInfo::Type SelectInfo) {
-                               if (BeatBloomActor.IsValid() &&
-                                   NewSelection.IsValid()) {
-                                   ABeatBloomUnreal* BeatBloom =
-                                       BeatBloomActor.Get();
-                                   BeatBloom->Modify();
-                                   if (*NewSelection == TEXT("beat"))
-                                       BeatBloom->CurrentRightFootState =
-                                           EBeatBloomState::BEAT;
-                                   else if (*NewSelection == TEXT("ready"))
-                                       BeatBloom->CurrentRightFootState =
-                                           EBeatBloomState::READY;
-                                   else
-                                       BeatBloom->CurrentRightFootState =
-                                           EBeatBloomState::REST;
+              + SVerticalBox::Slot().AutoHeight().Padding(5.0f, 2.0f)
+                    [SNew(SComboBox<TSharedPtr<FString>>)
+                         .OptionsSource(&StateOptions)
+                         .OnSelectionChanged_Lambda(
+                             [this](TSharedPtr<FString> NewSelection,
+                                    ESelectInfo::Type SelectInfo) {
+                                 if (BeatBloomActor.IsValid() &&
+                                     NewSelection.IsValid()) {
+                                     ABeatBloomUnreal* BeatBloom =
+                                         BeatBloomActor.Get();
+                                     BeatBloom->Modify();
+                                     if (*NewSelection == TEXT("beat"))
+                                         BeatBloom->CurrentRightFootState =
+                                             EBeatBloomState::BEAT;
+                                     else if (*NewSelection == TEXT("ready"))
+                                         BeatBloom->CurrentRightFootState =
+                                             EBeatBloomState::READY;
+                                     else
+                                         BeatBloom->CurrentRightFootState =
+                                             EBeatBloomState::REST;
 
-                                   // 同步到 Target
-                                   BeatBloom->CurrentTargetState =
-                                       BeatBloom->CurrentRightFootState;
-                                   UE_LOG(
-                                       LogTemp, Warning,
-                                       TEXT(
-                                           "BeatBloom: RightFootState "
-                                           "changed to %s, TargetState synced"),
-                                       **NewSelection);
-                               }
-                           })
-                       .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
-                           return SNew(STextBlock)
-                               .Text(FText::FromString(*Item));
-                       })[SNew(STextBlock).Text_Lambda([this]() -> FText {
-                           if (!BeatBloomActor.IsValid())
-                               return FText::FromString(TEXT(""));
-                           return FText::FromString(
-                               ABeatBloomUnreal::GetStateString(
-                                   BeatBloomActor->CurrentRightFootState));
-                       })]]]];
+                                     UE_LOG(LogTemp, Warning,
+                                            TEXT("BeatBloom: RightFootState "
+                                                 "changed to %s."),
+                                            **NewSelection);
+                                 }
+                             })
+                         .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
+                             return SNew(STextBlock)
+                                 .Text(FText::FromString(*Item));
+                         })[SNew(STextBlock).Text_Lambda([this]() -> FText {
+                             if (!BeatBloomActor.IsValid())
+                                 return FText::FromString(TEXT(""));
+                             return FText::FromString(
+                                 ABeatBloomUnreal::GetStateString(
+                                     BeatBloomActor->CurrentRightFootState));
+                         })]]]];
 
     // State Management Section
     Container->AddSlot().AutoHeight().Padding(
@@ -434,6 +414,50 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
         TEXT("Animation Generation"))];
+
+    TSharedPtr<SEditableTextBox> AnimationFilePathBox;
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SHorizontalBox) +
+         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
+             [SAssignNew(AnimationFilePathBox, SEditableTextBox)
+                  .Text_Lambda([this]() -> FText {
+                      if (BeatBloomActor.IsValid()) {
+                          return FText::FromString(
+                              BeatBloomActor->AnimationFilePath);
+                      }
+                      return FText::FromString(TEXT(""));
+                  })
+                  .OnTextCommitted_Lambda([this](const FText& InText,
+                                                 ETextCommit::Type CommitType) {
+                      if (CommitType == ETextCommit::OnEnter ||
+                          CommitType == ETextCommit::OnUserMovedFocus) {
+                          if (BeatBloomActor.IsValid()) {
+                              BeatBloomActor->AnimationFilePath =
+                                  InText.ToString();
+                              BeatBloomActor->Modify();
+                          }
+                      }
+                  })] +
+         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+             [SNew(SButton)
+                  .Text(LOCTEXT("BrowseButton", "Browse"))
+                  .OnClicked_Lambda([this, AnimationFilePathBox]() -> FReply {
+                      if (!BeatBloomActor.IsValid()) {
+                          return FReply::Handled();
+                      }
+
+                      FString FilePath;
+                      if (FCommonPanelUtility::BrowseForFile(
+                              TEXT(".beatbloom"), FilePath, false)) {
+                          if (AnimationFilePathBox.IsValid()) {
+                              AnimationFilePathBox->SetText(
+                                  FText::FromString(FilePath));
+                              BeatBloomActor->AnimationFilePath = FilePath;
+                              BeatBloomActor->Modify();
+                          }
+                      }
+                      return FReply::Handled();
+                  })]];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
@@ -636,12 +660,8 @@ FReply SBeatBloomModuleOperationsPanel::OnSaveFoot() {
     // 保存脚部状态
     UBeatBloomControlRigProcessor::SaveFootState(BeatBloomActor.Get());
 
-    // 同时保存目标状态
-    UBeatBloomControlRigProcessor::SaveTargetState(BeatBloomActor.Get());
-
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("BeatBloom: Save Foot State + Target State operation triggered"));
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Save Foot State operation triggered"));
     return FReply::Handled();
 }
 

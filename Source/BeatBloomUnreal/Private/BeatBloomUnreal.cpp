@@ -420,7 +420,7 @@ TMap<FString, FString> ABeatBloomUnreal::GetCurrentControllerToRecorderMapping()
     TMap<FString, FString> Mapping;
     
     // 左手映射
-    if (CurrentLeftHandDrumKit == TEXT("左手休息")) {
+    if (CurrentLeftHandDrumKit == TEXT("Rest")) {
         Mapping.Add(TEXT("H_L"), TEXT("H_Rest_L"));
         Mapping.Add(TEXT("HP_L"), TEXT("HP_Rest_L"));
         Mapping.Add(TEXT("H_rotation_L"), TEXT("H_rotation_Rest_L"));
@@ -432,7 +432,7 @@ TMap<FString, FString> ABeatBloomUnreal::GetCurrentControllerToRecorderMapping()
     }
     
     // 右手映射
-    if (CurrentRightHandDrumKit == TEXT("右手休息")) {
+    if (CurrentRightHandDrumKit == TEXT("Rest")) {
         Mapping.Add(TEXT("H_R"), TEXT("H_Rest_R"));
         Mapping.Add(TEXT("HP_R"), TEXT("HP_Rest_R"));
         Mapping.Add(TEXT("H_rotation_R"), TEXT("H_rotation_Rest_R"));

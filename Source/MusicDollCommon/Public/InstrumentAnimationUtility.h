@@ -83,14 +83,26 @@ struct MUSICDOLLCOMMON_API FRotationData {
 };
 
 /**
+ * 批量插入关键帧时，特殊控制器的轴向插入模式
+ */
+enum class ESpecialAxisMode : uint8 {
+    /** 只插入 X 轴位置（默认） */
+    X,
+    /** 只插入 Y 轴位置 */
+    Y,
+    /** 只插入 Z 轴位置 */
+    Z
+};
+
+/**
  * 批量插入关键帧的配置参数
  */
 struct MUSICDOLLCOMMON_API FBatchInsertKeyframesSettings {
     /** 帧范围填充（MaxFrame + N） */
     int32 FramePadding;
 
-    /** 特殊控制器处理规则：控制器名称前缀 -> 是否只插入X轴位置 */
-    TMap<FString, bool> SpecialControllerRules;
+    /** 特殊控制器处理规则：控制器名称前缀 -> 只插入指定轴的位置数据 */
+    TMap<FString, ESpecialAxisMode> SpecialControllerRules;
 
     /** 是否启用旋转插值优化 */
     bool bUnwrapRotationInterpolation;

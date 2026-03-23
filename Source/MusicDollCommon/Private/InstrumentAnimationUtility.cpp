@@ -1112,23 +1112,38 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
 
         // Check for special controller handling
         bool bIsSpecialControl = false;
-        bool bOnlyInsertXAxis = false;
+        ESpecialAxisMode SpecialAxisMode = ESpecialAxisMode::X;
 
         for (const auto& SpecialRule : Settings.SpecialControllerRules) {
             if (ControlName.Contains(SpecialRule.Key,
                                      ESearchCase::IgnoreCase)) {
                 bIsSpecialControl = true;
-                bOnlyInsertXAxis = SpecialRule.Value;
+                SpecialAxisMode = SpecialRule.Value;
                 break;
             }
         }
 
-        if (bIsSpecialControl && bOnlyInsertXAxis) {
-            LocationX->AddKeys(LocationTimes, LocationXValues);
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("[COMMON] Special control '%s': Only X-axis keys added"),
-                *ControlName);
+        if (bIsSpecialControl) {
+            switch (SpecialAxisMode) {
+                case ESpecialAxisMode::X:
+                    LocationX->AddKeys(LocationTimes, LocationXValues);
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[COMMON] Special control '%s': Only X-axis keys added"),
+                           *ControlName);
+                    break;
+                case ESpecialAxisMode::Y:
+                    LocationY->AddKeys(LocationTimes, LocationYValues);
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[COMMON] Special control '%s': Only Y-axis keys added"),
+                           *ControlName);
+                    break;
+                case ESpecialAxisMode::Z:
+                    LocationZ->AddKeys(LocationTimes, LocationZValues);
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[COMMON] Special control '%s': Only Z-axis keys added"),
+                           *ControlName);
+                    break;
+            }
         } else {
             LocationX->AddKeys(LocationTimes, LocationXValues);
             LocationY->AddKeys(LocationTimes, LocationYValues);

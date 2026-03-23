@@ -106,7 +106,7 @@ void UBeatBloomAnimationProcessor::GeneratePerformerAnimation(
     // 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
     // 配置特殊控制器处理（Tar_ 控制器只插入 Z 轴）
-    Settings.SpecialControllerRules.Add(TEXT("Tar_"), true);
+    Settings.SpecialControllerRules.Add(TEXT("Tar_"), ESpecialAxisMode::Z);
     
     // 批量插入关键帧
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(

@@ -90,8 +90,15 @@ FRigUnit_ArcDistributedIK_Execute() {
 
         static bool DetermineAlgorithmBranch(float TotalChainLength,
                                              float EffectorDistance,
+                                             float Precision,
                                              int32& OutAlgorithmType) {
-            if (IsEffectorTooFar(TotalChainLength, EffectorDistance)) {
+            // Subtract Precision from the threshold so the branch switch
+            // happens slightly before the chain is truly fully stretched.
+            // This keeps the residual end-effector error of the FABRIK solver
+            // (which converges to within Precision) consistent with the
+            // AlgorithmType==1 path, preventing a visible pop at the boundary.
+            if (IsEffectorTooFar(TotalChainLength + Precision,
+                                 EffectorDistance)) {
                 OutAlgorithmType = 1;
                 return true;
             }
@@ -697,8 +704,9 @@ FRigUnit_ArcDistributedIK_Execute() {
         return;
     }
 
-    if (!Local::DetermineAlgorithmBranch(Data.TotalChainLength,
-                                         EffectorDistance, AlgorithmType)) {
+    if (!Local::DetermineAlgorithmBranch(
+            Data.TotalChainLength, EffectorDistance,
+            Precision > 0.f ? Precision : 0.001f, AlgorithmType)) {
         if (bUseDebug) {
             UE_LOG(LogControlRig, Error,
                    TEXT("Failed to determine algorithm branch."));

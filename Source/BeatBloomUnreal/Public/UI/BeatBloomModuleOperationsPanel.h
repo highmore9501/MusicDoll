@@ -12,11 +12,13 @@ class ABeatBloomUnreal;
  * 布局区域：
  * - Hand State Configuration：左/右手鼓件 + 状态下拉菜单
  * - Foot State Configuration：左/右脚鼓件 + 状态下拉菜单
- * - State Management：SaveHandState（同时保存 Target）/SaveFootState（同时保存 Target）/LoadState 按钮
+ * - State Management: SaveHandState（同时保存 Target）/SaveFootState（同时保存 Target）/LoadState 按钮
  * - Animation Generation：生成演奏动画/鼓组动画/全部动画 按钮
  * - Control Rig：初始化鼓组、重新注册 ControlRig 按钮
  *
- * 注意：Target 状态已移除，改为自动同步到最新操作的肢体状态
+ * 自动同步逻辑：
+ * - 手部（DrumKit 或 State）变化 → 同时同步 Target 的 DrumKit 和 State
+ * - 脚部变化 → 不影响 Target，保持独立控制
  *
  * 对标参考：SFretDanceModuleOperationsPanel
  */

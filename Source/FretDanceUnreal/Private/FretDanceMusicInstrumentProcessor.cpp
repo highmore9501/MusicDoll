@@ -289,6 +289,10 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
            *StringVibrationDataPath);
 
 #if WITH_EDITOR
+    // 清理乐器动画轨道
+    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+        FretDanceActor->Guitar);
+
     // 使用新的 Morph Target 生成方法
     TMap<FString, TTuple<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>>
         VibrationKeyframeData;

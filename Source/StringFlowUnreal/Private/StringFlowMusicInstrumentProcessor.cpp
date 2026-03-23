@@ -870,6 +870,10 @@ void UStringFlowMusicInstrumentProcessor::GenerateInstrumentAnimation(
            TEXT("========== GenerateInstrumentAnimation Started =========="));
 
 #if WITH_EDITOR
+    // 清理乐器动画轨道
+    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+        StringFlowActor->StringInstrument);
+
     // 获取配置文件路径
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;

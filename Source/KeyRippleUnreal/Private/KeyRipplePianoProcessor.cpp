@@ -172,12 +172,15 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     if (!KeyRippleActor->Piano) {
         UE_LOG(LogTemp, Error, TEXT("Piano is not assigned in KeyRippleActor"));
         return;
-    }
+    }       
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== GenerateInstrumentAnimation Started =========="));
 
 #if WITH_EDITOR
+    // 使用Common模块的通用清理方法
+    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
+        KeyRippleActor->Piano);
     // ========== Piano特定的JSON读取逻辑 ==========
     FString JsonContent;
     if (!FFileHelper::LoadFileToString(JsonContent, *PianoKeyAnimationPath)) {

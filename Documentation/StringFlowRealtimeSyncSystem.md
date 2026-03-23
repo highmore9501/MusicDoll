@@ -14,21 +14,25 @@
 
 #### A. 人物 Control Rig（Character Control Rig）
 - **所有者**: 人物骨骼网格 Actor（`SkeletalMeshActor`）
+- **组件名称**: `Performer`（用于在代码中引用）
 - **核心控制器**: `controller_root`
   - 用于驱动整个演奏的基础框架
   - 所有人物相关的演奏动作都以此为参考
+  - 父级：`base_root`（在 Control Rig Blueprint 中自动创建）
 - **其他关键控制器**:
   - `bow_controller`: 右手弓的控制器
   - `string_touch_point`: 弦触点的参考位置
 
 #### B. 小提琴 Control Rig（Instrument Control Rig）
 - **所有者**: 小提琴骨骼网格 Actor（`StringInstrument`）
+- **组件名称**: `StringInstrument`（用于在代码中引用）
 - **核心控制器**: `violin_root`
   - 驱动整个小提琴模型
   - 通过实时同步与人物 `controller_root` 关联
 
 #### C. 琴弓 Control Rig（Bow Control Rig）
 - **所有者**: 琴弓骨骼网格 Actor（`Bow`）
+- **组件名称**: `Bow`（用于在代码中引用）
 - **核心控制器**: `bow_ctrl`
   - 驱动琴弓模型的位置和旋转
   - 由人物的右手控制器驱动
@@ -87,6 +91,34 @@
    - 旋转: 使用计算后的目标旋转
 
 ### 1.3 实现细节
+
+#### 重要提示：关于 base_root
+
+在人物 Control Rig 中，`controller_root` 实际上有一个父级控制器叫做 `base_root`：
+
+```
+Control Rig Hierarchy:
+└─ base_root           (自动创建的根节点)
+   └─ controller_root  (用户控制的根节点)
+      └─ ... 其他控制器
+```
+
+**base_root 的作用**:
+- 作为 Control Rig 的绝对根节点，提供稳定的参考系
+- 在同步计算中，`base_root` 通常保持不变（Identity Transform）
+- `controller_root` 的所有变换都是相对于 `base_root` 的
+
+**代码中的使用**:
+```cpp
+// 在创建 Control Rig hierarchy 时
+FControlRigCreationUtility::CreateControl(ControlRigBlueprint, TEXT("base_root"), TEXT(""));
+FControlRigCreationUtility::CreateControl(ControlRigBlueprint, TEXT("controller_root"), TEXT("base_root"));
+```
+
+**注意事项**:
+- ✅ 实时同步算法会自动处理 `base_root` 的存在
+- ✅ 用户只需要关注 `controller_root` 的动画
+- ❌ 不要手动修改 `base_root` 的变换，这会破坏同步计算
 
 #### 关键方法：FInstrumentControlRigUtility::ParentBetweenControlRig
 
@@ -186,6 +218,7 @@ static bool GetControlRigControlInitTransform(
 
 2. **设置琴弓驱动轴** (`BowAxisTowardString`)
    - 这定义了琴弓的哪个轴应该指向琴弦
+   - **默认值**: `(1.0f, 0.0f, 0.0f)` - X 轴
    - 典型值：
      - `(1, 0, 0)` - X 轴指向琴弦
      - `(0, 1, 0)` - Y 轴指向琴弦
@@ -195,6 +228,7 @@ static bool GetControlRigControlInitTransform(
 3. **设置琴弓向上轴** (`BowUpAxis`)
    - 定义琴弓的"上"方向
    - 这有助于消除旋转的歧义性
+   - **默认值**: `(0.0f, 0.0f, 1.0f)` - Z 轴
    - 典型值：`(0, 0, 1)` 或 `(0, 1, 0)`
 
 4. **在 Sequencer 中移动右手控制器**
@@ -247,6 +281,169 @@ static bool GetControlRigControlInitTransform(
 | 激活 | ✅ 启用 | 验证小提琴跟随人物运动 | 确认同步有效 |
 | 琴弓设置 | ✅ 启用 | 调整右手控制器和琴弓参数 | 实现正确的琴弓动作 |
 | 完成 | ✅ 启用 | 在 Sequencer 中编辑动画 | 记录演奏动作 |
+
+---
+
+## 第三部分：硬编码名称与配置参考
+
+### 3.1 Control Rig 组件名称
+
+在代码和 Sequencer 中使用的组件名称（用于 `GetCachedControlRig`）：
+
+| 组件 | 名称 | 说明 |
+|------|------|------|
+| 人物 Control Rig | `Performer` | 演奏者角色的 Control Rig |
+| 小提琴 Control Rig | `StringInstrument` | 弦乐器的 Control Rig |
+| 琴弓 Control Rig | `Bow` | 琴弓的 Control Rig |
+
+**用途示例**:
+```cpp
+// 获取人物的 ControlRig 实例
+UControlRig* PerformerControlRig = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+
+// 获取小提琴的 ControlRig 实例
+UControlRig* InstrumentControlRig = StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
+```
+
+### 3.2 控制器名称硬编码
+
+以下控制器名称在代码中硬编码使用，必须与 Control Rig Blueprint 中的名称完全匹配：
+
+#### 人物 Control Rig 控制器
+| 控制器名称 | 用途 | 备注 |
+|-----------|------|------|
+| `base_root` | `controller_root` 的父级 | 在 Control Rig 中自动创建 |
+| `controller_root` | 人物根控制器 | 驱动整个演奏的基础框架 |
+| `bow_controller` | 右手弓控制器 | 驱动琴弓位置 |
+| `string_touch_point` | 弦触点位置 | 驱动琴弓朝向 |
+
+#### 小提琴 Control Rig 控制器
+| 控制器名称 | 用途 | 备注 |
+|-----------|------|------|
+| `violin_root` | 小提琴根控制器 | 跟随 `controller_root` 运动 |
+
+#### 琴弓 Control Rig 控制器
+| 控制器名称 | 用途 | 备注 |
+|-----------|------|------|
+| `bow_ctrl` | 琴弓控制器 | 接收来自 `bow_controller` 的驱动 |
+
+### 3.3 手指与手掌控制器命名规则
+
+系统自动生成以下控制器和记录器名称：
+
+#### 手指控制器
+格式：`{手指编号}_{手部标识}`
+- 左手：`1_L`, `2_L`, `3_L`, `4_L`
+- 右手：`1_R`, `2_R`, `3_R`, `4_R`
+
+#### 手掌控制器
+| 类型 | 左手 | 右手 | 说明 |
+|------|------|------|------|
+| hand_controller | `H_L` | `H_R` | 主手掌控制器 |
+| hand_pivot_controller | `HP_L` | `HP_R` | 手掌枢轴控制器 |
+| hand_rotation_controller | `H_rotation_L` | `H_rotation_R` | 手掌旋转控制器 |
+| thumb_controller | `T_L` | `T_R` | 拇指控制器 |
+| thumb_pivot_controller | `TP_L` | `TP_R` | 拇指枢轴控制器 |
+
+#### 记录器命名规则
+格式：`p_s{弦索引}_f{品格索引}_{手指编号}_L_{位置类型}`
+- 示例：`p_s0_f1_1_L_normal`（左手食指在第 0 弦第 1 品格正常位置）
+
+### 3.4 配置参数默认值
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `BowAxisTowardString` | `(1.0f, 0.0f, 0.0f)` | 琴弓指向琴弦的轴向（X 轴） |
+| `BowUpAxis` | `(0.0f, 0.0f, 1.0f)` | 琴弓的向上方向（Z 轴） |
+| `bEnableRealtimeSync` | `false` | 是否启用实时同步 |
+
+### 3.5 重要提示
+
+⚠️ **不要修改硬编码名称**
+
+以上所有名称（组件名、控制器名）都是硬编码在源码中的，如果要修改：
+1. 必须同时修改源代码中的所有引用
+2. 必须确保 Control Rig Blueprint 中的名称与代码一致
+3. 推荐保持默认名称不变，避免不必要的兼容性问题
+
+⚠️ **组件名称大小写敏感**
+
+所有名称都是大小写敏感的，例如 `Performer` 不能写成 `performer` 或 `PERFORMER`。
+
+### 3.6 代码使用示例
+
+#### 示例 1：在蓝图中获取 Control Rig
+
+```
+// 获取人物的 ControlRig 实例（用于访问控制器）
+UControlRig* PerformerControlRig = StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+
+// 获取小提琴的 ControlRig 实例
+UControlRig* InstrumentControlRig = StringFlowActor->GetCachedControlRig(TEXT("StringInstrument"));
+
+// 获取琴弓的 ControlRig 实例
+UControlRig* BowControlRig = StringFlowActor->GetCachedControlRig(TEXT("Bow"));
+```
+
+#### 示例 2：在 Sequencer 中使用
+
+在 Sequencer 中创建 Transform 轨道时，需要使用以下组件名称：
+
+1. 展开 `AStringFlowUnreal` Actor
+2. 找到 `Performer` 组件 → 添加 `controller_root` 的动画轨道
+3. 找到 `StringInstrument` 组件 → 添加 `violin_root` 的动画轨道（如果需要手动覆盖）
+4. 找到 `Bow` 组件 → 添加 `bow_ctrl` 的动画轨道（如果需要手动覆盖）
+
+**注意**：启用实时同步后，`violin_root` 和 `bow_ctrl` 会自动跟随，通常不需要手动设置动画。
+
+### 3.7 常见问题排查
+
+#### 问题 1：Error - Failed to get ControlRig for component Performer
+
+**原因**: CacheSubsystem 未正确初始化或 LevelSequence 未加载
+
+**解决方法**:
+1. 确保场景中已放置了 LevelSequenceActor
+2. 确保 LevelSequence 正在播放或已加载
+3. 检查 GEngine 和 UControlRigCacheSubsystem 是否正常工作
+
+#### 问题 2：小提琴位置不正确
+
+**可能原因**:
+- `violin_root` 的 Init Transform 设置错误
+- `controller_root` 与 `violin_root` 的相对关系未正确缓存
+
+**解决方法**:
+1. 禁用实时同步 (`bEnableRealtimeSync = false`)
+2. 手动调整 `violin_root` 到正确位置
+3. 将当前变换值复制到 Init Transform
+4. 重新启用实时同步
+5. 调用 `InitializeStringInstrumentSync()` 重新初始化
+
+#### 问题 3：琴弓不跟随右手运动
+
+**可能原因**:
+- 实时同步未启用
+- `bow_controller` 或 `string_touch_point` 控制器不存在
+- Bow Control Rig 中 `bow_ctrl` 未正确创建
+
+**解决方法**:
+1. 确认 `bEnableRealtimeSync = true`
+2. 在 Sequencer 中检查是否存在 `bow_controller` 和 `string_touch_point` 控制器
+3. 打开 Bow 的 Control Rig Blueprint，确认 `bow_ctrl` 存在
+4. 如果缺失，使用 `FControlRigCreationUtility::CreateControl` 创建
+
+#### 问题 4：BowAxisTowardString 设置后琴弓朝向仍然错误
+
+**可能原因**:
+- 琴弓模型的本地坐标系轴向与预期不符
+- 需要使用不同的轴组合
+
+**解决方法**:
+尝试以下常见配置：
+- 小提琴/中提琴：`BowAxisTowardString=(1,0,0)`, `BowUpAxis=(0,0,1)`
+- 大提琴：`BowAxisTowardString=(0,1,0)`, `BowUpAxis=(0,0,1)`
+- 如果都不对，逐轴测试 `(1,0,0)`, `(-1,0,0)`, `(0,1,0)`, `(0,-1,0)`, `(0,0,1)`, `(0,0,-1)`
 
 ---
 
