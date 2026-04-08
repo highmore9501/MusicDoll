@@ -13,19 +13,20 @@
 void SBeatBloomModuleMainPanel::Construct(const FArguments& InArgs) {
     // Initialize with basic module panel
     InitializeModulePanel(TEXT("BeatBloom"), FText(), FText());
-    
+
     // Create sub panels
     PropertiesPanel = SNew(SBeatBloomModulePropertiesPanel);
     OperationsPanel = SNew(SBeatBloomModuleOperationsPanel);
     BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
     BakeOperationsPanel = SNew(SBeatBloomBakeOperationsPanel);
-    
+
     // Register panels (order matters for tab positions)
     RegisterPanel(PropertiesPanel, LOCTEXT("PropertiesTabLabel", "Properties"));
     RegisterPanel(OperationsPanel, LOCTEXT("OperationsTabLabel", "Operations"));
-    RegisterPanel(BoneControlMappingPanel, LOCTEXT("BoneControlMappingTabLabel", "Bone Control Mapping"));
+    RegisterPanel(BoneControlMappingPanel,
+                  LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
     RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
-    
+
     // Show first panel after all panels are registered
     ShowFirstPanel();
 }

@@ -172,7 +172,7 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
     if (!KeyRippleActor->Piano) {
         UE_LOG(LogTemp, Error, TEXT("Piano is not assigned in KeyRippleActor"));
         return;
-    }       
+    }
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== GenerateInstrumentAnimation Started =========="));
@@ -717,11 +717,40 @@ int32 UKeyRipplePianoProcessor::GenerateInstrumentMaterialAnimation(
     int32 SuccessCount = 0;
     int32 NumMaterials = SkeletalMeshComp->GetNumMaterials();
 
-    // 为每个有Pressed参数的材质创建轨道并写入关键帧
+    // 清理轨道，并为每个有Pressed参数的材质写入关键帧
     for (int32 MaterialSlotIndex = 0; MaterialSlotIndex < NumMaterials;
          ++MaterialSlotIndex) {
         UMaterialInterface* CurrentMaterial =
             SkeletalMeshComp->GetMaterial(MaterialSlotIndex);
+
+        // 查找或创建材质参数轨道
+        UMovieSceneComponentMaterialTrack* MaterialTrack =
+            UInstrumentAnimationUtility::FindOrCreateComponentMaterialTrack(
+                LevelSequence, SkeletalMeshCompBindingID, MaterialSlotIndex);
+
+        if (!MaterialTrack) {
+            continue;
+        }
+
+        // 清理现有Section并创建新的
+        UMovieSceneSection* NewSection =
+            UInstrumentAnimationUtility::ResetTrackSections(MaterialTrack);
+        if (!NewSection) {
+            continue;
+        }
+
+        UMovieSceneComponentMaterialParameterSection* ParameterSection =
+            Cast<UMovieSceneComponentMaterialParameterSection>(NewSection);
+        if (!ParameterSection) {
+            continue;
+        }
+
+        // 确保有Pressed参数
+        if (!UInstrumentAnimationUtility::AddMaterialParameter(
+                MaterialTrack, TEXT("Pressed"), 0.0f)) {
+            continue;
+        }
+
         if (!CurrentMaterial ||
             !UInstrumentMaterialUtility::MaterialHasParameter(
                 CurrentMaterial, TEXT("Pressed"))) {
@@ -810,34 +839,6 @@ int32 UKeyRipplePianoProcessor::GenerateInstrumentMaterialAnimation(
                    TEXT("Unexpected: Found %d matching entries for key %d, "
                         "expected exactly 1"),
                    KeySpecificData.Num(), PianoKeyNumber);
-        }
-
-        // 查找或创建材质参数轨道
-        UMovieSceneComponentMaterialTrack* MaterialTrack =
-            UInstrumentAnimationUtility::FindOrCreateComponentMaterialTrack(
-                LevelSequence, SkeletalMeshCompBindingID, MaterialSlotIndex);
-
-        if (!MaterialTrack) {
-            continue;
-        }
-
-        // 确保有Pressed参数
-        if (!UInstrumentAnimationUtility::AddMaterialParameter(
-                MaterialTrack, TEXT("Pressed"), 0.0f)) {
-            continue;
-        }
-
-        // 清理现有Section并创建新的
-        UMovieSceneSection* NewSection =
-            UInstrumentAnimationUtility::ResetTrackSections(MaterialTrack);
-        if (!NewSection) {
-            continue;
-        }
-
-        UMovieSceneComponentMaterialParameterSection* ParameterSection =
-            Cast<UMovieSceneComponentMaterialParameterSection>(NewSection);
-        if (!ParameterSection) {
-            continue;
         }
 
         // 只写入该键对应的关键帧数据

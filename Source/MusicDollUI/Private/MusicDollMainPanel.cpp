@@ -15,12 +15,14 @@
 #include "UI/KeyRippleModuleMainPanel.h"
 #include "UI/ModuleMainPanelInterface.h"
 #include "UI/StringFlowModuleMainPanel.h"
+#include "UI/ZhengDriftModuleMainPanel.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "ZhengDriftUnreal.h"
 
 #define LOCTEXT_NAMESPACE "SMusicDollMainPanel"
 
@@ -243,6 +245,11 @@ const FSlateBrush* SMusicDollMainPanel::GetSelectedActorIcon() const {
         return FMusicDollStyle::Get()->GetBrush("MusicDoll.FretDance.Icon");
     }
 
+    // 检查是否为 ZhengDrift
+    if (Actor->IsA<AZhengDriftUnreal>()) {
+        return FMusicDollStyle::Get()->GetBrush("MusicDoll.ZhengDrift.Icon");
+    }
+
     // 默认情况
     return FMusicDollStyle::Get()->GetBrush("MusicDoll.Icon");
 }
@@ -342,6 +349,25 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         if (ModulePanel.IsValid() &&
             ModulePanel->CanHandleActor(BeatBloomActor)) {
             ModulePanel->SetActor(BeatBloomActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中的对象是否为 AZhengDriftUnreal 类型
+    AZhengDriftUnreal* ZhengDriftActor = Cast<AZhengDriftUnreal>(InActor);
+    if (ZhengDriftActor) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SZhengDriftModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(ZhengDriftActor)) {
+            ModulePanel->SetActor(ZhengDriftActor);
             CurrentModulePanel =
                 StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 

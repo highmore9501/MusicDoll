@@ -233,10 +233,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> GuitarFretPositions;
 
-    // 辅助线
-    UPROPERTY()
-    TMap<FString, FString> GuideLines;
-
     // ========== 数据存储 ==========
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FretDance Data")
     TMap<FString, FFretDanceRecorderTransform> RecorderTransforms;
@@ -294,7 +290,7 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     void ExportRecorderInfo(const FString& FilePath);
     bool ImportRecorderInfo(const FString& FilePath);
 
-    // 设置乐器类型（会自动更新 GuideLines 等配置）
+    // 设置乐器类型（会自动更新配置）
     void SetInstrumentType(EFretDanceInstrumentType NewType);
 
     // ========== 统一的键名映射工具函数 ==========
@@ -303,7 +299,7 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
      * @return TMap: {"p0"->"p_low", "p3"->"p_high", "pend"->"p_end"}
      */
     static TMap<FString, FString> GetRightHandPositionKeyMapping();
-    
+
     /**
      * 将 JSON 中的右手位置键名转换为内部使用的键名
      * @param JsonKeyName JSON 中的键名（如 "p0", "p3", "pend"）
@@ -317,13 +313,13 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // ControlRig 缓存访问方法
     UControlRig* GetCachedControlRig(FName ComponentName);
     UControlRigBlueprint* GetCachedControlRigBlueprint(FName ComponentName);
-    
+
     // 注册所有 ControlRig 到缓存子系统（演奏者 + 吉他）
     void RegisterAllControlRigs();
-    
+
     // 记录器初始化方法
     void InitializeRecorderTransforms();
-    
+
     // 当 ControlRig 相关操作失败时触发重新注册
     void TriggerControlRigReregistration(const FString& ErrorMessage);
 

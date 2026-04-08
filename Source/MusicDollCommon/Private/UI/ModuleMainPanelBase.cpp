@@ -66,14 +66,31 @@ void SModuleMainPanelBase::RegisterPanel(TSharedPtr<SWidget> InPanel,
 
     // Create tab button
     int32 PanelIndex = RegisteredPanels.Num() - 1;
+    TSharedPtr<bool> bIsHovered = MakeShareable(new bool(false));
     TSharedPtr<SButton> TabButton =
         SNew(SButton)
-            .Text(InTabLabel)
+            .HAlign(HAlign_Center)
+            .VAlign(VAlign_Center)
             .OnClicked(this, &SModuleMainPanelBase::OnTabClicked, PanelIndex)
             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")
-            .ForegroundColor_Lambda([this, PanelIndex]() {
-                return GetTabButtonTextColor(PanelIndex);
-            });
+            .OnHovered_Lambda([bIsHovered]() { *bIsHovered = true; })
+            .OnUnhovered_Lambda([bIsHovered]() { *bIsHovered = false; })
+            [SNew(STextBlock)
+                 .Text(InTabLabel)
+                 .Justification(ETextJustify::Center)
+                 .ColorAndOpacity_Lambda([this, PanelIndex, bIsHovered]() -> FSlateColor {
+                     if (*bIsHovered) {
+                         return FLinearColor(1.0f, 1.0f, 0.0f, 1.0f);
+                     }
+                     return GetTabButtonTextColor(PanelIndex);
+                 })
+                 .Font_Lambda([this, PanelIndex]() -> FSlateFontInfo {
+                     FSlateFontInfo FontInfo = FAppStyle::GetFontStyle("NormalText");
+                     FontInfo.TypefaceFontName = (ActiveTab == PanelIndex)
+                         ? FName("Bold")
+                         : FName("Regular");
+                     return FontInfo;
+                 })];
 
     // Add button to tab container
     if (TabButtonsContainer.IsValid()) {

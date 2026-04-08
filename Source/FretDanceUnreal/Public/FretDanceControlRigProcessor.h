@@ -1,10 +1,10 @@
 ﻿#pragma once
 
+#include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCreationUtility.h"
 #include "CoreMinimal.h"
 #include "FretDanceUnreal.h"
 #include "UObject/Object.h"
-#include "ControlRigBlueprintLegacy.h"
 #include "FretDanceControlRigProcessor.generated.h"
 
 /**
@@ -90,22 +90,6 @@ class FRETDANCEUNREAL_API UFretDanceControlRigProcessor : public UObject {
      */
     static bool LoadState(AFretDanceUnreal* FretDanceActor,
                           const TMap<FString, FTransform>& StateData);
-
-    /**
-     * 保存辅助线状态到 RecorderTransforms
-     *
-     * @param FretDanceActor FretDance 实例
-     * @return 是否保存成功
-     */
-    static bool SaveGuidelinesState(AFretDanceUnreal* FretDanceActor);
-
-    /**
-     * 从 RecorderTransforms 加载辅助线状态
-     *
-     * @param FretDanceActor FretDance 实例
-     * @return 是否加载成功
-     */
-    static bool LoadGuidelinesState(AFretDanceUnreal* FretDanceActor);
 
     /**
      * 保存指板位置状态到 RecorderTransforms（与左手状态无关）

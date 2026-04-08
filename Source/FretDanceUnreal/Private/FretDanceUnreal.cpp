@@ -301,21 +301,6 @@ void AFretDanceUnreal::InitializeControllersAndRecorders() {
     GuitarFretPositions.Add("P3", "P3");
     GuitarFretPositions.Add("P4", "P4");
 
-    // 初始化辅助线（乐器类型差异体现在辅助线上）
-    GuideLines.Empty();
-    GuideLines.Add("string_move_direction", "string_move_direction");
-
-    if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
-        GuideLines.Add("left_thumb_move_direction", "T_line");
-    } else {
-        GuideLines.Add("left_hand_high_normal", "right_hand_normal_p3");
-        GuideLines.Add("left_hand_low_normal", "right_hand_normal_p0");
-        GuideLines.Add("thumb_direction_high", "right_thumb_direct_p3");
-        GuideLines.Add("thumb_direction_low", "right_thumb_direct_p0");
-        GuideLines.Add("finger_direction_high", "right_finger_direct_p3");
-        GuideLines.Add("finger_direction_low", "right_finger_direct_p0");
-    }
-
     // 初始化RecorderTransforms
     RecorderTransforms.Empty();
 
@@ -709,40 +694,6 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                     LocationArray);
                 TotalExported++;
             }
-        }
-    }
-
-    // === 导出辅助线 ===
-    TSharedPtr<FJsonObject> RightHandLinesObj =
-        CategoryObjects[TEXT("RIGHT_HAND_LINES")];
-    for (const auto& GuidePair : GuideLines) {
-        const FString& GuideLineName = GuidePair.Value;
-        const FFretDanceRecorderTransform* Transform =
-            RecorderTransforms.Find(GuideLineName);
-        if (Transform) {
-            TSharedPtr<FJsonObject> LineObj = MakeShareable(new FJsonObject);
-
-            // Vector (方向)
-            FRotator Rotator = Transform->Rotation.Rotator();
-            FVector Direction = Rotator.Vector();
-            TArray<TSharedPtr<FJsonValue>> VectorArray;
-            VectorArray.Add(MakeShareable(new FJsonValueNumber(Direction.X)));
-            VectorArray.Add(MakeShareable(new FJsonValueNumber(Direction.Y)));
-            VectorArray.Add(MakeShareable(new FJsonValueNumber(Direction.Z)));
-            LineObj->SetArrayField(TEXT("vector"), VectorArray);
-
-            // Location
-            TArray<TSharedPtr<FJsonValue>> LocationArray;
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.X)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Y)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Z)));
-            LineObj->SetArrayField(TEXT("location"), LocationArray);
-
-            RightHandLinesObj->SetObjectField(*GuideLineName, LineObj);
-            TotalExported++;
         }
     }
 
@@ -1171,60 +1122,6 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // === 导入辅助线 ===
-    if (JsonObject->HasField(TEXT("RIGHT_HAND_LINES"))) {
-        TSharedPtr<FJsonObject> RightHandLinesObj =
-            JsonObject->GetObjectField(TEXT("RIGHT_HAND_LINES"));
-
-        for (const auto& GuidePair : GuideLines) {
-            const FString& GuideLineName = GuidePair.Value;
-
-            if (!RightHandLinesObj->HasField(*GuideLineName)) {
-                continue;
-            }
-
-            TSharedPtr<FJsonObject> LineObj =
-                RightHandLinesObj->GetObjectField(*GuideLineName);
-
-            FFretDanceRecorderTransform Transform;
-            Transform.Location = FVector::ZeroVector;
-            Transform.Rotation = FQuat::Identity;
-
-            // 读取 Location
-            if (LineObj->HasField(TEXT("location"))) {
-                TArray<TSharedPtr<FJsonValue>> LocationArray =
-                    LineObj->GetArrayField(TEXT("location"));
-                FFretDanceHelpers::ReadLocationFromArray(LocationArray,
-                                                         Transform.Location);
-            }
-
-            // 读取 Vector 并转换为旋转
-            FVector Direction =
-                FVector::ZeroVector;  // ✅ 移到外面，确保在日志中可用
-            if (LineObj->HasField(TEXT("vector"))) {
-                TArray<TSharedPtr<FJsonValue>> VectorArray =
-                    LineObj->GetArrayField(TEXT("vector"));
-                if (VectorArray.Num() == 3) {
-                    FFretDanceHelpers::ReadLocationFromArray(VectorArray,
-                                                             Direction);
-                    Transform.Rotation = FQuat::FindBetweenVectors(
-                        FVector::ForwardVector, Direction.GetSafeNormal());
-                }
-            }
-
-            RecorderTransforms.Add(GuideLineName, Transform);
-            ImportedCount++;
-
-            UE_LOG(LogTemp, Log,
-                   TEXT("  [Guideline] Read '%s' from RIGHT_HAND_LINES → Write "
-                        "to RecorderTransforms['%s'] | Loc: (%.3f, %.3f, %.3f) "
-                        "| Dir: (%.3f, %.3f, %.3f)"),
-                   *GuideLineName, *GuideLineName, Transform.Location.X,
-                   Transform.Location.Y, Transform.Location.Z, Direction.X,
-                   Direction.Y, Direction.Z);
-        }
-    }
-
     UE_LOG(
         LogTemp, Warning,
         TEXT("ImportRecorderInfo: Successfully imported %d recorders from %s"),
@@ -1257,30 +1154,6 @@ void AFretDanceUnreal::SetInstrumentType(EFretDanceInstrumentType NewType) {
     UE_LOG(LogTemp, Warning,
            TEXT("Updated RightFingerControllers: %d controllers"),
            RightFingerControllers.Num());
-
-    // 重新初始化辅助线（根据乐器类型）
-    GuideLines.Empty();
-    GuideLines.Add("string_move_direction", "string_move_direction");
-
-    if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
-        GuideLines.Add("left_thumb_move_direction", "T_line");
-        UE_LOG(LogTemp, Warning,
-               TEXT("Added electric guitar guideline: T_line"));
-    } else {
-        // Finger Style Guitar or Bass
-        GuideLines.Add("left_hand_high_normal", "right_hand_normal_p3");
-        GuideLines.Add("left_hand_low_normal", "right_hand_normal_p0");
-        GuideLines.Add("thumb_direction_high", "right_thumb_direct_p3");
-        GuideLines.Add("thumb_direction_low", "right_thumb_direct_p0");
-        GuideLines.Add("finger_direction_high", "right_finger_direct_p3");
-        GuideLines.Add("finger_direction_low", "right_finger_direct_p0");
-        UE_LOG(LogTemp, Warning,
-               TEXT("Added finger style/bass guidelines: 6 guidelines added"));
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("✅ SetInstrumentType completed. Total guidelines: %d"),
-           GuideLines.Num());
 }
 
 UControlRig* AFretDanceUnreal::GetCachedControlRig(FName ComponentName) {
@@ -1588,13 +1461,7 @@ void AFretDanceUnreal::InitializeRecorderTransforms() {
         }
     }
 
-    // 初始化辅助线记录器
-    for (const auto& GuidePair : GuideLines) {
-        RecorderTransforms.Add(GuidePair.Value, DefaultTransform);
-        KeyCount++;
-    }
-
-    // 初始化吉他品格位置记录器
+        // 初始化吉他品格位置记录器
     for (const auto& FretPair : GuitarFretPositions) {
         RecorderTransforms.Add(FretPair.Value, DefaultTransform);
         KeyCount++;

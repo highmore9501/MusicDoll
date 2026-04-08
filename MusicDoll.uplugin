@@ -68,6 +68,12 @@
       "Type": "Runtime",
       "LoadingPhase": "Default",
       "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
+      "Name": "ZhengDriftUnreal",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
     }
 
   ]

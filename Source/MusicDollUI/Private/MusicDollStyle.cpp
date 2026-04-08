@@ -74,6 +74,17 @@ void FMusicDollStyle::Initialize()
             new FSlateImageBrush(ContentDir / TEXT("BeatBloom.png"), FVector2D(16.0f, 16.0f))
         );
 
+        // Register the ZhengDrift icon
+        StyleSet->Set(
+            "MusicDoll.ZhengDrift.Icon",
+            new FSlateImageBrush(ContentDir / TEXT("ZhengDrift.png"), FVector2D(40.0f, 40.0f))
+        );
+
+        StyleSet->Set(
+            "MusicDoll.ZhengDrift.Icon.Small",
+            new FSlateImageBrush(ContentDir / TEXT("ZhengDrift.png"), FVector2D(16.0f, 16.0f))
+        );
+
         FSlateStyleRegistry::RegisterSlateStyle(*StyleSet);
     }
 }

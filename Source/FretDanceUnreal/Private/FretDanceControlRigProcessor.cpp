@@ -139,16 +139,7 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         }
     }
 
-    // 6. 创建辅助线控制器（在 Control Rig 中创建箭头形状的 Control）
-    for (const auto& GuidePair : FretDanceActor->GuideLines) {
-        const FString& GuideName = GuidePair.Value;
-        if (CreateController(ControlRigBlueprint, GuideName,
-                             TEXT("controller_root"))) {
-            CreatedCount++;
-        }
-    }
-
-    // 7. 创建指板位置控制器
+    // 6. 创建指板位置控制器
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         const FString& RecorderName = FretPair.Value;
         if (CreateController(ControlRigBlueprint, RecorderName,
@@ -279,9 +270,6 @@ bool UFretDanceControlRigProcessor::SaveState(
     bool bLeftSaved = SaveLeftHandState(FretDanceActor);
     bool bRightSaved = SaveRightHandState(FretDanceActor);
 
-    // 保存辅助线状态到 RecorderTransforms
-    bool bGuidelinesSaved = SaveGuidelinesState(FretDanceActor);
-
     // 保存指板位置状态到 RecorderTransforms（与左手状态无关，始终保存）
     bool bFretPositionsSaved = SaveFretPositionsState(FretDanceActor);
 
@@ -290,8 +278,7 @@ bool UFretDanceControlRigProcessor::SaveState(
            bLeftSaved ? TEXT("YES") : TEXT("NO"));
     UE_LOG(LogTemp, Warning, TEXT("Right Hand Saved: %s"),
            bRightSaved ? TEXT("YES") : TEXT("NO"));
-    UE_LOG(LogTemp, Warning, TEXT("Guidelines Saved: %s"),
-           bGuidelinesSaved ? TEXT("YES") : TEXT("NO"));
+
     UE_LOG(LogTemp, Warning, TEXT("Fret Positions Saved: %s"),
            bFretPositionsSaved ? TEXT("YES") : TEXT("NO"));
     UE_LOG(LogTemp, Warning, TEXT("Total RecorderTransforms: %d"),
@@ -309,7 +296,7 @@ bool UFretDanceControlRigProcessor::SaveState(
 
     UE_LOG(LogTemp, Warning, TEXT("✅ SaveState completed."));
 
-    return bLeftSaved || bRightSaved || bGuidelinesSaved || bFretPositionsSaved;
+    return bLeftSaved || bRightSaved || bFretPositionsSaved;
 }
 
 bool UFretDanceControlRigProcessor::SaveLeftHandState(
@@ -408,9 +395,6 @@ bool UFretDanceControlRigProcessor::SaveLeftHandState(
     UE_LOG(LogTemp, Warning,
            TEXT("✅ SaveLeftHandState completed. Saved: %d, Not Found: %d"),
            SavedCount, NotFoundCount);
-
-    // 保存辅助线状态（与左手状态无关，始终保存）
-    SaveGuidelinesState(FretDanceActor);
 
     // 保存指板位置状态（与左手状态无关，始终保存）
     SaveFretPositionsState(FretDanceActor);
@@ -518,9 +502,6 @@ bool UFretDanceControlRigProcessor::SaveRightHandState(
     UE_LOG(LogTemp, Warning,
            TEXT("✅ SaveRightHandState completed. Saved: %d, Not Found: %d"),
            SavedCount, NotFoundCount);
-
-    // 保存辅助线状态（与右手状态无关，始终保存）
-    SaveGuidelinesState(FretDanceActor);
 
     // 保存指板位置状态（与右手状态无关，始终保存）
     SaveFretPositionsState(FretDanceActor);
@@ -742,14 +723,6 @@ bool UFretDanceControlRigProcessor::LoadState(
         }
     }
 
-    // === 加载辅助线 ===
-    bool bGuidelinesLoaded = LoadGuidelinesState(FretDanceActor);
-    if (bGuidelinesLoaded) {
-        UE_LOG(LogTemp, Warning, TEXT("✅ Guidelines loaded successfully"));
-    } else {
-        UE_LOG(LogTemp, Warning, TEXT("⚠️ No guidelines loaded"));
-    }
-
     // === 加载指板位置 ===
     bool bFretPositionsLoaded = LoadFretPositionsState(FretDanceActor);
     if (bFretPositionsLoaded) {
@@ -766,163 +739,6 @@ bool UFretDanceControlRigProcessor::LoadState(
            ControllerMissingCount);
     UE_LOG(LogTemp, Warning, TEXT("✅ LoadState completed."));
 
-    return LoadedCount > (NotFoundInMapCount + ControllerMissingCount);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 辅助线状态保存和加载
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool UFretDanceControlRigProcessor::SaveGuidelinesState(
-    AFretDanceUnreal* FretDanceActor) {
-    if (!ValidateFretDanceActor(FretDanceActor, TEXT("SaveGuidelinesState"))) {
-        return false;
-    }
-
-    UControlRig* ControlRig = GetControlRig(FretDanceActor);
-    if (!ControlRig) {
-        UE_LOG(LogTemp, Error,
-               TEXT("SaveGuidelinesState: Failed to get ControlRig"));
-        return false;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("=== SaveGuidelinesState ==="));
-    UE_LOG(LogTemp, Warning, TEXT("Total GuideLines: %d"),
-           FretDanceActor->GuideLines.Num());
-
-    int32 SavedCount = 0;
-    int32 NotFoundCount = 0;
-
-    // 遍历所有辅助线，保存其 Transform 到 RecorderTransforms
-    for (const auto& GuidePair : FretDanceActor->GuideLines) {
-        const FString& GuideName = GuidePair.Value;
-
-        FRigElementKey ElementKey(*GuideName, ERigElementType::Control);
-        if (ControlRig->GetHierarchy()->Contains(ElementKey)) {
-            FRigControlElement* ControlElement =
-                ControlRig->GetHierarchy()->Find<FRigControlElement>(
-                    ElementKey);
-            if (ControlElement) {
-                // 使用 GetControlValue 获取控制器值（与 StringFlow 一致）
-                FRigControlValue CurrentValue =
-                    ControlRig->GetHierarchy()->GetControlValue(
-                        ControlElement, ERigControlValueType::Current);
-                FTransform CurrentTransform = CurrentValue.GetAsTransform(
-                    ControlElement->Settings.ControlType,
-                    ControlElement->Settings.PrimaryAxis);
-
-                // 保存到 RecorderTransforms
-                FFretDanceRecorderTransform RecorderTransform;
-                RecorderTransform.FromTransform(CurrentTransform);
-                FretDanceActor->RecorderTransforms.Add(GuideName,
-                                                       RecorderTransform);
-
-                SavedCount++;
-                UE_LOG(
-                    LogTemp, Warning,
-                    TEXT("  ✅ SAVED: %s | Loc(%.2f,%.2f,%.2f) "
-                         "Rot(%.4f,%.4f,%.4f,%.4f)"),
-                    *GuideName, RecorderTransform.Location.X,
-                    RecorderTransform.Location.Y, RecorderTransform.Location.Z,
-                    RecorderTransform.Rotation.X, RecorderTransform.Rotation.Y,
-                    RecorderTransform.Rotation.Z, RecorderTransform.Rotation.W);
-            } else {
-                NotFoundCount++;
-                UE_LOG(LogTemp, Error, TEXT("  ❌ CONTROL ELEMENT NULL: %s"),
-                       *GuideName);
-            }
-        } else {
-            NotFoundCount++;
-            UE_LOG(LogTemp, Error, TEXT("  ❌ CONTROLLER NOT FOUND: %s"),
-                   *GuideName);
-        }
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("✅ SaveGuidelinesState completed. Saved: %d, Not Found: %d"),
-           SavedCount, NotFoundCount);
-    return SavedCount > 0;
-}
-
-bool UFretDanceControlRigProcessor::LoadGuidelinesState(
-    AFretDanceUnreal* FretDanceActor) {
-    if (!ValidateFretDanceActor(FretDanceActor, TEXT("LoadGuidelinesState"))) {
-        return false;
-    }
-
-    UControlRig* ControlRig = GetControlRig(FretDanceActor);
-    if (!ControlRig) {
-        UE_LOG(LogTemp, Error,
-               TEXT("LoadGuidelinesState: Failed to get ControlRig"));
-        return false;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("=== LoadGuidelinesState ==="));
-    UE_LOG(LogTemp, Warning, TEXT("Total GuideLines: %d"),
-           FretDanceActor->GuideLines.Num());
-
-    int32 LoadedCount = 0;
-    int32 NotFoundInMapCount = 0;
-    int32 ControllerMissingCount = 0;
-
-    // 遍历所有辅助线，从 RecorderTransforms 加载 Transform
-    for (const auto& GuidePair : FretDanceActor->GuideLines) {
-        const FString& GuideName = GuidePair.Value;
-
-        // 从 RecorderTransforms 查找数据
-        const FFretDanceRecorderTransform* FoundTransform =
-            FretDanceActor->RecorderTransforms.Find(GuideName);
-
-        if (FoundTransform) {
-            FRigElementKey ElementKey(*GuideName, ERigElementType::Control);
-            if (ControlRig->GetHierarchy()->Contains(ElementKey)) {
-                FRigControlElement* ControlElement =
-                    ControlRig->GetHierarchy()->Find<FRigControlElement>(
-                        ElementKey);
-                if (ControlElement) {
-                    FTransform NewTransform;
-                    NewTransform.SetLocation(FoundTransform->Location);
-                    NewTransform.SetRotation(FoundTransform->Rotation);
-
-                    FRigControlValue NewValue;
-                    NewValue.SetFromTransform(
-                        NewTransform, ControlElement->Settings.ControlType,
-                        ControlElement->Settings.PrimaryAxis);
-
-                    ControlRig->GetHierarchy()->SetControlValue(
-                        ControlElement, NewValue,
-                        ERigControlValueType::Current);
-
-                    LoadedCount++;
-                    UE_LOG(
-                        LogTemp, Warning,
-                        TEXT("  ✅ LOADED: %s | Loc(%.2f,%.2f,%.2f) "
-                             "Rot(%.4f,%.4f,%.4f,%.4f)"),
-                        *GuideName, FoundTransform->Location.X,
-                        FoundTransform->Location.Y, FoundTransform->Location.Z,
-                        FoundTransform->Rotation.X, FoundTransform->Rotation.Y,
-                        FoundTransform->Rotation.Z, FoundTransform->Rotation.W);
-                } else {
-                    ControllerMissingCount++;
-                    UE_LOG(LogTemp, Error,
-                           TEXT("  ❌ CONTROL ELEMENT NULL: %s"), *GuideName);
-                }
-            } else {
-                ControllerMissingCount++;
-                UE_LOG(LogTemp, Error, TEXT("  ❌ CONTROLLER NOT FOUND: %s"),
-                       *GuideName);
-            }
-        } else {
-            NotFoundInMapCount++;
-            UE_LOG(LogTemp, Error, TEXT("  ❌ DATA NOT IN MAP: %s"),
-                   *GuideName);
-        }
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("✅ LoadGuidelinesState completed. Loaded: %d, Data Missing: "
-                "%d, Controller Missing: %d"),
-           LoadedCount, NotFoundInMapCount, ControllerMissingCount);
     return LoadedCount > (NotFoundInMapCount + ControllerMissingCount);
 }
 
@@ -1205,12 +1021,7 @@ TArray<FString> UFretDanceControlRigProcessor::GetExpectedControllerNames(
         }
     }
 
-    // 添加辅助线控制器
-    for (const auto& GuidePair : FretDanceActor->GuideLines) {
-        ExpectedControllers.Add(GuidePair.Value);
-    }
-
-    // 添加指板位置控制器
+        // 添加指板位置控制器
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         ExpectedControllers.Add(FretPair.Value);
     }
