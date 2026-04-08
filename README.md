@@ -17,8 +17,9 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 | -------------------- | ----------- | --------- |
 | **KeyRippleUnreal**  | 钢琴        | ✅ 已发布 |
 | **StringFlowUnreal** | 小提琴/弦乐 | ✅ 已发布 |
-| **FretDanceUnreal**  | 吉他/贝斯   | 🚧 开发中 |
-| **BeatBloomUnreal**  | 打击乐/鼓组 | 🚧 开发中 |
+| **FretDanceUnreal**  | 吉他/贝斯   | ✅ 已发布 |
+| **BeatBloomUnreal**  | 打击乐/鼓组 | ✅ 已发布 |
+| **ZhengDriftUnreal** | 古筝        | ✅ 已发布 |
 
 ### 公共模块
 
@@ -71,7 +72,7 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 
 ```
 MusicDoll Plugin
-├── 乐器特定模块 (KeyRipple, StringFlow, FretDance, BeatBloom)
+├── 乐器特定模块 (KeyRipple, StringFlow, FretDance, BeatBloom, ZhengDrift)
 │   ├── Actor 类（场景入口）
 │   ├── 处理器类（Animation, ControlRig, Instrument）
 │   └── UI 面板（Properties, Operations）
@@ -201,6 +202,6 @@ Control Rig 控制器
 
 ---
 
-**最后更新**: 2026-03-15  
-**适用版本**: Unreal Engine 5.7.1  
+**最后更新**: 2026-04-09  
+**适用版本**: Unreal Engine 5.7.3  
 **维护状态**: 活跃开发中
