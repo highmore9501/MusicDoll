@@ -30,7 +30,7 @@ void UBakeTaskManager::Deinitialize()
 
 FGuid UBakeTaskManager::AddTask(AActor* OwnerActor, const FString& ModuleName,
 							   UControlRig* ControlRig, const FString& ControlName,
-							   const FString& DisplayName)
+							   const FString& DisplayName, const FString& InstrumentInstanceId)
 {
 	if (!OwnerActor || !ControlRig || ControlName.IsEmpty())
 	{
@@ -38,19 +38,19 @@ FGuid UBakeTaskManager::AddTask(AActor* OwnerActor, const FString& ModuleName,
 		return FGuid();
 	}
 
-	// 检查是否重复
-	if (IsTaskDuplicate(ControlRig, ControlName))
+	// 检查是否重复(考虑乐器实例ID)
+	if (IsTaskDuplicate(ControlRig, ControlName, InstrumentInstanceId))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[BakeTaskManager] Task already exists: %s.%s"), 
-			   *ModuleName, *ControlName);
+		UE_LOG(LogTemp, Warning, TEXT("[BakeTaskManager] Task already exists: %s.%s [Instance: %s]"), 
+			   *ModuleName, *ControlName, *InstrumentInstanceId);
 		return FGuid();
 	}
 
-	FBakeTask NewTask(OwnerActor, ModuleName, ControlRig, ControlName, DisplayName);
+	FBakeTask NewTask(OwnerActor, ModuleName, ControlRig, ControlName, DisplayName, InstrumentInstanceId);
 	PendingTasks.Add(NewTask);
 	
-	UE_LOG(LogTemp, Log, TEXT("[BakeTaskManager] Added task: %s (TaskId: %s)"), 
-		   *DisplayName, *NewTask.TaskId.ToString());
+	UE_LOG(LogTemp, Log, TEXT("[BakeTaskManager] Added task: %s [Instance: %s] (TaskId: %s)"), 
+		   *DisplayName, *InstrumentInstanceId, *NewTask.TaskId.ToString());
 
 	BroadcastTaskListChanged();
 	return NewTask.TaskId;
@@ -244,13 +244,27 @@ void UBakeTaskManager::BroadcastTaskListChanged()
 	OnTaskListChanged.Broadcast();
 }
 
-bool UBakeTaskManager::IsTaskDuplicate(UControlRig* ControlRig, const FString& ControlName) const
+bool UBakeTaskManager::IsTaskDuplicate(UControlRig* ControlRig, const FString& ControlName, const FString& InstrumentInstanceId) const
 {
 	for (const FBakeTask& Task : PendingTasks)
 	{
-		if (Task.ControlRigInstance.Get() == ControlRig && Task.ControlName == ControlName)
+		// 如果提供了InstrumentInstanceId,则必须完全匹配(包括实例ID)
+		if (!InstrumentInstanceId.IsEmpty())
 		{
-			return true;
+			if (Task.ControlRigInstance.Get() == ControlRig && 
+				Task.ControlName == ControlName &&
+				Task.InstrumentInstanceId == InstrumentInstanceId)
+			{
+				return true;
+			}
+		}
+		else
+		{
+			// 如果没有提供InstrumentInstanceId,则只检查ControlRig和ControlName(向后兼容)
+			if (Task.ControlRigInstance.Get() == ControlRig && Task.ControlName == ControlName)
+			{
+				return true;
+			}
 		}
 	}
 	return false;

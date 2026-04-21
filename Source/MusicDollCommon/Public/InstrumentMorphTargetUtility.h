@@ -181,7 +181,7 @@ class MUSICDOLLCOMMON_API UInstrumentMorphTargetUtility : public UObject {
      * 3. 查找或创建Control Rig轨道和Section
      * 4. 计算帧数范围
      * 5. 写入关键帧数据
-     * 6. 更新Section范围
+     * 6. 更新Section范围（使用FramePadding进行填充）
      * 7. 标记为修改并刷新
      *
      * @param Instrument 乐器骨骼网格组件
@@ -189,11 +189,70 @@ class MUSICDOLLCOMMON_API UInstrumentMorphTargetUtility : public UObject {
      * @param LevelSequence 关卡序列
      * @param RootControlName Root Control名称 (如 "piano_key_root" 或
      * "violin_root")
+     * @param FramePadding 帧范围填充（显示帧数，默认600帧）
      * @return 成功写入的Morph Target数量，失败返回0
      */
     static int32 WriteMorphTargetAnimationToControlRig(
         class ASkeletalMeshActor* Instrument,
         const TArray<FMorphTargetKeyframeData>& KeyframeData,
         class ULevelSequence* LevelSequence,
-        const FString& RootControlName = TEXT("piano_key_root"));
+        const FString& RootControlName = TEXT("piano_key_root"),
+        int32 FramePadding = 600);
+
+    // ========== 统一的初始化流程 ==========
+
+    /**
+     * 初始化乐器的Morph Target动画通道（统一入口）
+     *
+     * 这是所有乐器模块都应该使用的标准初始化流程，包含：
+     * 1. 从SkeletalMesh动态检测所有Morph Target名称
+     * 2. 确保Root Control存在（不存在则创建）
+     * 3. 批量添加Animation Channels（每个Morph Target对应一个通道）
+     *
+     * @param SkeletalMeshComp 乐器的骨骼网格组件
+     * @param ControlRigBlueprint Control Rig蓝图
+     * @param RootControlName Root Control名称（如 "guitar_root", "violin_root", "piano_key_root", "drumkit_control"）
+     * @param OutChannelNames 输出：成功创建的通道名称数组（可选）
+     * @return 成功创建/验证的通道数量，失败返回0
+     *
+     * @note 这是一个完整的初始化流程，各乐器模块应直接调用此方法
+     * @note 如果某个通道已存在且是Animation Channel，会被计入成功数但不会重复创建
+     * @note 该方法会输出详细的日志信息，包括找到的Morph Target数量和创建的通道数量
+     *
+     * 使用示例：
+     * @code
+     * // FretDance（吉他）
+     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+     *     Guitar->GetSkeletalMeshComponent(),
+     *     GuitarBlueprint,
+     *     TEXT("guitar_root")
+     * );
+     *
+     * // StringFlow（小提琴）
+     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+     *     StringInstrument->GetSkeletalMeshComponent(),
+     *     InstrumentBlueprint,
+     *     TEXT("violin_root")
+     * );
+     *
+     * // KeyRipple（钢琴）
+     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+     *     Piano->GetSkeletalMeshComponent(),
+     *     PianoBlueprint,
+     *     TEXT("piano_key_root")
+     * );
+     *
+     * // BeatBloom（打击乐）
+     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+     *     DrumKit->GetSkeletalMeshComponent(),
+     *     DrumKitBlueprint,
+     *     TEXT("drumkit_control")
+     * );
+     * @endcode
+     */
+    static int32 InitializeMorphTargetChannels(
+        USkeletalMeshComponent* SkeletalMeshComp,
+        UControlRigBlueprint* ControlRigBlueprint,
+        const FString& RootControlName,
+        TArray<FString>* OutChannelNames = nullptr);
 };

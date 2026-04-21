@@ -179,10 +179,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FretDance State")
     EFretDanceRightHandState CurrentRightHandState;
 
-    // 开启实时同步
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    bool bEnableRealtimeSync;
-
     // ========== 控制器映射 ==========
     // 左手手掌控制器 (H_L, HP_L, T_L, TP_L)
     UPROPERTY()
@@ -240,10 +236,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // ========== 弦材质 ==========
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     UMaterialInstance* StringMaterial;
-
-    // 吉他同步的相对变换缓存
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    FTransform CachedGuitarRelativeTransform;
 
    private:
     /** 是否已完成初始化 */

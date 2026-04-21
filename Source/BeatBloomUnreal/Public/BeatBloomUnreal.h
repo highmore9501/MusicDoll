@@ -157,7 +157,7 @@ struct FBeatBloomDrumKitConfig {
  * 与 FretDance 的核心差异：
  * - 四肢驱动（手+脚），而非仅双手
  * - 鼓件配置由 .drumkit 文件动态加载，非硬编码
- * - 有目标控制器（Tar_Body/Chest/Head）驱动身体朝向
+ * - 有朝向控制器（Middle_Hand/Look_At/Head_Control）驱动身体朝向
  * - 记录器按鼓件名+状态动态命名
  */
 UCLASS(Blueprintable, BlueprintType)
@@ -187,12 +187,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     ASkeletalMeshActor* DrumKit;
 
-    // ============ 实时同步开关 ============
-
-    /** 开启实时同步（鼓组跟随演奏者） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    bool bEnableRealtimeSync;
-
     // ============ IO 配置 ============
 
     /** 鼓组配置文件路径（.drumkit） */
@@ -217,10 +211,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current State")
     FString CurrentRightFootDrumKit;
 
-    /** 目标控制器当前选择的鼓件名 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current State")
-    FString CurrentTargetDrumKit;
-
     /** 左手当前状态 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current State")
     EBeatBloomState CurrentLeftHandState;
@@ -237,10 +227,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current State")
     EBeatBloomState CurrentRightFootState;
 
-    /** 目标控制器当前状态 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Current State")
-    EBeatBloomState CurrentTargetState;
-
     // ============ 控制器映射（固定） ============
 
     /** 手部控制器映射：描述名 -> ControlRig 控制器名 */
@@ -254,6 +240,10 @@ public:
     /** 目标控制器映射：描述名 -> ControlRig 控制器名 */
     UPROPERTY()
     TMap<FString, FString> TargetControllers;
+
+    /** 双线性映射辅助控制器:8个(Middle_Hand_A/B/C/D + Head_Control_A/B/C/D) */
+    UPROPERTY()
+    TMap<FString, FString> BilinearHelpers;
 
     // ============ 记录器映射（基于 drumkit 配置动态生成） ============
 
@@ -269,6 +259,10 @@ public:
     UPROPERTY()
     TMap<FString, FString> TargetRecorders;
 
+    /** Head_Control 记录器映射（每个手部组件+状态记录一个，加全局休息） */
+    UPROPERTY()
+    TMap<FString, FString> HeadControlRecorders;
+
     // ============ 数据存储 ============
 
     /** 所有记录器的变换数据 */
@@ -278,12 +272,6 @@ public:
     /** 当前加载的鼓组配置 */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "BeatBloom Data")
     FBeatBloomDrumKitConfig DrumKitConfig;
-
-    // ============ 同步缓存 ============
-
-    /** 鼓组同步的相对变换缓存 */
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    FTransform CachedDrumKitRelativeTransform;
 
     // ============ 核心方法 ============
 
@@ -394,6 +382,14 @@ public:
         const FString& FilePath,
         FString& OutPerformerAnimationPath,
         FString& OutDrumKitAnimationPath);
+
+    /**
+     * 清理 RecorderTransforms 中不在合法键名集合内的条目
+     * 在导入记录器信息后调用，清除之前版本生成的错误键名
+     *
+     * @return 被清除的无效键数量
+     */
+    int32 CleanupInvalidRecorderKeys();
 
 private:
     // ============ 辅助方法 ============

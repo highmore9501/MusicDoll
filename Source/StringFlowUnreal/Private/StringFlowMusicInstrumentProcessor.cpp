@@ -48,9 +48,6 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(
     StringFlowActor->TriggerControlRigReregistration(
         TEXT("Reregist while InitializeStringInstrument"));
 
-    // 初始化弦乐器同步关系（controller_root <-> violin_root）
-    StringFlowActor->InitializeStringInstrumentSync();
-
     // 清理现有的动画数据
     CleanupExistingStringAnimations(StringFlowActor);
 
@@ -58,6 +55,8 @@ void UStringFlowMusicInstrumentProcessor::InitializeStringInstrument(
     InitializeStringMaterials(StringFlowActor);
 
     // 初始化弦振动Control Rig通道
+    // 内部会通过 EnsureRootControlExists 创建 violin_root（如果不存在），
+    // 然后在其下批量添加 animation channels，修改 Blueprint Hierarchy。
     InitializeStringVibrationAnimationChannels(StringFlowActor);
 
     // 初始化弦材质参数轨道
@@ -374,78 +373,29 @@ void UStringFlowMusicInstrumentProcessor::
         return;
     }
 
-    // 生成所有需要的通道名称
-    TArray<FString> ChannelNamesToCreate;
+    // 获取弦乐器的 SkeletalMeshComponent
+    USkeletalMeshComponent* SkeletalMeshComp =
+        StringFlowActor->StringInstrument->GetSkeletalMeshComponent();
 
-    const int32 MaxStringIndex = 3;
-    const int32 MinFretNumber = 2;
-    const int32 MaxFretNumber = 21;
-
-    for (int32 StringIndex = 0; StringIndex <= MaxStringIndex; ++StringIndex) {
-        // 添加Basis通道（空弦音）
-        FString BasisChannelStr =
-            FString::Printf(TEXT("s%dBasis"), StringIndex);
-        ChannelNamesToCreate.Add(BasisChannelStr);
-
-        // 添加Fret通道
-        for (int32 FretNumber = MinFretNumber; FretNumber <= MaxFretNumber;
-             ++FretNumber) {
-            FString FretChannelStr =
-                FString::Printf(TEXT("s%dfret%d"), StringIndex, FretNumber);
-            ChannelNamesToCreate.Add(FretChannelStr);
-        }
-    }
-
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("Creating vibration animation channels for %d channel names..."),
-        ChannelNamesToCreate.Num());
-
-    // 使用Common模块的通用方法：检查Root Control是否存在
-    if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-            ControlRigBlueprint, TEXT("violin_root"))) {
-        UE_LOG(LogTemp, Error, TEXT("====== INITIALIZATION FAILED ======"));
+    if (!SkeletalMeshComp) {
         UE_LOG(LogTemp, Error,
-               TEXT("Root Control 'violin_root' does not exist in Control Rig "
-                    "Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT(""));
-        UE_LOG(LogTemp, Error,
-               TEXT("Please manually create the Root Control 'violin_root' in "
-                    "your Control Rig Blueprint:"));
-        UE_LOG(LogTemp, Error, TEXT("  1. Open the Control Rig Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT("  2. Go to the Hierarchy panel"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  3. Right-click and create a new Control named "
-                    "'violin_root'"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  4. Set the Control Type to 'Transform'"));
-        UE_LOG(LogTemp, Error, TEXT("  5. Save the Blueprint and try again"));
-        UE_LOG(LogTemp, Error, TEXT("====== END OF ERROR REPORT ======"));
+               TEXT("StringInstrument does not have a SkeletalMeshComponent"));
         return;
     }
 
-    // 获取Root Control的Key用于后续操作
-    FRigElementKey RootControlKey(TEXT("violin_root"),
-                                  ERigElementType::Control);
+    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+        SkeletalMeshComp,
+        ControlRigBlueprint,
+        TEXT("violin_root")
+    );
 
-    // 使用Common模块的通用方法：批量添加动画通道
-    if (ChannelNamesToCreate.Num() == 0) {
-        UE_LOG(LogTemp, Error, TEXT("ChannelNamesToCreate is empty"));
+    if (ChannelsAdded == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to initialize morph target channels for StringInstrument"));
         return;
     }
 
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::AddAnimationChannels(
-        ControlRigBlueprint, RootControlKey, ChannelNamesToCreate);
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeStringVibrationAnimationChannels "
-                "Summary =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Successfully created/verified: %d channels"),
-           ChannelsAdded);
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("Expected total: %d channels (4 strings × (1 basis + 20 frets))"),
-        4 * (1 + (MaxFretNumber - MinFretNumber + 1)));
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringVibrationAnimationChannels "
                 "Completed =========="));

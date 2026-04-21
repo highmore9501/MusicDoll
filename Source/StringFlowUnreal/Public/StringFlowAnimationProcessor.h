@@ -91,7 +91,6 @@ struct FStringControlKeyframe {
  *   - HP_L             右手手掌轴点控制器
  *   - H_rotation_L     右手手掌旋转控制器
  *   - T_L              右手拇指控制器
- *   - TP_L             右手拇指轴点控制器
  *   - 1_L              右手食指
  *   - 2_L              右手中指
  *   - 3_L              右手无名指
@@ -102,7 +101,6 @@ struct FStringControlKeyframe {
  *   - HP_R             左手手掌轴点控制器
  *   - H_rotation_R     左手手掌旋转控制器
  *   - T_R              左手拇指控制器
- *   - TP_R             左手拇指轴点控制器
  *   - 1_R              左手食指
  *   - 2_R              左手中指
  *   - 3_R              左手无名指

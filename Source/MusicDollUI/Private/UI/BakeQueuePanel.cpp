@@ -528,12 +528,25 @@ void SBakeQueuePanel::UpdateStatusText(const FString& Text) {
 
 TSharedRef<ITableRow> SBakeQueuePanel::GenerateTaskRow(
     TSharedPtr<FBakeTask> Item, const TSharedRef<STableViewBase>& OwnerTable) {
+    // 构建显示文本：[Actor名称] Module.ControlName
+    FString DisplayText;
+    if (Item->OwnerActor.IsValid())
+    {
+        DisplayText = FString::Printf(TEXT("[%s] %s"), 
+                                      *Item->OwnerActor->GetName(), 
+                                      *Item->DisplayName);
+    }
+    else
+    {
+        DisplayText = Item->DisplayName;
+    }
+    
     return SNew(
         STableRow<TSharedPtr<FBakeTask>>,
         OwnerTable)[SNew(SHorizontalBox) +
                     SHorizontalBox::Slot().FillWidth(1.0f).Padding(
                         4, 2)[SNew(STextBlock)
-                                  .Text(FText::FromString(Item->DisplayName))] +
+                                  .Text(FText::FromString(DisplayText))] +
                     SHorizontalBox::Slot().AutoWidth().Padding(
                         4, 2)[SNew(SButton)
                                   .Text(FText::FromString(TEXT("×")))

@@ -419,7 +419,7 @@ FReply SKeyRippleModuleOperationsPanel::OnClearControlRigKeyframes() {
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance) {
         UE_LOG(LogTemp, Error,

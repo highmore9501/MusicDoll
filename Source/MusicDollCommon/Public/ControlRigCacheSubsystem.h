@@ -35,12 +35,30 @@ public:
     UControlRig* GetControlRig(ASkeletalMeshActor* Actor, ULevelSequence* Sequence);
 
     /**
+     * 获取ControlRig实例（支持RootControlName筛选）
+     * @param Actor SkeletalMeshActor
+     * @param Sequence LevelSequence
+     * @param RootControlName 根控制器名称，用于在多个ControlRig中筛选
+     * @return ControlRig实例，如果未找到或无效则返回nullptr
+     */
+    UControlRig* GetControlRig(ASkeletalMeshActor* Actor, ULevelSequence* Sequence, const FString& RootControlName);
+
+    /**
      * 获取ControlRig Blueprint
      * @param Actor SkeletalMeshActor
      * @param Sequence LevelSequence
      * @return ControlRig Blueprint，如果未找到或无效则返回nullptr
      */
     UControlRigBlueprint* GetControlRigBlueprint(ASkeletalMeshActor* Actor, ULevelSequence* Sequence);
+
+    /**
+     * 获取ControlRig Blueprint（支持RootControlName筛选）
+     * @param Actor SkeletalMeshActor
+     * @param Sequence LevelSequence
+     * @param RootControlName 根控制器名称，用于在多个ControlRig中筛选
+     * @return ControlRig Blueprint，如果未找到或无效则返回nullptr
+     */
+    UControlRigBlueprint* GetControlRigBlueprint(ASkeletalMeshActor* Actor, ULevelSequence* Sequence, const FString& RootControlName);
 
     /**
      * 注册ControlRig信息
@@ -61,8 +79,10 @@ public:
      * 触发注册机制（当缓存失效时调用）
      * @param Actor SkeletalMeshActor
      * @param Sequence LevelSequence
+     * @param RootControlName 可选的根控制器名称，用于在多个ControlRig中筛选
      */
-    void TriggerRegistrationIfNeeded(ASkeletalMeshActor* Actor, ULevelSequence* Sequence);
+    void TriggerRegistrationIfNeeded(ASkeletalMeshActor* Actor, ULevelSequence* Sequence,
+                                    const FString& RootControlName = TEXT(""));
 
 private:
     /** 运行时缓存映射表 */
@@ -75,10 +95,12 @@ private:
      * @param Sequence LevelSequence
      * @param OutControlRig 输出ControlRig实例
      * @param OutBlueprint 输出ControlRig Blueprint
+     * @param RootControlName 可选的根控制器名称，用于在多个ControlRig中筛选
      * @return 是否成功找到
      */
     bool FindControlRigFromActorAndSequence(ASkeletalMeshActor* Actor, ULevelSequence* Sequence,
-                                          UControlRig*& OutControlRig, UControlRigBlueprint*& OutBlueprint);
+                                          UControlRig*& OutControlRig, UControlRigBlueprint*& OutBlueprint,
+                                          const FString& RootControlName = TEXT(""));
     
     
     
@@ -98,11 +120,15 @@ private:
      * @param Sequence 当前LevelSequence（已由调用方提供）
      * @param OutControlRigInstance 输出参数：ControlRig实例指针
      * @param OutControlRigBlueprint 输出参数：ControlRig蓝图指针
+     * @param RootControlName 可选的根控制器名称，用于在多个ControlRig中筛选
+     *                        如果为空，则返回第一个找到的ControlRig
+     *                        如果不为空，则优先返回包含该根控制器的ControlRig
      * @return 是否成功获取ControlRig
      */
     bool GetControlRigFromSkeletalMeshActor(
         ASkeletalMeshActor* Actor,
         ULevelSequence* Sequence,
         UControlRig*& OutControlRigInstance,
-        UControlRigBlueprint*& OutControlRigBlueprint);
+        UControlRigBlueprint*& OutControlRigBlueprint,
+        const FString& RootControlName = TEXT(""));
 };

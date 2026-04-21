@@ -181,16 +181,23 @@ void SBakeOperationsPanelBase::UpdateButtonStates() {
 
 bool SBakeOperationsPanelBase::AddControlToSelection(
     UControlRig* ControlRig, const FString& ControlName,
-    const FString& DisplayName) {
+    const FString& DisplayName, const FString& InstrumentInstanceId) {
     if (!ControlRig || ControlName.IsEmpty() || !CurrentActor.IsValid() ||
         !BakeTaskManager.IsValid()) {
         return false;
     }
 
+    // 如果没有提供InstrumentInstanceId,则使用OwnerActor的名称作为默认值
+    FString FinalInstanceId = InstrumentInstanceId;
+    if (FinalInstanceId.IsEmpty() && CurrentActor.IsValid())
+    {
+        FinalInstanceId = CurrentActor->GetName();
+    }
+
     // 通过 BakeTaskManager 添加任务
     FGuid TaskId =
         BakeTaskManager->AddTask(CurrentActor.Get(), GetModuleName().ToString(),
-                                 ControlRig, ControlName, DisplayName);
+                                 ControlRig, ControlName, DisplayName, FinalInstanceId);
 
     return TaskId.IsValid();
 }
@@ -211,12 +218,25 @@ FReply SBakeOperationsPanelBase::HandleAddSelectedClicked() {
 
 TSharedRef<ITableRow> SBakeOperationsPanelBase::GenerateMyTaskRow(
     TSharedPtr<FBakeTask> Item, const TSharedRef<STableViewBase>& OwnerTable) {
+    // 构建显示文本：[Actor名称] Module.ControlName
+    FString DisplayText;
+    if (Item->OwnerActor.IsValid())
+    {
+        DisplayText = FString::Printf(TEXT("[%s] %s"), 
+                                      *Item->OwnerActor->GetName(), 
+                                      *Item->DisplayName);
+    }
+    else
+    {
+        DisplayText = Item->DisplayName;
+    }
+    
     return SNew(STableRow<TSharedPtr<FBakeTask>>, OwnerTable)
         .Padding(
             2.0f)[SNew(SHorizontalBox) +
                   SHorizontalBox::Slot().FillWidth(
                       1.0f)[SNew(STextBlock)
-                                .Text(FText::FromString(Item->DisplayName))] +
+                                .Text(FText::FromString(DisplayText))] +
                   SHorizontalBox::Slot()
                       .AutoWidth()[SNew(SButton)
                                        .Text(FText::FromString(TEXT("×")))

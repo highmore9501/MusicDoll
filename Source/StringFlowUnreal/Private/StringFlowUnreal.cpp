@@ -31,7 +31,6 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
-#include "StringFlowTransformSyncProcessor.h"
 
 // Sets default values
 AStringFlowUnreal::AStringFlowUnreal() {
@@ -41,20 +40,7 @@ AStringFlowUnreal::AStringFlowUnreal() {
 
     OneHandFingerNumber = 4;
     StringNumber = 4;
-    BowAxisTowardString = FVector(1.0f, 0.0f, 0.0f);  // Default: X axis
-    BowUpAxis = FVector(0.0f, 0.0f, 1.0f);            // Default: Z axis (up)
-    bEnableRealtimeSync = false;
-
-    CachedStringInstrumentRelativeTransform = FTransform::Identity;
-
-    // 初始化缓存的初始化值数组，共4个元素
-    CachedInitializationValues.SetNum(4);
-    for (int32 i = 0; i < 4; ++i) {
-        CachedInitializationValues[i] = FTransform::Identity;
-    }
-
     bIsInitialized = false;
-    RenderingLogCounter = 0;
 
     InitializeControllersAndRecorders();
     bIsInitialized = true;
@@ -67,34 +53,7 @@ void AStringFlowUnreal::BeginDestroy() { Super::BeginDestroy(); }
 
 void AStringFlowUnreal::Tick(float DeltaTime) {
     Super::Tick(DeltaTime);
-
-    if (bEnableRealtimeSync) {
-        // 同步弦乐器和琴弓的位置/旋转
-        SyncInstrumentTransforms();
-    }
 }
-
-#if WITH_EDITOR
-void AStringFlowUnreal::PostEditChangeProperty(
-    FPropertyChangedEvent& PropertyChangedEvent) {
-    Super::PostEditChangeProperty(PropertyChangedEvent);
-
-    if (PropertyChangedEvent.Property == nullptr) {
-        return;
-    }
-
-    const FString PropertyName = PropertyChangedEvent.Property->GetName();
-
-    // 当相关属性改变时，如果启用了实时同步，立即同步
-    if (bEnableRealtimeSync && (PropertyName == TEXT("StringInstrument") ||
-                                PropertyName == TEXT("Bow") ||
-                                PropertyName == TEXT("BowAxisTowardString") ||
-                                PropertyName == TEXT("BowUpAxis") ||
-                                PropertyName == TEXT("bEnableRealtimeSync"))) {
-        UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    }
-}
-#endif
 
 FString AStringFlowUnreal::GetFingerControllerName(
     int32 FingerNumber, EStringFlowHandType HandType) const {
@@ -132,8 +91,6 @@ FString AStringFlowUnreal::GetHandControllerName(
         BaseName = FString(TEXT("H_rotation")) + HandStr;
     } else if (HandControllerType == TEXT("thumb_controller")) {
         BaseName = FString(TEXT("T")) + HandStr;
-    } else if (HandControllerType == TEXT("thumb_pivot_controller")) {
-        BaseName = FString(TEXT("TP")) + HandStr;
     } else {
         BaseName = TEXT("") + HandStr;
     }
@@ -154,8 +111,6 @@ FString AStringFlowUnreal::GetLeftHandRecorderName(
         HandControllerBaseName = TEXT("H_rotation");
     } else if (HandControllerType == TEXT("thumb_controller")) {
         HandControllerBaseName = TEXT("T");
-    } else if (HandControllerType == TEXT("thumb_pivot_controller")) {
-        HandControllerBaseName = TEXT("TP");
     }
 
     FString BaseName =
@@ -177,8 +132,6 @@ FString AStringFlowUnreal::GetRightHandRecorderName(
         HandControllerBaseName = TEXT("H_rotation");
     } else if (HandControllerType == TEXT("thumb_controller")) {
         HandControllerBaseName = TEXT("T");
-    } else if (HandControllerType == TEXT("thumb_pivot_controller")) {
-        HandControllerBaseName = TEXT("TP");
     }
 
     return FString::Printf(TEXT("%s_R_%s_s%d"), *HandControllerBaseName,
@@ -212,10 +165,7 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
     LeftHandControllers.Add(TEXT("thumb_controller"),
                             GetHandControllerName(TEXT("thumb_controller"),
                                                   EStringFlowHandType::LEFT));
-    LeftHandControllers.Add(
-        TEXT("thumb_pivot_controller"),
-        GetHandControllerName(TEXT("thumb_pivot_controller"),
-                              EStringFlowHandType::LEFT));
+    // 注意：TP_L 不加入 LeftHandControllers，但会在 SetupControllers 中单独创建
 
     // ========== 初始化右手掌部控制器 ==========
     RightHandControllers.Empty();
@@ -230,15 +180,7 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
     RightHandControllers.Add(TEXT("thumb_controller"),
                              GetHandControllerName(TEXT("thumb_controller"),
                                                    EStringFlowHandType::RIGHT));
-    RightHandControllers.Add(
-        TEXT("thumb_pivot_controller"),
-        GetHandControllerName(TEXT("thumb_pivot_controller"),
-                              EStringFlowHandType::RIGHT));
-
-    // ========== 初始化其他控制器 ==========
-    OtherControllers.Empty();
-    // 注：String_Touch_Point 和 Bow_Controller 的数据已经分解为 stp_* 和
-    // bow_position_* 记录器 不需要单独存储在 OtherControllers 中
+    // 注意：TP_R 不加入 RightHandControllers，但会在 SetupControllers 中单独创建
 
     // ========== 初始化辅助线 ==========
     GuideLines.Empty();
@@ -285,7 +227,7 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
                 FString PositionStr =
                     GetLeftHandPositionTypeString(PositionType);
 
-                // 主控制器 (H, HP, T, TP)
+                // 主控制器 (H, HP, T)
                 for (const auto& ControllerPair : LeftHandControllers) {
                     if (!ControllerPair.Key.Contains(TEXT("rotation"))) {
                         FString RecorderName = GetLeftHandRecorderName(
@@ -314,10 +256,9 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
                 FString PositionStr =
                     GetLeftHandPositionTypeString(PositionType);
 
-                // 拇指位置记录器 (T, TP) - 直接指定thumb控制器
+                // 拇指位置记录器 (T) - 直接指定thumb控制器
                 for (const auto& ControllerPair : LeftHandControllers) {
-                    if (ControllerPair.Key == TEXT("thumb_controller") ||
-                        ControllerPair.Key == TEXT("thumb_pivot_controller")) {
+                    if (ControllerPair.Key == TEXT("thumb_controller")) {
                         FString RecorderName = GetLeftHandRecorderName(
                             StringIndex, FretIndex, ControllerPair.Key,
                             PositionStr);
@@ -365,7 +306,7 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
               EStringFlowRightHandPositionType::PIZZICATO}) {
             FString PositionStr = GetRightHandPositionTypeString(PositionType);
 
-            // 主控制器 (H, HP, T, TP)
+            // 主控制器 (H, HP, T)
             for (const auto& ControllerPair : RightHandControllers) {
                 if (!ControllerPair.Key.Contains(TEXT("rotation"))) {
                     FString RecorderName = GetRightHandRecorderName(
@@ -389,10 +330,9 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
               EStringFlowRightHandPositionType::PIZZICATO}) {
             FString PositionStr = GetRightHandPositionTypeString(PositionType);
 
-            // 拇指控制器 (T, TP) - 直接指定thumb控制器
+            // 拇指控制器 (T) - 直接指定thumb控制器
             for (const auto& ControllerPair : RightHandControllers) {
-                if (ControllerPair.Key == TEXT("thumb_controller") ||
-                    ControllerPair.Key == TEXT("thumb_pivot_controller")) {
+                if (ControllerPair.Key == TEXT("thumb_controller")) {
                     FString RecorderName = GetRightHandRecorderName(
                         StringIndex, ControllerPair.Key, PositionStr);
                     right_thumb_recorders_array.Add(RecorderName);
@@ -433,6 +373,11 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
             FString BowRecorderName = FString::Printf(
                 TEXT("bow_position_s%d_%s"), StringIndex, *PositionStr);
             other_recorders_array.Add(BowRecorderName);
+
+            // Right_Hand_Tar 记录器 (right_hand_tar_{PositionType}_s{StringIndex})
+            FString RHTRecorderName = FString::Printf(
+                TEXT("right_hand_tar_%s_s%d"), *PositionStr, StringIndex);
+            other_recorders_array.Add(RHTRecorderName);
         }
     }
     OtherRecorders.Add(TEXT("other_recorders"), other_recorders_array);
@@ -592,6 +537,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     ConfigObject->SetNumberField(TEXT("one_hand_finger_number"),
                                  OneHandFingerNumber);
     ConfigObject->SetNumberField(TEXT("string_number"), StringNumber);
+    ConfigObject->SetBoolField(TEXT("is_unreal"), true);
 
     // 保存乐器配置
     switch (CurrentInstrumentConfig.InstrumentType) {
@@ -958,133 +904,6 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
     return true;
 }
 
-void AStringFlowUnreal::SyncInstrumentTransforms() {
-    // 执行正常的同步逻辑
-    if (StringInstrument && Bow && SkeletalMeshActor) {
-        // 只有当所有组件都有效时才执行同步
-        UStringFlowTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    }
-}
-
-bool AStringFlowUnreal::InitializeStringInstrumentSync() {
-    if (!SkeletalMeshActor) {
-        UE_LOG(
-            LogTemp, Error,
-            TEXT("InitializeStringInstrumentSync: SkeletalMeshActor is null"));
-        return false;
-    }
-
-    if (!StringInstrument) {
-        UE_LOG(
-            LogTemp, Error,
-            TEXT("InitializeStringInstrumentSync: StringInstrument is null"));
-        return false;
-    }
-
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("========== InitializeStringInstrumentSync Started =========="));
-
-    // Step 2: 检查各骨骼的ControlRig Blueprint中是否存在所需的control
-
-    // --- 检查 SkeletalMeshActor 的 controller_root ---
-    UControlRigBlueprint* PerformerBlueprint =
-        GetCachedControlRigBlueprint(TEXT("Performer"));
-    if (!PerformerBlueprint || !PerformerBlueprint->Hierarchy ||
-        !PerformerBlueprint->Hierarchy->Contains(FRigElementKey(
-            TEXT("controller_root"), ERigElementType::Control))) {
-        UE_LOG(
-            LogTemp, Error,
-            TEXT("InitializeStringInstrumentSync: 'controller_root' does not "
-                 "exist in SkeletalMeshActor's ControlRig Blueprint. "
-                 "Please create it manually."));
-        return false;
-    }
-
-    // --- 检查 StringInstrument 的 violin_root，不存在则尝试创建 ---
-    UControlRigBlueprint* InstrumentBlueprint =
-        GetCachedControlRigBlueprint(TEXT("StringInstrument"));
-    if (InstrumentBlueprint) {
-        if (!InstrumentBlueprint->Hierarchy ||
-            !InstrumentBlueprint->Hierarchy->Contains(FRigElementKey(
-                TEXT("violin_root"), ERigElementType::Control))) {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("InitializeStringInstrumentSync: 'violin_root' not found "
-                     "in StringInstrument's ControlRig Blueprint. Attempting "
-                     "to create it."));
-            if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-                    InstrumentBlueprint, TEXT("violin_root"))) {
-                UE_LOG(LogTemp, Error,
-                       TEXT("InitializeStringInstrumentSync: Failed to create "
-                            "'violin_root' in StringInstrument's ControlRig "
-                            "Blueprint."));
-                return false;
-            }
-            UE_LOG(LogTemp, Warning,
-                   TEXT("InitializeStringInstrumentSync: 'violin_root' created "
-                        "successfully."));
-        }
-    } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("InitializeStringInstrumentSync: Could not retrieve "
-                    "ControlRig Blueprint for StringInstrument."));
-        return false;
-    }
-
-    // --- 检查 Bow 的 bow_ctrl，不存在则尝试创建 ---
-    if (Bow) {
-        UControlRigBlueprint* BowBlueprint =
-            GetCachedControlRigBlueprint(TEXT("Bow"));
-        if (BowBlueprint) {
-            if (!BowBlueprint->Hierarchy ||
-                !BowBlueprint->Hierarchy->Contains(FRigElementKey(
-                    TEXT("bow_ctrl"), ERigElementType::Control))) {
-                UE_LOG(
-                    LogTemp, Warning,
-                    TEXT("InitializeStringInstrumentSync: 'bow_ctrl' not found "
-                         "in Bow's ControlRig Blueprint. Attempting to create "
-                         "it."));
-                if (!FControlRigCreationUtility::CreateControl(
-                        BowBlueprint, TEXT("bow_ctrl"), TEXT(""))) {
-                    UE_LOG(
-                        LogTemp, Error,
-                        TEXT("InitializeStringInstrumentSync: Failed to create "
-                             "'bow_ctrl' in Bow's ControlRig Blueprint."));
-                    return false;
-                }
-                UE_LOG(LogTemp, Warning,
-                       TEXT("InitializeStringInstrumentSync: 'bow_ctrl' "
-                            "created successfully."));
-            }
-        } else {
-            UE_LOG(LogTemp, Error,
-                   TEXT("InitializeStringInstrumentSync: Could not retrieve "
-                        "ControlRig Blueprint for Bow."));
-            return false;
-        }
-    }
-
-    // 计算并缓存相对变换矩阵
-    if (!FInstrumentControlRigUtility::InitializeControlRelationship(
-            SkeletalMeshActor, TEXT("controller_root"), StringInstrument,
-            TEXT("violin_root"), CachedStringInstrumentRelativeTransform)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("InitializeStringInstrumentSync: Failed to initialize "
-                    "control relationship"));
-        return false;
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("InitializeStringInstrumentSync: Control relationship "
-                "initialized and cached successfully"));
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("========== InitializeStringInstrumentSync Completed =========="));
-
-    return true;
-}
-
 // ========== 缓存管理方法实现 ==========
 
 ASkeletalMeshActor* AStringFlowUnreal::GetSkeletalMeshActorByName(
@@ -1132,6 +951,16 @@ UControlRig* AStringFlowUnreal::GetCachedControlRig(FName ComponentName) {
         return nullptr;
     }
 
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("StringInstrument")) {
+        RootControlName = TEXT("violin_root");
+    } else if (ComponentName == TEXT("Bow")) {
+        RootControlName = TEXT("bow_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
+
     // 获取当前LevelSequence
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
@@ -1143,7 +972,7 @@ UControlRig* AStringFlowUnreal::GetCachedControlRig(FName ComponentName) {
 
     // 使用通用接口查询ControlRig
     UControlRig* ControlRig =
-        CacheSubsystem->GetControlRig(Actor, LevelSequence);
+        CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
     return ControlRig;
 }
@@ -1184,6 +1013,16 @@ UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
         return nullptr;
     }
 
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("StringInstrument")) {
+        RootControlName = TEXT("violin_root");
+    } else if (ComponentName == TEXT("Bow")) {
+        RootControlName = TEXT("bow_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
+
     // 获取当前LevelSequence
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
@@ -1195,7 +1034,7 @@ UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
 
     // 使用通用接口查询ControlRig Blueprint
     UControlRigBlueprint* ControlRigBlueprint =
-        CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence);
+        CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence, RootControlName);
 
     return ControlRigBlueprint;
 }

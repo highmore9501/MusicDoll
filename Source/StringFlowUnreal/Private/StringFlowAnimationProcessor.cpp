@@ -37,16 +37,16 @@ static const TSet<FString> GetValidStringFlowControllerNames(
     EControllerFilterType FilterType = EControllerFilterType::All) {
     static const TSet<FString> LeftHandControllers = {
         TEXT("H_L"), TEXT("H_rotation_L"), TEXT("HP_L"),
-        TEXT("T_L"), TEXT("TP_L"),         TEXT("1_L"),
+        TEXT("T_L"),                      TEXT("1_L"),
         TEXT("2_L"), TEXT("3_L"),          TEXT("4_L")};
 
     static const TSet<FString> RightHandControllers = {
         TEXT("H_R"),           TEXT("H_rotation_R"),
         TEXT("HP_R"),          TEXT("T_R"),
-        TEXT("TP_R"),          TEXT("1_R"),
+                                   TEXT("1_R"),
         TEXT("2_R"),           TEXT("3_R"),
         TEXT("4_R"),           TEXT("String_Touch_Point"),
-        TEXT("Bow_Controller")};
+        TEXT("Bow_Controller"), TEXT("Right_Hand_Tar")};
 
     static const TSet<FString> AllControllers = []() {
         TSet<FString> Combined;
@@ -91,8 +91,8 @@ static void CollectStringFlowControllerNames(
         OutControllerNames.Add(Pair.Value);
     }
 
-    // 收集其他控制器
-    for (const auto& Pair : StringFlowActor->OtherControllers) {
+    // 收集辅助线
+    for (const auto& Pair : StringFlowActor->GuideLines) {
         OutControllerNames.Add(Pair.Value);
     }
 }

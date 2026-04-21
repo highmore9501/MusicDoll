@@ -23,10 +23,10 @@ class URigHierarchy;
  *
  * | 维度         | FretDance                          | BeatBloom                              |
  * |--------------|------------------------------------|----------------------------------------|
- * | 保存操作     | SaveLeft / SaveRight               | SaveHand / SaveFoot / SaveTarget       |
+ * | 保存操作     | SaveLeft / SaveRight               | SaveHand / SaveFoot / SaveHeadControl  |
  * | 加载操作     | LoadState                          | LoadState                              |
  * | 状态维度     | Position x State                   | 鼓件名 + 状态                           |
- * | 目标控制器   | 无                                 | Tar_Body/Chest/Head（仅 Z 轴）          |
+ * | 朝向控制     | 无                                 | Middle_Hand/Look_At/Head_Control       |
  * | 手脚分离     | 只有手部                           | 手部 + 脚部分开处理                      |
  *
  * ============================================================
@@ -40,7 +40,8 @@ class URigHierarchy;
  * | H_rotation_L / H_rotation_R      | rotation (四元数)     |
  * | F_L / F_R                        | location (3D位置)     |
  * | F_rotation_L / F_rotation_R      | rotation (四元数)     |
- * | Tar_Body / Tar_Chest / Tar_Head  | location.z (仅Z轴)   |
+ * | Middle_Hand                      | location (3D位置)     |
+ * | Head_Control                     | location (3D位置)     |
  *
  * ============================================================
  */
@@ -70,17 +71,33 @@ public:
     static void SaveFootState(ABeatBloomUnreal* BeatBloomActor);
 
     /**
-     * 保存目标状态（Body / Chest / Head）
-     * 从 ControlRig 读取 Tar_Body/Tar_Chest/Tar_Head 的 Z 轴位置
-     * 保存到 RecorderTransforms
+     * 保存双线性映射辅助记录器状态
+     * @param StateSuffix 状态后缀 "A", "B", "C", 或 "D"
+     */
+    UFUNCTION(BlueprintCallable, Category = "BeatBloom ControlRig Processor")
+    static void SaveBilinearHelperState(ABeatBloomUnreal* BeatBloomActor, 
+                                         const FString& StateSuffix);
+
+    /**
+     * 智能加载双线性映射辅助记录器
+     * 根据当前 Middle_Hand 位置自动匹配已保存的四个状态之一
+     * 如果匹配成功，加载对应的 Head_Control 位置
+     */
+    UFUNCTION(BlueprintCallable, Category = "BeatBloom ControlRig Processor")
+    static void LoadBilinearHelperState(ABeatBloomUnreal* BeatBloomActor);
+
+    /**
+     * 保存 Head_Control 状态
+     * 将当前 Head_Control 控制器的位置保存到对应的 Head_Control 记录器
+     * 记录器名基于当前左手/右手的鼓件和状态
      *
      * @param BeatBloomActor BeatBloom Actor 实例
      */
     UFUNCTION(BlueprintCallable, Category = "BeatBloom ControlRig Processor")
-    static void SaveTargetState(ABeatBloomUnreal* BeatBloomActor);
+    static void SaveHeadControlState(ABeatBloomUnreal* BeatBloomActor);
 
     /**
-     * 保存所有状态（手部 + 脚部 + 目标）
+     * 保存所有状态（手部 + 脚部 + Head_Control）
      *
      * @param BeatBloomActor BeatBloom Actor 实例
      */

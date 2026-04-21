@@ -43,61 +43,28 @@ void UBeatBloomDrumKitProcessor::InitializeDrumKit(
         return;
     }
     
-    // 步骤 1: 获取所有 MorphTarget 名称
-    TArray<FString> MorphTargetNames;
+    // 获取鼓组的 SkeletalMeshComponent
     USkeletalMeshComponent* SkeletalMeshComp =
         BeatBloomActor->DrumKit->GetSkeletalMeshComponent();
     
-    if (!SkeletalMeshComp || !SkeletalMeshComp->GetSkeletalMeshAsset()) {
+    if (!SkeletalMeshComp) {
         UE_LOG(LogTemp, Error, TEXT("Invalid SkeletalMeshComponent"));
         return;
     }
-    
-    if (!UInstrumentMorphTargetUtility::GetMorphTargetNames(
-            SkeletalMeshComp, MorphTargetNames)) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to get MorphTarget names"));
+
+    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+        SkeletalMeshComp,
+        ControlRigBlueprint,
+        TEXT("drumkit_control")
+    );
+
+    if (ChannelsAdded == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to initialize morph target channels for DrumKit"));
         return;
     }
     
-    UE_LOG(LogTemp, Warning, TEXT("Found %d MorphTargets on DrumKit"),
-           MorphTargetNames.Num());
-    
-    // 步骤 2: 确保 Root Control 存在
-    if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-            ControlRigBlueprint, TEXT("drumkit_control"))) {
-        UE_LOG(LogTemp, Error, TEXT("====== INITIALIZATION FAILED ======"));
-        UE_LOG(LogTemp, Error,
-               TEXT("Root Control 'drumkit_control' does not exist in Control Rig Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT(""));
-        UE_LOG(LogTemp, Error,
-               TEXT("Please manually create the Root Control 'drumkit_control' in your Control Rig Blueprint:"));
-        UE_LOG(LogTemp, Error, TEXT("  1. Open the Control Rig Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT("  2. Go to the Hierarchy panel"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  3. Right-click and create a new Control named 'drumkit_control'"));
-        UE_LOG(LogTemp, Error, TEXT("  4. Set the Control Type to 'Transform'"));
-        UE_LOG(LogTemp, Error, TEXT("  5. Save the Blueprint and try again"));
-        UE_LOG(LogTemp, Error, TEXT("====== END OF ERROR REPORT ======"));
-        return;
-    }
-    
-    // 步骤 3: 批量添加动画通道
-    FRigElementKey RootControlKey(TEXT("drumkit_control"), ERigElementType::Control);
-    
-    if (MorphTargetNames.Num() == 0) {
-        UE_LOG(LogTemp, Error, TEXT("No MorphTargets found on DrumKit"));
-        return;
-    }
-    
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::AddAnimationChannels(
-        ControlRigBlueprint, RootControlKey, MorphTargetNames);
-    
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeDrumKit Summary =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Successfully created/verified: %d channels"),
-           ChannelsAdded);
-    UE_LOG(LogTemp, Warning, TEXT("Expected total: %d MorphTargets"),
-           MorphTargetNames.Num());
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeDrumKit Completed =========="));
 #endif

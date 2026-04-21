@@ -1,7 +1,6 @@
 ﻿#include "BeatBloomUnreal.h"
 
 #include "Animation/SkeletalMeshActor.h"
-#include "BeatBloomTransformSyncProcessor.h"
 #include "ControlRigCacheSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
@@ -12,14 +11,11 @@
 ABeatBloomUnreal::ABeatBloomUnreal() {
     PrimaryActorTick.bCanEverTick = true;
 
-    bEnableRealtimeSync = false;
     CurrentLeftHandState = EBeatBloomState::BEAT;
     CurrentRightHandState = EBeatBloomState::BEAT;
     CurrentLeftFootState = EBeatBloomState::BEAT;
     CurrentRightFootState = EBeatBloomState::BEAT;
-    CurrentTargetState = EBeatBloomState::BEAT;
 
-    CachedDrumKitRelativeTransform = FTransform::Identity;
     bIsInitialized = false;
 
     InitializeControllersAndRecorders();
@@ -31,11 +27,6 @@ void ABeatBloomUnreal::BeginPlay() {
 }
 
 void ABeatBloomUnreal::Tick(float DeltaTime) {
-    Super::Tick(DeltaTime);
-
-    if (bEnableRealtimeSync) {
-        UBeatBloomTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    }
 }
 
 void ABeatBloomUnreal::InitializeControllersAndRecorders() {
@@ -58,11 +49,22 @@ void ABeatBloomUnreal::InitializeControllersAndRecorders() {
     FootControllers.Add(TEXT("left_foot_rotation"), TEXT("F_rotation_L"));
     FootControllers.Add(TEXT("right_foot_rotation"), TEXT("F_rotation_R"));
 
-    // 目标控制器（BeatBloom 独有）
+    // 目标控制器（BeatBloom 独有）- 新的三控制器系统
     TargetControllers.Empty();
-    TargetControllers.Add(TEXT("body_target"), TEXT("Tar_Body"));
-    TargetControllers.Add(TEXT("chest_target"), TEXT("Tar_Chest"));
-    TargetControllers.Add(TEXT("head_target"), TEXT("Tar_Head"));
+    TargetControllers.Add(TEXT("middle_hand"), TEXT("Middle_Hand"));
+    TargetControllers.Add(TEXT("look_at"), TEXT("Look_At"));
+    TargetControllers.Add(TEXT("head_control"), TEXT("Head_Control"));
+
+    // 双线性映射辅助控制器
+    BilinearHelpers.Empty();
+    BilinearHelpers.Add(TEXT("middle_hand_a"), TEXT("Middle_Hand_A"));
+    BilinearHelpers.Add(TEXT("middle_hand_b"), TEXT("Middle_Hand_B"));
+    BilinearHelpers.Add(TEXT("middle_hand_c"), TEXT("Middle_Hand_C"));
+    BilinearHelpers.Add(TEXT("middle_hand_d"), TEXT("Middle_Hand_D"));
+    BilinearHelpers.Add(TEXT("head_control_a"), TEXT("Head_Control_A"));
+    BilinearHelpers.Add(TEXT("head_control_b"), TEXT("Head_Control_B"));
+    BilinearHelpers.Add(TEXT("head_control_c"), TEXT("Head_Control_C"));
+    BilinearHelpers.Add(TEXT("head_control_d"), TEXT("Head_Control_D"));
     
     UE_LOG(LogTemp, Log, TEXT("BeatBloomUnreal: Controllers initialized"));
 }
@@ -183,6 +185,7 @@ void ABeatBloomUnreal::InitializeRecordersFromConfig() {
     HandRecorders.Empty();
     FootRecorders.Empty();
     TargetRecorders.Empty();
+    HeadControlRecorders.Empty();
     RecorderTransforms.Empty();
     
     // 遍历所有鼓组件生成记录器
@@ -215,6 +218,7 @@ void ABeatBloomUnreal::InitializeRecordersFromConfig() {
     }
     
     bIsInitialized = true;
+    
     UE_LOG(LogTemp, Log, TEXT("Initialized %d recorders from config"), RecorderTransforms.Num());
 }
 
@@ -262,14 +266,28 @@ bool ABeatBloomUnreal::ParseBeatBloomFile(
 
 void ABeatBloomUnreal::ExportRecorderInfo(const FString& FilePath) {
     // 将 RecorderTransforms 导出为 .drummer JSON 文件
-    // 参考设计文档 08_BeatBloom_DataFormats.md 第三节
+    // 新格式：包含 RECORDER_INFO 和 MAPPING_HELPERS 两个顶层字段
     
     TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
     
-    // 遍历所有记录器，构建 JSON 对象
+    // ========== 1. 构建 RECORDER_INFO ==========
+    TSharedPtr<FJsonObject> RecorderInfoObject = MakeShareable(new FJsonObject);
+    
     for (const auto& RecorderPair : RecorderTransforms) {
         const FString& RecorderName = RecorderPair.Key;
         const FBeatBloomRecorderTransform& Data = RecorderPair.Value;
+        
+        // 跳过双线性辅助记录器(它们属于 MAPPING_HELPERS)
+        if (RecorderName.StartsWith(TEXT("Middle_Hand_A")) ||
+            RecorderName.StartsWith(TEXT("Middle_Hand_B")) ||
+            RecorderName.StartsWith(TEXT("Middle_Hand_C")) ||
+            RecorderName.StartsWith(TEXT("Middle_Hand_D")) ||
+            RecorderName.StartsWith(TEXT("Head_Control_A")) ||
+            RecorderName.StartsWith(TEXT("Head_Control_B")) ||
+            RecorderName.StartsWith(TEXT("Head_Control_C")) ||
+            RecorderName.StartsWith(TEXT("Head_Control_D"))) {
+            continue;
+        }
         
         TSharedPtr<FJsonObject> RecorderObject = MakeShareable(new FJsonObject);
         
@@ -280,54 +298,123 @@ void ABeatBloomUnreal::ExportRecorderInfo(const FString& FilePath) {
         LocationArray.Add(MakeShareable(new FJsonValueNumber(Data.Location.Z)));
         RecorderObject->SetArrayField(TEXT("location"), LocationArray);
         
-        // 设置 rotation_quaternion 数组 [w, x, y, z]
-        TArray<TSharedPtr<FJsonValue>> RotationArray;
-        RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.W)));
-        RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.X)));
-        RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.Y)));
-        RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.Z)));
-        RecorderObject->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+        // Head_Control 记录器只保存 location，不保存旋转
+        bool bIsHeadControlRecorder = HeadControlRecorders.Contains(RecorderName);
+        if (!bIsHeadControlRecorder) {
+            // 设置 rotation_quaternion 数组 [w, x, y, z]
+            TArray<TSharedPtr<FJsonValue>> RotationArray;
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.W)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.X)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.Y)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data.Rotation.Z)));
+            RecorderObject->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+            
+            // 设置 rotation_mode
+            RecorderObject->SetStringField(TEXT("rotation_mode"), TEXT("QUATERNION"));
+        }
         
-        // 设置 rotation_mode
-        RecorderObject->SetStringField(TEXT("rotation_mode"), TEXT("QUATERNION"));
-        
-        RootObject->SetObjectField(RecorderName, RecorderObject);
+        RecorderInfoObject->SetObjectField(RecorderName, RecorderObject);
     }
     
-    // 序列化为 JSON 字符串
+    RootObject->SetObjectField(TEXT("RECORDER_INFO"), RecorderInfoObject);
+    
+    // ========== 2. 构建 MAPPING_HELPERS ==========
+    TSharedPtr<FJsonObject> MappingHelpersObject = MakeShareable(new FJsonObject);
+    
+    // 遍历 BilinearHelpers 映射，提取对应的记录器数据
+    for (const auto& HelperPair : BilinearHelpers) {
+        const FString& HelperKey = HelperPair.Key;      // 如 "middle_hand_a"
+        const FString& ControllerName = HelperPair.Value; // 如 "Middle_Hand_A"
+        
+        // 查找对应的记录器名称
+        const FBeatBloomRecorderTransform* Data = 
+            RecorderTransforms.Find(ControllerName);
+        
+        if (!Data) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("BeatBloom: Bilinear helper %s not found in RecorderTransforms"),
+                   *ControllerName);
+            continue;
+        }
+        
+        TSharedPtr<FJsonObject> HelperObject = MakeShareable(new FJsonObject);
+        
+        // 双线性辅助记录器只保存 location
+        TArray<TSharedPtr<FJsonValue>> LocationArray;
+        LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.X)));
+        LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.Y)));
+        LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.Z)));
+        HelperObject->SetArrayField(TEXT("location"), LocationArray);
+        
+        MappingHelpersObject->SetObjectField(ControllerName, HelperObject);
+    }
+    
+    RootObject->SetObjectField(TEXT("MAPPING_HELPERS"), MappingHelpersObject);
+    
+    // ========== 3. 序列化并保存 ==========
     FString JsonString;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&JsonString);
     FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
     
     if (FFileHelper::SaveStringToFile(JsonString, *FilePath)) {
-        UE_LOG(LogTemp, Log, TEXT("Successfully exported recorder info to %s (%d recorders)"), *FilePath, RecorderTransforms.Num());
+        UE_LOG(LogTemp, Log, 
+               TEXT("Successfully exported recorder info to %s (%d recorders, %d helpers)"),
+               *FilePath, RecorderInfoObject->Values.Num(), MappingHelpersObject->Values.Num());
     } else {
         UE_LOG(LogTemp, Error, TEXT("Failed to export recorder info to %s"), *FilePath);
     }
 }
 
 bool ABeatBloomUnreal::ImportRecorderInfo(const FString& FilePath) {
-    // 从 .drummer JSON 文件导入 RecorderTransforms
+// 从 .drummer JSON 文件导入 RecorderTransforms
+// 新格式：包含 RECORDER_INFO 和 MAPPING_HELPERS 两个顶层字段
     
-    FString JsonContent;
-    if (!FFileHelper::LoadFileToString(JsonContent, *FilePath)) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to load recorder info from %s"), *FilePath);
-        return false;
-    }
+// 必须先加载 DrumKitConfig，才能知道哪些键名是合法的
+if (DrumKitConfig.Components.Num() == 0) {
+    UE_LOG(LogTemp, Error, TEXT("ImportRecorderInfo: Please load .drumkit config first!"));
+    return false;
+}
     
-    TSharedPtr<FJsonObject> JsonObject;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonContent);
+FString JsonContent;
+if (!FFileHelper::LoadFileToString(JsonContent, *FilePath)) {
+    UE_LOG(LogTemp, Error, TEXT("Failed to load recorder info from %s"), *FilePath);
+    return false;
+}
     
-    if (!FJsonSerializer::Deserialize(Reader, JsonObject)) {
-        UE_LOG(LogTemp, Error, TEXT("Failed to parse recorder info JSON"));
-        return false;
-    }
+TSharedPtr<FJsonObject> JsonObject;
+TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonContent);
     
-    // 遍历 JSON 对象的所有字段
-    const TMap<FString, TSharedPtr<FJsonValue>>& Fields = JsonObject->Values;
-    int32 ImportedCount = 0;
+if (!FJsonSerializer::Deserialize(Reader, JsonObject)) {
+    UE_LOG(LogTemp, Error, TEXT("Failed to parse recorder info JSON"));
+    return false;
+}
     
-    for (const auto& Field : Fields) {
+// 检查新格式是否包含必需字段
+if (!JsonObject->HasField(TEXT("RECORDER_INFO")) ||
+    !JsonObject->HasField(TEXT("MAPPING_HELPERS"))) {
+    UE_LOG(LogTemp, Error, 
+           TEXT("Invalid .drummer file format: missing RECORDER_INFO or MAPPING_HELPERS"));
+    return false;
+}
+    
+TSharedPtr<FJsonObject> RecorderInfoObj = 
+    JsonObject->GetObjectField(TEXT("RECORDER_INFO"));
+TSharedPtr<FJsonObject> MappingHelpersObj = 
+    JsonObject->GetObjectField(TEXT("MAPPING_HELPERS"));
+    
+// ========== 关键步骤：先重新初始化记录器映射 ==========
+// 这保证了：
+// 1. RecorderTransforms 从干净状态开始（不会有旧的错误格式键残留）
+// 2. HeadControlRecorders/HandRecorders 等映射都被正确填充（CleanupInvalidRecorderKeys 需要它们）
+InitializeRecordersFromConfig();
+    
+int32 ImportedRecorderCount = 0;
+int32 ImportedHelperCount = 0;
+    
+// ========== 1. 导入 RECORDER_INFO ==========
+const TMap<FString, TSharedPtr<FJsonValue>>& RecorderFields = RecorderInfoObj->Values;
+    
+    for (const auto& Field : RecorderFields) {
         const FString& RecorderName = Field.Key;
         TSharedPtr<FJsonObject> RecorderObj = Field.Value->AsObject();
         
@@ -335,7 +422,8 @@ bool ABeatBloomUnreal::ImportRecorderInfo(const FString& FilePath) {
         
         // 解析 location 数组
         const TArray<TSharedPtr<FJsonValue>>* LocationArrayPtr;
-        if (RecorderObj->TryGetArrayField(TEXT("location"), LocationArrayPtr) && LocationArrayPtr->Num() == 3) {
+        if (RecorderObj->TryGetArrayField(TEXT("location"), LocationArrayPtr) && 
+            LocationArrayPtr->Num() == 3) {
             float X = (*LocationArrayPtr)[0]->AsNumber();
             float Y = (*LocationArrayPtr)[1]->AsNumber();
             float Z = (*LocationArrayPtr)[2]->AsNumber();
@@ -343,21 +431,54 @@ bool ABeatBloomUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
         
         // 解析 rotation_quaternion 数组 [w, x, y, z]
+        // Head_Control 记录器可能没有旋转数据，使用 Identity
         const TArray<TSharedPtr<FJsonValue>>* RotationArrayPtr;
-        if (RecorderObj->TryGetArrayField(TEXT("rotation_quaternion"), RotationArrayPtr) && RotationArrayPtr->Num() == 4) {
+        if (RecorderObj->TryGetArrayField(TEXT("rotation_quaternion"), RotationArrayPtr) && 
+            RotationArrayPtr->Num() == 4) {
             float W = (*RotationArrayPtr)[0]->AsNumber();
             float X = (*RotationArrayPtr)[1]->AsNumber();
             float Y = (*RotationArrayPtr)[2]->AsNumber();
             float Z = (*RotationArrayPtr)[3]->AsNumber();
-            // 注意：Unreal 的 FQuat 构造函数是 (X, Y, Z, W)
             Data.Rotation = FQuat(X, Y, Z, W);
+        } else {
+            Data.Rotation = FQuat::Identity;
         }
         
         RecorderTransforms.Add(RecorderName, Data);
-        ImportedCount++;
+        ImportedRecorderCount++;
     }
     
-    UE_LOG(LogTemp, Log, TEXT("Successfully imported %d recorders from %s"), ImportedCount, *FilePath);
+    // ========== 2. 导入 MAPPING_HELPERS ==========
+    const TMap<FString, TSharedPtr<FJsonValue>>& HelperFields = MappingHelpersObj->Values;
+    
+    for (const auto& Field : HelperFields) {
+        const FString& HelperName = Field.Key;  // 如 "Middle_Hand_A"
+        TSharedPtr<FJsonObject> HelperObj = Field.Value->AsObject();
+        
+        FBeatBloomRecorderTransform Data;
+        
+        // 双线性辅助记录器只解析 location
+        const TArray<TSharedPtr<FJsonValue>>* LocationArrayPtr;
+        if (HelperObj->TryGetArrayField(TEXT("location"), LocationArrayPtr) && 
+            LocationArrayPtr->Num() == 3) {
+            float X = (*LocationArrayPtr)[0]->AsNumber();
+            float Y = (*LocationArrayPtr)[1]->AsNumber();
+            float Z = (*LocationArrayPtr)[2]->AsNumber();
+            Data.Location = FVector(X, Y, Z);
+            Data.Rotation = FQuat::Identity;  // 辅助记录器不保存旋转
+        }
+        
+        RecorderTransforms.Add(HelperName, Data);
+        ImportedHelperCount++;
+    }
+    
+    UE_LOG(LogTemp, Log, 
+           TEXT("Successfully imported %d recorders and %d mapping helpers from %s"),
+           ImportedRecorderCount, ImportedHelperCount, *FilePath);
+    
+    // 清理无效键名（之前版本可能生成的错误格式）
+    CleanupInvalidRecorderKeys();
+    
     return true;
 }
 
@@ -457,12 +578,16 @@ TMap<FString, FString> ABeatBloomUnreal::GetCurrentControllerToRecorderMapping()
         Mapping.Add(TEXT("F_rotation_R"), Prefix + TEXT("F_rotation_R"));
     }
     
-    // 目标控制器映射
-    if (!CurrentTargetDrumKit.IsEmpty()) {
-        FString Prefix = CurrentTargetDrumKit + TEXT("_") + GetStateString(CurrentTargetState) + TEXT("_");
-        Mapping.Add(TEXT("Tar_Body"), TEXT("Tar_Body_") + Prefix + TEXT("z"));
-        Mapping.Add(TEXT("Tar_Chest"), TEXT("Tar_Chest_") + Prefix + TEXT("z"));
-        Mapping.Add(TEXT("Tar_Head"), TEXT("Tar_Head_") + Prefix + TEXT("z"));
+    // Middle_Hand 是 Control Rig 自动计算的（H_L + H_R 中点），不需要记录器映射
+    // Look_At 通过父子关系跟随 Middle_Hand，也不需要记录器映射
+    
+    // Head_Control 记录器映射（基于左手状态）
+    // 格式: {ComponentName}_{State}_Head_Control
+    if (CurrentLeftHandDrumKit == TEXT("Rest")) {
+        Mapping.Add(TEXT("Head_Control"), TEXT("Head_Control_Rest"));
+    } else if (!CurrentLeftHandDrumKit.IsEmpty()) {
+        FString HCPrefix = CurrentLeftHandDrumKit + TEXT("_") + GetStateString(CurrentLeftHandState) + TEXT("_");
+        Mapping.Add(TEXT("Head_Control"), HCPrefix + TEXT("Head_Control"));
     }
     
     return Mapping;
@@ -523,6 +648,14 @@ UControlRig* ABeatBloomUnreal::GetCachedControlRig(FName ComponentName) {
         UE_LOG(LogTemp, Warning, TEXT("GetCachedControlRig: Actor not found for component %s"), *ComponentName.ToString());
         return nullptr;
     }
+
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("DrumKit")) {
+        RootControlName = TEXT("drumkit_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
     
     // 获取当前 LevelSequence
     ULevelSequence* LevelSequence = UInstrumentAnimationUtility::GetCurrentLevelSequence();
@@ -532,17 +665,17 @@ UControlRig* ABeatBloomUnreal::GetCachedControlRig(FName ComponentName) {
     }
     
     // 使用通用接口查询 ControlRig
-    UControlRig* ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence);
+    UControlRig* ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
     
     // 如果 ControlRig 为空，尝试触发注册后再查询
     if (!ControlRig) {
-        UE_LOG(LogTemp, Warning, TEXT("GetCachedControlRig: ControlRig is null, triggering registration for %s"), *Actor->GetName());
+        UE_LOG(LogTemp, Warning, TEXT("GetCachedControlRig: ControlRig is null, triggering registration for %s with root control '%s'"), *Actor->GetName(), *RootControlName);
         
         // 触发注册
-        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence);
+        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence, RootControlName);
         
         // 再次查询
-        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence);
+        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
         
         if (!ControlRig) {
             UE_LOG(LogTemp, Error, TEXT("GetCachedControlRig: Still failed to get ControlRig after registration for %s"), *Actor->GetName());
@@ -583,6 +716,14 @@ UControlRigBlueprint* ABeatBloomUnreal::GetCachedControlRigBlueprint(FName Compo
         UE_LOG(LogTemp, Warning, TEXT("GetCachedControlRigBlueprint: Actor not found for component %s"), *ComponentName.ToString());
         return nullptr;
     }
+
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("DrumKit")) {
+        RootControlName = TEXT("drumkit_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
     
     // 获取当前 LevelSequence
     ULevelSequence* LevelSequence = UInstrumentAnimationUtility::GetCurrentLevelSequence();
@@ -592,7 +733,7 @@ UControlRigBlueprint* ABeatBloomUnreal::GetCachedControlRigBlueprint(FName Compo
     }
     
     // 使用通用接口查询 ControlRigBlueprint
-    UControlRigBlueprint* ControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence, RootControlName);
     
     return ControlRigBlueprint;
 }
@@ -665,6 +806,78 @@ void ABeatBloomUnreal::TriggerControlRigReregistration(const FString& ErrorMessa
     UE_LOG(LogTemp, Log, TEXT("ControlRig re-registration completed"));
 }
 
+int32 ABeatBloomUnreal::CleanupInvalidRecorderKeys() {
+    // 收集所有合法的记录器键名
+    TSet<FString> ValidKeys;
+    
+    // 1. 手部记录器（标准格式: {Component}_{State}_H_L/R, {Component}_{State}_HP_L/R, {Component}_{State}_H_rotation_L/R）
+    for (const auto& Pair : HandRecorders) {
+        ValidKeys.Add(Pair.Value);
+    }
+    
+    // 2. 脚部记录器（标准格式: {Component}_{State}_F_L/R, {Component}_{State}_F_rotation_L/R）
+    for (const auto& Pair : FootRecorders) {
+        ValidKeys.Add(Pair.Value);
+    }
+    
+    // 3. Head_Control 记录器（标准格式: {Component}_{State}_Head_Control）
+    //    注意：Head_Control 在记录器名称的最后，不是开头
+    for (const auto& Pair : HeadControlRecorders) {
+        ValidKeys.Add(Pair.Value);
+    }
+    
+    // 4. 目标记录器 (TargetRecorders) - 当前为空，保留以供将来扩展
+    for (const auto& Pair : TargetRecorders) {
+        ValidKeys.Add(Pair.Value);
+    }
+    
+    // 5. 双线性辅助记录器（Middle_Hand_A/B/C/D, Head_Control_A/B/C/D）
+    for (const auto& Pair : BilinearHelpers) {
+        ValidKeys.Add(Pair.Value);
+    }
+    
+    // 找出并删除无效键
+    TArray<FString> KeysToRemove;
+    for (const auto& Pair : RecorderTransforms) {
+        const FString& Key = Pair.Key;
+        
+        // 如果键名不在合法集合中，标记删除
+        if (!ValidKeys.Contains(Key)) {
+            // 额外检查：删除所有以 "Head_Control_" 开头但不以 "_A/B/C/D" 结尾的错误格式键名
+            // 正确格式应该是 "{Component}_{State}_Head_Control" 或 "Head_Control_A/B/C/D" 或 "Head_Control_Rest"
+            if (Key.StartsWith(TEXT("Head_Control_")) && 
+                !Key.EndsWith(TEXT("_A")) && !Key.EndsWith(TEXT("_B")) && 
+                !Key.EndsWith(TEXT("_C")) && !Key.EndsWith(TEXT("_D")) &&
+                Key != TEXT("Head_Control_Rest")) {
+                UE_LOG(LogTemp, Warning, 
+                       TEXT("BeatBloom: Found invalid Head_Control key format: %s (should be {Component}_{State}_Head_Control)"), 
+                       *Key);
+            }
+            // 额外检查：删除所有以 "Middle_Hand_" 开头但不以 "_A/B/C/D" 结尾的错误格式键名
+            else if (Key.StartsWith(TEXT("Middle_Hand_")) && 
+                     !Key.EndsWith(TEXT("_A")) && !Key.EndsWith(TEXT("_B")) && 
+                     !Key.EndsWith(TEXT("_C")) && !Key.EndsWith(TEXT("_D"))) {
+                UE_LOG(LogTemp, Warning, 
+                       TEXT("BeatBloom: Found invalid Middle_Hand key format: %s (Middle_Hand should not have per-component recorders)"), 
+                       *Key);
+            }
+            
+            KeysToRemove.Add(Key);
+        }
+    }
+    
+    for (const FString& Key : KeysToRemove) {
+        RecorderTransforms.Remove(Key);
+        UE_LOG(LogTemp, Warning, TEXT("BeatBloom: Removed invalid recorder key: %s"), *Key);
+    }
+    
+    if (KeysToRemove.Num() > 0) {
+        UE_LOG(LogTemp, Warning, TEXT("BeatBloom: CleanupInvalidRecorderKeys removed %d invalid keys"), KeysToRemove.Num());
+    }
+    
+    return KeysToRemove.Num();
+}
+
 // ============ 辅助方法实现 ============
 
 void ABeatBloomUnreal::GenerateRecordersForComponent(
@@ -701,6 +914,11 @@ void ABeatBloomUnreal::GenerateRecordersForComponent(
                 HandRecorders.Add(Prefix + RotationSuffix, Prefix + RotationSuffix);
                 HandRecorders.Add(Prefix + PivotSuffix, Prefix + PivotSuffix);
                 
+                // Head_Control 记录器（每个手部组件+状态记录一个）
+                FString HCRecorderName = ComponentName + TEXT("_") + StateStr + TEXT("_Head_Control");
+                AddRecorder(HCRecorderName);
+                HeadControlRecorders.Add(HCRecorderName, HCRecorderName);
+                
             } else if (Limb == TEXT("left_foot") || Limb == TEXT("right_foot")) {
                 // 脚部记录器：位置、旋转
                 FString FootSuffix = (Limb == TEXT("left_foot")) ? TEXT("F_L") : TEXT("F_R");
@@ -733,55 +951,19 @@ void ABeatBloomUnreal::AddRestRecorders() {
     HandRecorders.Add(TEXT("H_Rest_R"), TEXT("H_Rest_R"));
     HandRecorders.Add(TEXT("H_rotation_Rest_R"), TEXT("H_rotation_Rest_R"));
     HandRecorders.Add(TEXT("HP_Rest_R"), TEXT("HP_Rest_R"));
+    
+    // 添加全局休息状态的 Head_Control 记录器
+    AddRecorder(TEXT("Head_Control_Rest"));
+    HeadControlRecorders.Add(TEXT("Head_Control_Rest"), TEXT("Head_Control_Rest"));
 }
 
 void ABeatBloomUnreal::AddTargetRecorders() {
-    // 为目标控制器添加记录器（只给手部可驱动的组件）
-    TSet<FString> HandDrivenComponents;
+    // Head_Control 记录器已在 GenerateRecordersForComponent() 中创建
+    // 格式: {ComponentName}_{State}_Head_Control (如 "Open Hi-Hat_beat_Head_Control")
+    // Middle_Hand 是 Control Rig 自动计算的（H_L + H_R 中点），不需要 per-component 记录器
+    // 双线性辅助记录器 (Middle_Hand_A/B/C/D, Head_Control_A/B/C/D) 在 BilinearHelpers 中管理
     
-    // 收集所有手部可驱动的鼓组件
-    for (const FBeatBloomDrumComponent& Component : DrumKitConfig.Components) {
-        for (const FBeatBloomDrivableLimb& DrivableLimb : Component.DrivableLimbs) {
-            if (DrivableLimb.Limb == TEXT("left_hand") || DrivableLimb.Limb == TEXT("right_hand")) {
-                HandDrivenComponents.Add(Component.Name);
-                break;
-            }
-        }
-    }
-    
-    // 收集所有手部可驱动的特殊动作
-    for (const FBeatBloomSpecialAction& Action : DrumKitConfig.SpecialActions) {
-        if (Action.Limbs.Contains(TEXT("left_hand")) || Action.Limbs.Contains(TEXT("right_hand"))) {
-            HandDrivenComponents.Add(Action.Name);
-        }
-    }
-    
-    // 为目标记录器生成三种状态
-    TArray<EBeatBloomState> States = {
-        EBeatBloomState::BEAT,
-        EBeatBloomState::READY,
-        EBeatBloomState::REST
-    };
-    
-    for (const FString& ComponentName : HandDrivenComponents) {
-        for (EBeatBloomState State : States) {
-            FString StateStr = GetStateString(State);
-            FString Prefix = ComponentName + TEXT("_") + StateStr + TEXT("_");
-            
-            // Tar_Body, Tar_Chest, Tar_Head 的 Z 轴记录器
-            FString BodyRecorder = TEXT("Tar_Body_") + Prefix + TEXT("z");
-            FString ChestRecorder = TEXT("Tar_Chest_") + Prefix + TEXT("z");
-            FString HeadRecorder = TEXT("Tar_Head_") + Prefix + TEXT("z");
-            
-            AddRecorder(BodyRecorder);
-            AddRecorder(ChestRecorder);
-            AddRecorder(HeadRecorder);
-            
-            TargetRecorders.Add(BodyRecorder, BodyRecorder);
-            TargetRecorders.Add(ChestRecorder, ChestRecorder);
-            TargetRecorders.Add(HeadRecorder, HeadRecorder);
-        }
-    }
+    // 此方法现在为空，保留以供将来扩展
 }
 
 void ABeatBloomUnreal::AddRecorder(const FString& RecorderName) {

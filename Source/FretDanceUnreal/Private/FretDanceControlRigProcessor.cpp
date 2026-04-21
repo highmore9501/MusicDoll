@@ -8,13 +8,13 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Engine/Engine.h"
-#include "FretDanceTransformSyncProcessor.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "LevelEditor.h"
 #include "LevelEditorSequencerIntegration.h"
+#include "LevelSequenceEditorBlueprintLibrary.h"
 #include "Logging/MessageLog.h"
 #include "MovieSceneSequence.h"
 #include "Rigs/RigHierarchyController.h"
@@ -97,9 +97,8 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
 
     for (const FString& ControllerName : LeftControllers) {
         FString ParentName = TEXT("controller_root");
-        // 旋转控制器作为controller_root的直接子级
-        if (ControllerName == TEXT("H_rotation_L")) {
-            ParentName = TEXT("controller_root");
+        if (ControllerName == TEXT("TP_L")) {
+            ParentName = TEXT("H_L");
         }
 
         if (CreateController(ControlRigBlueprint, ControllerName, ParentName)) {
@@ -228,11 +227,7 @@ bool UFretDanceControlRigProcessor::SetupAllObjects(
         return false;
     }
 
-    // 步骤 2: 初始化吉他同步关系（controller_root <-> guitar_root）
-    // 这会在开始每帧同步前计算并缓存相对变换矩阵
-    UFretDanceTransformSyncProcessor::InitializeGuitarSync(FretDanceActor);
-
-    // 步骤 3: 验证控制器状态
+    // 步骤 2: 验证控制器状态
     bool bValidationPassed = CheckObjectsStatus(FretDanceActor);
 
     if (bValidationPassed) {
@@ -548,17 +543,6 @@ bool UFretDanceControlRigProcessor::LoadState(
     UE_LOG(LogTemp, Warning, TEXT("Total RecorderTransforms in Actor: %d"),
            FretDanceActor->RecorderTransforms.Num());
 
-    // 打印所有可用的 Recorder 数据
-    for (const auto& Pair : FretDanceActor->RecorderTransforms) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("  [AVAILABLE] %s | Loc(%.2f,%.2f,%.2f) "
-                    "Rot(%.4f,%.4f,%.4f,%.4f)"),
-               *Pair.Key, Pair.Value.Location.X, Pair.Value.Location.Y,
-               Pair.Value.Location.Z, Pair.Value.Rotation.X,
-               Pair.Value.Rotation.Y, Pair.Value.Rotation.Z,
-               Pair.Value.Rotation.W);
-    }
-
     int32 LoadedCount = 0;
     int32 FailedCount = 0;
     int32 NotFoundInMapCount = 0;
@@ -729,6 +713,13 @@ bool UFretDanceControlRigProcessor::LoadState(
         UE_LOG(LogTemp, Warning, TEXT("✅ Fret positions loaded successfully"));
     } else {
         UE_LOG(LogTemp, Warning, TEXT("⚠️ No fret positions loaded"));
+    }
+
+    // 重新评估 Control Rig 以传播变更（约束、IK 等）
+    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
+    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
+    if (ControlRig) {
+        ControlRig->Evaluate_AnyThread();
     }
 
     UE_LOG(LogTemp, Warning, TEXT("=== LoadState Summary ==="));
@@ -1021,7 +1012,7 @@ TArray<FString> UFretDanceControlRigProcessor::GetExpectedControllerNames(
         }
     }
 
-        // 添加指板位置控制器
+    // 添加指板位置控制器
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         ExpectedControllers.Add(FretPair.Value);
     }
@@ -1038,7 +1029,7 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
     Hierarchy.Add(TEXT("H_R"), ControllerRootName);   // 右手掌（根级）
     Hierarchy.Add(TEXT("HP_R"), ControllerRootName);  // 右手掌枢轴
     Hierarchy.Add(TEXT("T_R"), ControllerRootName);   // 右手拇指
-    Hierarchy.Add(TEXT("TP_R"), ControllerRootName);  // 右手拇指枢轴
+    Hierarchy.Add(TEXT("TP_R"), TEXT("H_R"));         // 右手拇指枢轴
 
     // 电吉他的特殊层级结构
     if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
@@ -1047,21 +1038,16 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
         Hierarchy.Add(TEXT("M_R"), TEXT("H_R"));  // 右手中指
         Hierarchy.Add(TEXT("R_R"), TEXT("H_R"));  // 右手无名指
         Hierarchy.Add(TEXT("P_R"), TEXT("H_R"));  // 右手小指
-
-        // 为右手食指添加pole_target
-        Hierarchy.Add(TEXT("I_R_pole"), TEXT("T_R"));  // 右手食指
     } else {
         // 其他乐器类型的层级结构（所有手指直接挂在 controller_root 下）
         Hierarchy.Add(TEXT("I_R"), ControllerRootName);  // 右手食指
         Hierarchy.Add(TEXT("M_R"), ControllerRootName);  // 右手中指
         Hierarchy.Add(TEXT("R_R"), ControllerRootName);  // 右手无名指
         Hierarchy.Add(TEXT("P_R"), ControllerRootName);  // 右手小指
-
-        // 为右手食指添加pole_target
-        Hierarchy.Add(TEXT("I_R_pole"), TEXT("H_R"));  // 右手食指
     }
 
     // 为其它右手手指添加pole_target
+    Hierarchy.Add(TEXT("I_R_pole"), TEXT("H_R"));  // 右手食指
     Hierarchy.Add(TEXT("M_R_pole"), TEXT("H_R"));  // 右手中指
     Hierarchy.Add(TEXT("R_R_pole"), TEXT("H_R"));  // 右手无名指
     Hierarchy.Add(TEXT("P_R_pole"), TEXT("H_R"));  // 右手小指

@@ -5,8 +5,8 @@
 #include "ControlRigCreationUtility.h"
 #include "Engine/Engine.h"
 #include "InstrumentAnimationUtility.h"
+#include "LevelSequenceEditorBlueprintLibrary.h"
 #include "Rigs/RigHierarchyController.h"
-#include "ZhengDriftTransformSyncProcessor.h"
 
 #define LOCTEXT_NAMESPACE "ZhengDriftControlRigProcessor"
 
@@ -111,26 +111,26 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
 
     // 5. Target 控制器（特殊朝向控制器）
     // Middle_Hand 和 Head_Control 挂在 controller_root 下
-    if (CreateController(Blueprint, TEXT("Middle_Hand"), TEXT("controller_root")))
+    if (CreateController(Blueprint, TEXT("Middle_Hand"),
+                         TEXT("controller_root")))
         CreatedCount++;
-    if (CreateController(Blueprint, TEXT("Head_Control"), TEXT("controller_root")))
+    if (CreateController(Blueprint, TEXT("Head_Control"),
+                         TEXT("controller_root")))
         CreatedCount++;
     // Look_At 挂在 Middle_Hand 下
     if (CreateController(Blueprint, TEXT("Look_At"), TEXT("Middle_Hand")))
         CreatedCount++;
 
-    // 7. 弦位置控制器（63 个：21弦 × 3点 head/mid/end，全部挂在 controller_root 下）
+    // 7. 弦位置控制器（63 个：21弦 × 3点 head/mid/end，全部挂在 controller_root
+    // 下）
     for (int32 i = 0; i <= 20; ++i) {
-        if (CreateController(Blueprint,
-                             FString::Printf(TEXT("s%dhead"), i),
+        if (CreateController(Blueprint, FString::Printf(TEXT("s%dhead"), i),
                              TEXT("controller_root")))
             CreatedCount++;
-        if (CreateController(Blueprint,
-                             FString::Printf(TEXT("s%dmid"), i),
+        if (CreateController(Blueprint, FString::Printf(TEXT("s%dmid"), i),
                              TEXT("controller_root")))
             CreatedCount++;
-        if (CreateController(Blueprint,
-                             FString::Printf(TEXT("s%dend"), i),
+        if (CreateController(Blueprint, FString::Printf(TEXT("s%dend"), i),
                              TEXT("controller_root")))
             CreatedCount++;
     }
@@ -199,8 +199,6 @@ bool UZhengDriftControlRigProcessor::SetupAllObjects(
                TEXT("SetupAllObjects [ZhengDrift]: No controllers created"));
         return false;
     }
-
-    UZhengDriftTransformSyncProcessor::InitializeZhengSync(ZhengDriftActor);
 
     return CheckObjectsStatus(ZhengDriftActor);
 }
@@ -437,6 +435,14 @@ bool UZhengDriftControlRigProcessor::LoadState(
     // 加载脚部控制器
     LoadFootControllerStates(ZhengDriftActor, ControlRig);
 
+    // 检测四态并将双线性辅助记录器数据应用到控制器
+    CheckAndLoadBilinearHelpers(ZhengDriftActor, ControlRig);
+
+    // 重新评估 Control Rig 以传播变更（约束、IK 等）
+    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
+    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
+    ControlRig->Evaluate_AnyThread();
+
     UE_LOG(LogTemp, Warning, TEXT("ZhengDrift LoadState: Loaded=%d Failed=%d"),
            Loaded, Failed);
     return Loaded > Failed;
@@ -495,7 +501,8 @@ TArray<FString> UZhengDriftControlRigProcessor::GetExpectedControllerNames(
     for (const auto& Pair : Actor->TargetControllers) Names.Add(Pair.Value);
 
     // 弦位置控制器（63 个）
-    for (const auto& Pair : Actor->StringPositionRecorders) Names.Add(Pair.Value);
+    for (const auto& Pair : Actor->StringPositionRecorders)
+        Names.Add(Pair.Value);
 
     return Names;
     // 总计：2 + 12 + 12 + 4 + 3 + 63 = 96
@@ -532,9 +539,10 @@ void UZhengDriftControlRigProcessor::SaveStringPositionStates(
         Saved++;
     }
 
-    UE_LOG(LogTemp, Verbose,
-           TEXT("ZhengDrift SaveStringPositionStates: Saved %d string controls"),
-           Saved);
+    UE_LOG(
+        LogTemp, Verbose,
+        TEXT("ZhengDrift SaveStringPositionStates: Saved %d string controls"),
+        Saved);
 }
 
 // ============================================================
@@ -582,9 +590,11 @@ void UZhengDriftControlRigProcessor::ApplyStringPositionToControlRig(
         Applied++;
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("ZhengDrift ApplyStringPositionToControlRig: Applied=%d Failed=%d"),
-           Applied, Failed);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT(
+            "ZhengDrift ApplyStringPositionToControlRig: Applied=%d Failed=%d"),
+        Applied, Failed);
 }
 
 // ============================================================
@@ -730,40 +740,43 @@ void UZhengDriftControlRigProcessor::CheckAndSaveBilinearHelpers(
     AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig) {
     if (!ZhengDriftActor || !ControlRig) return;
 
-    EZhengDriftHandPosition LeftPos  = ZhengDriftActor->CurrentLeftHandPosition;
-    EZhengDriftHandPosition RightPos = ZhengDriftActor->CurrentRightHandPosition;
-    EZhengDriftLeftHandAction  LeftAction  = ZhengDriftActor->CurrentLeftHandAction;
-    EZhengDriftRightHandAction RightAction = ZhengDriftActor->CurrentRightHandAction;
+    EZhengDriftHandPosition LeftPos = ZhengDriftActor->CurrentLeftHandPosition;
+    EZhengDriftHandPosition RightPos =
+        ZhengDriftActor->CurrentRightHandPosition;
+    EZhengDriftLeftHandAction LeftAction =
+        ZhengDriftActor->CurrentLeftHandAction;
+    EZhengDriftRightHandAction RightAction =
+        ZhengDriftActor->CurrentRightHandAction;
 
     // 判断当前是否为四态之一
     FString StateKey;
 
     // A 态：左手 Normal（拨奏）+ 右手 Tremolo（摇指）+ 双手 Far
-    if (LeftAction  == EZhengDriftLeftHandAction::NORMAL   &&
+    if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
         RightAction == EZhengDriftRightHandAction::TREMOLO &&
-        LeftPos     == EZhengDriftHandPosition::FAR        &&
-        RightPos    == EZhengDriftHandPosition::FAR) {
+        LeftPos == EZhengDriftHandPosition::FAR &&
+        RightPos == EZhengDriftHandPosition::FAR) {
         StateKey = TEXT("A");
     }
     // B 态：左手 Press（按弦）+ 右手 Normal（拨奏）+ 双手 Far
-    else if (LeftAction  == EZhengDriftLeftHandAction::PRESS   &&
+    else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
              RightAction == EZhengDriftRightHandAction::NORMAL &&
-             LeftPos     == EZhengDriftHandPosition::FAR       &&
-             RightPos    == EZhengDriftHandPosition::FAR) {
+             LeftPos == EZhengDriftHandPosition::FAR &&
+             RightPos == EZhengDriftHandPosition::FAR) {
         StateKey = TEXT("B");
     }
     // C 态：左手 Normal（拨奏）+ 右手 Tremolo（摇指）+ 双手 Near
-    else if (LeftAction  == EZhengDriftLeftHandAction::NORMAL   &&
+    else if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
              RightAction == EZhengDriftRightHandAction::TREMOLO &&
-             LeftPos     == EZhengDriftHandPosition::NEAR       &&
-             RightPos    == EZhengDriftHandPosition::NEAR) {
+             LeftPos == EZhengDriftHandPosition::NEAR &&
+             RightPos == EZhengDriftHandPosition::NEAR) {
         StateKey = TEXT("C");
     }
     // D 态：左手 Press（按弦）+ 右手 Normal（拨奏）+ 双手 Near
-    else if (LeftAction  == EZhengDriftLeftHandAction::PRESS   &&
+    else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
              RightAction == EZhengDriftRightHandAction::NORMAL &&
-             LeftPos     == EZhengDriftHandPosition::NEAR      &&
-             RightPos    == EZhengDriftHandPosition::NEAR) {
+             LeftPos == EZhengDriftHandPosition::NEAR &&
+             RightPos == EZhengDriftHandPosition::NEAR) {
         StateKey = TEXT("D");
     }
 
@@ -771,12 +784,14 @@ void UZhengDriftControlRigProcessor::CheckAndSaveBilinearHelpers(
 
     // 读取 Middle_Hand 和 Head_Control 的当前位置，写入对应辅助控制器
     TArray<TPair<FString, FString>> HelperPairs = {
-        {TEXT("Middle_Hand"),  FString::Printf(TEXT("Middle_Hand_%s"),  *StateKey)},
-        {TEXT("Head_Control"), FString::Printf(TEXT("Head_Control_%s"), *StateKey)},
+        {TEXT("Middle_Hand"),
+         FString::Printf(TEXT("Middle_Hand_%s"), *StateKey)},
+        {TEXT("Head_Control"),
+         FString::Printf(TEXT("Head_Control_%s"), *StateKey)},
     };
 
     for (const auto& HP : HelperPairs) {
-        const FString& SrcCtrl  = HP.Key;
+        const FString& SrcCtrl = HP.Key;
         const FString& DestName = HP.Value;
 
         FRigElementKey SrcKey(*SrcCtrl, ERigElementType::Control);
@@ -799,6 +814,85 @@ void UZhengDriftControlRigProcessor::CheckAndSaveBilinearHelpers(
 
     UE_LOG(LogTemp, Warning,
            TEXT("ZhengDrift CheckAndSaveBilinearHelpers: Saved state '%s'"),
+           *StateKey);
+}
+
+// ============================================================
+// CheckAndLoadBilinearHelpers
+// ============================================================
+
+void UZhengDriftControlRigProcessor::CheckAndLoadBilinearHelpers(
+    AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig) {
+    if (!ZhengDriftActor || !ControlRig) return;
+
+    EZhengDriftHandPosition LeftPos = ZhengDriftActor->CurrentLeftHandPosition;
+    EZhengDriftHandPosition RightPos =
+        ZhengDriftActor->CurrentRightHandPosition;
+    EZhengDriftLeftHandAction LeftAction =
+        ZhengDriftActor->CurrentLeftHandAction;
+    EZhengDriftRightHandAction RightAction =
+        ZhengDriftActor->CurrentRightHandAction;
+
+    FString StateKey;
+
+    if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
+        RightAction == EZhengDriftRightHandAction::TREMOLO &&
+        LeftPos == EZhengDriftHandPosition::FAR &&
+        RightPos == EZhengDriftHandPosition::FAR) {
+        StateKey = TEXT("A");
+    } else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
+               RightAction == EZhengDriftRightHandAction::NORMAL &&
+               LeftPos == EZhengDriftHandPosition::FAR &&
+               RightPos == EZhengDriftHandPosition::FAR) {
+        StateKey = TEXT("B");
+    } else if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
+               RightAction == EZhengDriftRightHandAction::TREMOLO &&
+               LeftPos == EZhengDriftHandPosition::NEAR &&
+               RightPos == EZhengDriftHandPosition::NEAR) {
+        StateKey = TEXT("C");
+    } else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
+               RightAction == EZhengDriftRightHandAction::NORMAL &&
+               LeftPos == EZhengDriftHandPosition::NEAR &&
+               RightPos == EZhengDriftHandPosition::NEAR) {
+        StateKey = TEXT("D");
+    }
+
+    if (StateKey.IsEmpty()) return;
+
+    // 将对应辅助记录器中保存的位置应用到 Head_Control 控制器
+    TArray<TPair<FString, FString>> HelperPairs = {
+        {FString::Printf(TEXT("Head_Control_%s"), *StateKey),
+         TEXT("Head_Control")},
+    };
+
+    for (const auto& HP : HelperPairs) {
+        const FString& SrcName = HP.Key;
+        const FString& DestCtrl = HP.Value;
+
+        const FZhengDriftRecorderTransform* FoundT =
+            ZhengDriftActor->RecorderTransforms.Find(SrcName);
+        if (!FoundT) continue;
+
+        FRigElementKey DestKey(*DestCtrl, ERigElementType::Control);
+        if (!ControlRig->GetHierarchy()->Contains(DestKey)) continue;
+
+        FRigControlElement* DestElem =
+            ControlRig->GetHierarchy()->Find<FRigControlElement>(DestKey);
+        if (!DestElem) continue;
+
+        // 只应用 location
+        FTransform NewT;
+        NewT.SetLocation(FoundT->Location);
+
+        FRigControlValue NewVal;
+        NewVal.SetFromTransform(NewT, DestElem->Settings.ControlType,
+                                DestElem->Settings.PrimaryAxis);
+        ControlRig->GetHierarchy()->SetControlValue(
+            DestElem, NewVal, ERigControlValueType::Current);
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("ZhengDrift CheckAndLoadBilinearHelpers: Loaded state '%s'"),
            *StateKey);
 }
 

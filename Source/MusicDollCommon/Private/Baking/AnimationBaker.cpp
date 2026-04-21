@@ -78,11 +78,23 @@ bool UAnimationBaker::EvaluateSequenceAtFrame(TSharedPtr<ISequencer> Sequencer,
     // 这等同于人类手动拖动Sequencer播放头到指定帧
     Sequencer->SetGlobalTime(FrameInTicks);
 
-    // SetGlobalTime会触发完整的Sequencer评估流水线，
-    // 包括所有Track的评估和Control Rig的更新
+    // 关键修复：强制立即评估Sequencer以确保所有轨道按正确顺序评估
+    // Animation Track必须先于Control Rig Track评估
+    Sequencer->ForceEvaluate();
+    
+    // 强制处理所有pending的更新
+    if (GEditor)
+    {
+        UWorld* World = GEditor->GetEditorWorldContext().World();
+        if (World)
+        {
+            // 触发世界Tick以确保所有Actor组件更新
+            World->Tick(LEVELTICK_All, 0.0f);
+        }
+    }
 
     UE_LOG(LogTemp, Verbose,
-           TEXT("[AnimationBaker] Moved playhead to frame %d (ticks: %f)"),
+           TEXT("[AnimationBaker] Moved playhead to frame %d (ticks: %f) and forced evaluation"),
            Frame, FrameInTicks.AsDecimal());
     return true;
 }

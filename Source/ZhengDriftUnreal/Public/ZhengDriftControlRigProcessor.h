@@ -89,6 +89,13 @@ private:
     static void CheckAndSaveBilinearHelpers(AZhengDriftUnreal* ZhengDriftActor,
                                              UControlRig* ControlRig);
 
+    /**
+     * 辅助：检测当前是否为 A/B/C/D 四态之一，若是则自动把
+     * 对应双线性辅助记录器中的位置应用到 Middle_Hand 和 Head_Control 控制器
+     */
+    static void CheckAndLoadBilinearHelpers(AZhengDriftUnreal* ZhengDriftActor,
+                                             UControlRig* ControlRig);
+
     /** 辅助：从 RecorderTransforms 加载弦位置数据到 ControlRig 控制器 */
     static void LoadStringPositionStates(AZhengDriftUnreal* ZhengDriftActor,
                                           UControlRig* ControlRig);

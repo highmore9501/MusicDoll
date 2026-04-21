@@ -528,7 +528,7 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             continue;
         }
 
-        // 获取bone的世界变换
+        // 获取 bone index
         int32 BoneIndex = SkeletalMeshComponent->GetBoneIndex(Pair.BoneName);
         if (BoneIndex == INDEX_NONE) {
             UE_LOG(LogTemp, Warning,
@@ -538,12 +538,6 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             OutFailedCount++;
             continue;
         }
-
-        // 获取 bone 的世界变换
-        const FTransform& ComponentSpaceTransform =
-            SkeletalMeshComponent->GetComponentSpaceTransforms()[BoneIndex];
-        // FTransform BoneWorldTransform =
-        //     ComponentSpaceTransform * SkeletalMeshActor->GetActorTransform();
 
         // Control 元素已经在前面获取并验证过了，直接使用
         FRigControlElement* ControlElement =
@@ -557,33 +551,54 @@ bool FBoneControlMappingUtility::SyncBoneControlPairs(
             continue;
         }
 
-        // 直接使用 Bone 的世界变换（SetGlobalTransform 会自动处理层级关系）
+        // 获取 bone 在 ControlRig Hierarchy 中的 Global Transform
+        FRigElementKey BoneKey(*Pair.BoneName.ToString(), ERigElementType::Bone);
+        if (!Hierarchy->Contains(BoneKey)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("SyncBoneControlPairs: Bone '%s' not found in ControlRig Hierarchy"),
+                   *Pair.BoneName.ToString());
+            OutFailedCount++;
+            continue;
+        }
+        
+        FTransform BoneHierarchyGlobalTransform = Hierarchy->GetGlobalTransform(BoneKey);
+        
         // 只保留位置和旋转，移除缩放（避免 Control 变得过大）
-        FVector Location = ComponentSpaceTransform.GetLocation();
-        FRotator Rotation = ComponentSpaceTransform.Rotator();
+        FVector Location = BoneHierarchyGlobalTransform.GetLocation();
+        FQuat Rotation = BoneHierarchyGlobalTransform.GetRotation();
         FTransform CleanTransform(Rotation, Location, FVector(1.f, 1.f, 1.f));
 
-        // 直接设置 Control 的全局变换
+        // 参考 Unreal 的 Zero Offset From Closest Bone 实现
+        // 计算相对于父节点的局部变换
+        FTransform ParentGlobalTransform = Hierarchy->GetParentTransform(ControlKey);
+        FTransform LocalTransform = CleanTransform.GetRelativeTransform(ParentGlobalTransform);
+
+        // 设置 Control 的 Initial Transform 和 Offset
         int32 ControlIndex = Hierarchy->GetIndex(ControlKey);
         if (ControlIndex != INDEX_NONE) {
-            // 直接设置全局变换
             constexpr bool bAffectChildren = true;
             constexpr bool bSetupUndo = true;
+            constexpr bool bForce = false;
             constexpr bool bPrintPythonCommand = true;
 
-            // 设置初始全局变换
-            Hierarchy->SetInitialGlobalTransform(ControlKey, CleanTransform,
-                                                 bAffectChildren, bSetupUndo);
-
-            // 设置当前全局变换
-            Hierarchy->SetGlobalTransform(ControlKey, CleanTransform,
-                                          bAffectChildren, bSetupUndo,
-                                          bPrintPythonCommand);
-
-            // 设置offset
-            Hierarchy->SetControlOffsetTransform(
-                ControlKey, FTransform::Identity, bAffectChildren, bSetupUndo,
-                bPrintPythonCommand);
+            FRigControlElement* ControlElementPtr = Hierarchy->Find<FRigControlElement>(ControlKey);
+            if (ControlElementPtr) {
+                
+                // 其他 Control: 写入 Initial Transform，清零 Offset
+                Hierarchy->SetTransform(ControlElementPtr, LocalTransform,
+                                        ERigTransformType::InitialLocal, bAffectChildren,
+                                        bSetupUndo, bForce, bPrintPythonCommand);
+                Hierarchy->SetTransform(ControlElementPtr, LocalTransform,
+                                        ERigTransformType::CurrentLocal, bAffectChildren,
+                                        bSetupUndo, bForce, bPrintPythonCommand);
+                
+                Hierarchy->SetControlOffsetTransform(
+                    ControlElementPtr, FTransform::Identity, ERigTransformType::InitialLocal,
+                    bAffectChildren, bSetupUndo, bForce, bPrintPythonCommand);
+                Hierarchy->SetControlOffsetTransform(
+                    ControlElementPtr, FTransform::Identity, ERigTransformType::CurrentLocal,
+                    bAffectChildren, bSetupUndo, bForce, bPrintPythonCommand);
+            }
 
             OutSyncedCount++;
         } else {

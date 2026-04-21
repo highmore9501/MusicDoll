@@ -29,7 +29,8 @@ class MUSICDOLLCOMMON_API SBakeOperationsPanelBase : public SCompoundWidget {
     // 通用的帮助方法 - 子类可以复用
     bool AddControlToSelection(UControlRig* ControlRig,
                                const FString& ControlName,
-                               const FString& DisplayName);
+                               const FString& DisplayName,
+                               const FString& InstrumentInstanceId = TEXT(""));
     void FinalizeAddSelectedControl(bool bAddedAny);
 
     // UI事件处理

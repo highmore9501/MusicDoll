@@ -487,8 +487,6 @@ FReply SStringFlowModuleOperationsPanel::OnTriggerControlRigReregistration() {
 
     StringFlowActor->TriggerControlRigReregistration(
         TEXT("Manual trigger from UI panel"));
-
-    StringFlowActor->bEnableRealtimeSync = true;
     UE_LOG(LogTemp, Warning,
            TEXT("StringFlow: Trigger ControlRig Re-registration operation "
                 "triggered"));

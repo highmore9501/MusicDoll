@@ -6,457 +6,17 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "InstrumentControlRigUtility.h"
+#include "KeyRippleControlRigHelper.h"
 #include "KeyRipplePianoProcessor.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "LevelSequenceEditorBlueprintLibrary.h"
 #include "Rigs/RigHierarchyController.h"
 
 #define LOCTEXT_NAMESPACE "KeyRippleControlRigProcessor"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Local helper structure - contains all static helper functions
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct FKeyRippleControlRigHelpers {
-    // ========================================
-    // Control existence and validation helpers
-    // ========================================
-
-    static bool StrictControlExistenceCheck(URigHierarchy* RigHierarchy,
-                                            const FString& ControllerName) {
-        if (!RigHierarchy) {
-            return false;
-        }
-
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-
-        if (!RigHierarchy->Contains(ElementKey)) {
-            return false;
-        }
-
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ElementKey);
-        if (!ControlElement) {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("Control '%s' exists in hierarchy but element is null - "
-                     "considering as non-existent"),
-                *ControllerName);
-            return false;
-        }
-
-        if (ControlElement->Settings.ControlType == ERigControlType::Bool &&
-            ControllerName != TEXT("controller_root")) {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT(
-                    "Control '%s' has unexpected Bool type - may be corrupted"),
-                *ControllerName);
-            return false;
-        }
-
-        return true;
-    }
-
-    // ========================================
-    // Utility and validation helpers
-    // ========================================
-
-    static bool ValidateKeyRippleActor(AKeyRippleUnreal* KeyRippleActor,
-                                       const FString& FunctionName) {
-        if (!KeyRippleActor) {
-            UE_LOG(LogTemp, Error, TEXT("%s: KeyRippleActor is null"),
-                   *FunctionName);
-            return false;
-        }
-        return true;
-    }
-
-    static void LogStandardStart(const FString& OperationName) {
-        UE_LOG(LogTemp, Warning, TEXT("========== %s Started =========="),
-               *OperationName);
-    }
-
-    static void LogStandardEnd(const FString& OperationName, int32 SuccessCount,
-                               int32 FailCount, int32 TotalCount) {
-        UE_LOG(LogTemp, Warning, TEXT("========== %s Summary =========="),
-               *OperationName);
-        UE_LOG(LogTemp, Warning, TEXT("Successfully processed: %d items"),
-               SuccessCount);
-        UE_LOG(LogTemp, Warning, TEXT("Failed to process: %d items"),
-               FailCount);
-        UE_LOG(LogTemp, Warning, TEXT("Total items: %d"), TotalCount);
-        UE_LOG(LogTemp, Warning, TEXT("========== %s Completed =========="),
-               *OperationName);
-    }
-
-    // ========================================
-    // Enum to string conversion helpers
-    // ========================================
-
-    // NOTE: These methods are now called from AKeyRippleUnreal public methods
-    // instead of being duplicated here. See GetRecorderNameForControl() and
-    // GenerateStateDependentRecorders() for usage examples.
-
-    // ========================================
-    // Controller name collection
-    // ========================================
-
-    static TSet<FString> GetAllControllerNames(
-        AKeyRippleUnreal* KeyRippleActor) {
-        TSet<FString> AllControllerNames;
-
-        const TMap<FString, FString>* ControllerMaps[] = {
-            &KeyRippleActor->FingerControllers,
-            &KeyRippleActor->HandControllers,
-            &KeyRippleActor->KeyBoardPositions,
-            &KeyRippleActor->Guidelines,
-            &KeyRippleActor->TargetPoints,
-            &KeyRippleActor->ShoulderControllers,
-            &KeyRippleActor->PolePoints};
-
-        for (const auto* ControllerMap : ControllerMaps) {
-            for (const auto& Pair : *ControllerMap) {
-                AllControllerNames.Add(Pair.Value);
-            }
-        }
-
-        return AllControllerNames;
-    }
-
-    // ========================================
-    // State-dependent recorder generation
-    // ========================================
-
-    static TArray<FString> GenerateStateDependentRecorders(
-        AKeyRippleUnreal* KeyRippleActor, const FString& ControllerName) {
-        TArray<FString> Result;
-
-        for (EPositionType PositionType :
-             {EPositionType::HIGH, EPositionType::LOW, EPositionType::MIDDLE}) {
-            for (EKeyType KeyType : {EKeyType::WHITE, EKeyType::BLACK}) {
-                FString PositionStr =
-                    KeyRippleActor->GetPositionTypeString(PositionType);
-                FString KeyStr = KeyRippleActor->GetKeyTypeString(KeyType);
-
-                FString RecorderName = FString::Printf(
-                    TEXT("%s_%s_%s"), *PositionStr, *KeyStr, *ControllerName);
-                Result.Add(RecorderName);
-            }
-        }
-
-        return Result;
-    }
-
-    // ========================================
-    // Recorder initialization
-    // ========================================
-
-    static void InitializeControllerRecorderItem(
-        AKeyRippleUnreal* KeyRippleActor, const FString& RecorderName) {
-        FRecorderTransform DefaultTransform;
-        DefaultTransform.Location = FVector::ZeroVector;
-        DefaultTransform.Rotation = FQuat::Identity;
-
-        KeyRippleActor->RecorderTransforms.Add(RecorderName, DefaultTransform);
-    }
-
-    static void AddControllerRecordersToTransforms(
-        AKeyRippleUnreal* KeyRippleActor,
-        const TMap<FString, FString>& Controllers, bool bIsStateDependent) {
-        for (const auto& ControllerPair : Controllers) {
-            FString ControllerName = ControllerPair.Value;
-
-            if (bIsStateDependent) {
-                TArray<FString> StateRecorders =
-                    GenerateStateDependentRecorders(KeyRippleActor,
-                                                    ControllerName);
-
-                for (const FString& RecorderName : StateRecorders) {
-                    InitializeControllerRecorderItem(KeyRippleActor,
-                                                     RecorderName);
-                }
-            } else {
-                InitializeControllerRecorderItem(KeyRippleActor,
-                                                 ControllerName);
-            }
-        }
-    }
-
-    static void InitializeRecorderTransforms(AKeyRippleUnreal* KeyRippleActor) {
-        KeyRippleActor->RecorderTransforms.Empty();
-
-        AddControllerRecordersToTransforms(
-            KeyRippleActor, KeyRippleActor->FingerControllers, true);
-
-        AddControllerRecordersToTransforms(
-            KeyRippleActor, KeyRippleActor->HandControllers, true);
-
-        AddControllerRecordersToTransforms(
-            KeyRippleActor, KeyRippleActor->ShoulderControllers, true);
-
-        AddControllerRecordersToTransforms(KeyRippleActor,
-                                           KeyRippleActor->TargetPoints, true);
-
-        AddControllerRecordersToTransforms(
-            KeyRippleActor, KeyRippleActor->KeyBoardPositions, false);
-
-        AddControllerRecordersToTransforms(KeyRippleActor,
-                                           KeyRippleActor->Guidelines, false);
-    }
-
-    // ========================================
-    // Save/Load transform helpers
-    // ========================================
-
-    static void SaveControllerTransform(AKeyRippleUnreal* KeyRippleActor,
-                                        URigHierarchy* RigHierarchy,
-                                        const FString& ControlName,
-                                        const FString& RecorderName,
-                                        int32& SavedCount, int32& FailedCount) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("SaveControllerTransform: Control='%s' -> Recorder='%s'"),
-               *ControlName, *RecorderName);
-
-        FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-        if (RigHierarchy->Contains(ControlKey)) {
-            FRigControlElement* ControlElement =
-                RigHierarchy->Find<FRigControlElement>(ControlKey);
-            if (ControlElement) {
-                FRigControlValue CurrentValue = RigHierarchy->GetControlValue(
-                    ControlElement, ERigControlValueType::Current);
-                FTransform CurrentTransform = CurrentValue.GetAsTransform(
-                    ControlElement->Settings.ControlType,
-                    ControlElement->Settings.PrimaryAxis);
-
-                FRecorderTransform RecorderTransform;
-                RecorderTransform.FromTransform(CurrentTransform);
-
-                KeyRippleActor->RecorderTransforms.Add(RecorderName,
-                                                       RecorderTransform);
-
-                UE_LOG(LogTemp, Warning,
-                       TEXT("  SAVED: '%s' at Pos(%.2f,%.2f,%.2f) "
-                            "Rot(%.2f,%.2f,%.2f,%.2f)"),
-                       *RecorderName, CurrentTransform.GetLocation().X,
-                       CurrentTransform.GetLocation().Y,
-                       CurrentTransform.GetLocation().Z,
-                       CurrentTransform.GetRotation().W,
-                       CurrentTransform.GetRotation().X,
-                       CurrentTransform.GetRotation().Y,
-                       CurrentTransform.GetRotation().Z);
-
-                SavedCount++;
-            } else {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("  ✗ Failed to get ControlElement for: %s"),
-                       *ControlName);
-                FailedCount++;
-            }
-        } else {
-            UE_LOG(LogTemp, Warning, TEXT("  ✗ Control not found: %s"),
-                   *ControlName);
-            FailedCount++;
-        }
-    }
-
-    static void LoadControllerTransform(AKeyRippleUnreal* KeyRippleActor,
-                                        URigHierarchy* RigHierarchy,
-                                        const FString& ControlName,
-                                        const FString& ExpectedRecorderName,
-                                        int32& LoadedCount,
-                                        int32& FailedCount) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("LoadControllerTransform: Control='%s' <- Expected "
-                    "Recorder='%s'"),
-               *ControlName, *ExpectedRecorderName);
-
-        const FRecorderTransform* FoundTransform =
-            KeyRippleActor->RecorderTransforms.Find(ExpectedRecorderName);
-
-        if (!FoundTransform) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("MISSING: Expected recorder not in data table: %s"),
-                   *ExpectedRecorderName);
-
-            FailedCount++;
-            return;
-        }
-
-        FTransform LoadTransform = FoundTransform->ToTransform();
-        UE_LOG(LogTemp, Warning,
-               TEXT("FOUND: '%s' with Pos(%.2f,%.2f,%.2f) "
-                    "Rot(%.2f,%.2f,%.2f,%.2f)"),
-               *ExpectedRecorderName, LoadTransform.GetLocation().X,
-               LoadTransform.GetLocation().Y, LoadTransform.GetLocation().Z,
-               LoadTransform.GetRotation().W, LoadTransform.GetRotation().X,
-               LoadTransform.GetRotation().Y, LoadTransform.GetRotation().Z);
-
-        FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-        if (RigHierarchy->Contains(ControlKey)) {
-            FRigControlElement* ControlElement =
-                RigHierarchy->Find<FRigControlElement>(ControlKey);
-            if (ControlElement) {
-                FTransform NewTransform = FoundTransform->ToTransform();
-
-                FRigControlValue NewValue;
-                NewValue.SetFromTransform(NewTransform,
-                                          ControlElement->Settings.ControlType,
-                                          ControlElement->Settings.PrimaryAxis);
-
-                RigHierarchy->SetControlValue(ControlElement, NewValue,
-                                              ERigControlValueType::Current);
-
-                UE_LOG(LogTemp, Warning,
-                       TEXT("LOADED: Applied transform to control '%s'"),
-                       *ControlName);
-
-                LoadedCount++;
-            } else {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("Failed to get ControlElement for: %s"),
-                       *ControlName);
-                FailedCount++;
-            }
-        } else {
-            UE_LOG(LogTemp, Warning, TEXT("Control not found: %s"),
-                   *ControlName);
-            FailedCount++;
-        }
-    }
-
-    static void SaveControllers(AKeyRippleUnreal* KeyRippleActor,
-                                URigHierarchy* RigHierarchy,
-                                const TMap<FString, FString>& Controllers,
-                                int32& SavedCount, int32& FailedCount,
-                                bool bIsFingerControl = true,
-                                bool isStateDependent = true) {
-        for (const auto& ControllerPair : Controllers) {
-            FString ControlName = ControllerPair.Value;
-            FString RecorderName =
-                isStateDependent
-                    ? UKeyRippleControlRigProcessor::GetRecorderNameForControl(
-                          KeyRippleActor, ControlName, bIsFingerControl)
-                    : ControlName;
-
-            SaveControllerTransform(KeyRippleActor, RigHierarchy, ControlName,
-                                    RecorderName, SavedCount, FailedCount);
-        }
-    }
-
-    static void LoadControllers(AKeyRippleUnreal* KeyRippleActor,
-                                URigHierarchy* RigHierarchy,
-                                const TMap<FString, FString>& Controllers,
-                                int32& LoadedCount, int32& FailedCount,
-                                bool bIsFingerControl = true,
-                                bool isStateDependent = true) {
-        for (const auto& ControllerPair : Controllers) {
-            FString ControlName = ControllerPair.Value;
-
-            FString ExpectedRecorderName =
-                isStateDependent
-                    ? UKeyRippleControlRigProcessor::GetRecorderNameForControl(
-                          KeyRippleActor, ControlName, bIsFingerControl)
-                    : ControlName;
-
-            LoadControllerTransform(KeyRippleActor, RigHierarchy, ControlName,
-                                    ExpectedRecorderName, LoadedCount,
-                                    FailedCount);
-        }
-    }
-
-    // ========================================
-    // Duplicate control cleanup
-    // ========================================
-
-    static void CleanupDuplicateControls(
-        AKeyRippleUnreal* KeyRippleActor, URigHierarchy* RigHierarchy,
-        const TSet<FString>& ExpectedControllerNames) {
-        if (!RigHierarchy) {
-            return;
-        }
-
-        URigHierarchyController* HierarchyController =
-            RigHierarchy->GetController();
-        if (!HierarchyController) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Cannot get HierarchyController for cleanup"));
-            return;
-        }
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("Starting cleanup of duplicate/corrupted controls..."));
-
-        TArray<FRigElementKey> ExistingControlKeys =
-            RigHierarchy->GetAllKeys(false);
-        TArray<FRigElementKey> FilteredControlKeys;
-
-        for (const FRigElementKey& Key : ExistingControlKeys) {
-            if (Key.Type == ERigElementType::Control) {
-                FilteredControlKeys.Add(Key);
-            }
-        }
-
-        int32 DuplicatesFound = 0;
-        TMap<FString, TArray<FRigElementKey>> ControlGroups;
-
-        for (const FRigElementKey& ControlKey : FilteredControlKeys) {
-            FString ControlName = ControlKey.Name.ToString();
-
-            if (ExpectedControllerNames.Contains(ControlName) ||
-                ControlName == TEXT("controller_root")) {
-                ControlGroups.FindOrAdd(ControlName).Add(ControlKey);
-            } else {
-                UE_LOG(
-                    LogTemp, VeryVerbose,
-                    TEXT("Skipping non-expected control '%s' during cleanup"),
-                    *ControlName);
-            }
-        }
-
-        for (const auto& GroupPair : ControlGroups) {
-            const FString& ControlName = GroupPair.Key;
-            const TArray<FRigElementKey>& ControlInstances = GroupPair.Value;
-
-            if (ControlInstances.Num() > 1) {
-                UE_LOG(
-                    LogTemp, Warning,
-                    TEXT("  🔍 Found %d instances of control '%s' - removing "
-                         "duplicates"),
-                    ControlInstances.Num(), *ControlName);
-
-                for (int32 i = 1; i < ControlInstances.Num(); i++) {
-                    bool bRemoved = HierarchyController->RemoveElement(
-                        ControlInstances[i], true, false);
-                    if (bRemoved) {
-                        UE_LOG(LogTemp, Warning,
-                               TEXT("    ✅ Removed duplicate control '%s' "
-                                    "instance %d"),
-                               *ControlName, i + 1);
-                        DuplicatesFound++;
-                    } else {
-                        UE_LOG(LogTemp, Warning,
-                               TEXT("    ❌ Failed to remove duplicate control "
-                                    "'%s' instance %d"),
-                               *ControlName, i + 1);
-                    }
-                }
-            }
-        }
-
-        if (DuplicatesFound > 0) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Cleanup completed: Removed %d duplicate control "
-                        "instances"),
-                   DuplicatesFound);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Cleanup completed: No duplicates found"));
-        }
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // UKeyRippleControlRigProcessor implementations
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 FString UKeyRippleControlRigProcessor::GetRecorderNameForControl(
     AKeyRippleUnreal* KeyRippleActor, const FString& ControlName,
     bool bIsFingerControl) {
@@ -506,7 +66,7 @@ FString UKeyRippleControlRigProcessor::GetControlNameFromRecorder(
 
 void UKeyRippleControlRigProcessor::CheckObjectsStatus(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("CheckObjectsStatus"))) {
         return;
     }
@@ -550,7 +110,7 @@ void UKeyRippleControlRigProcessor::CheckObjectsStatus(
     }
 
     TSet<FString> ExpectedObjects =
-        FKeyRippleControlRigHelpers::GetAllControllerNames(KeyRippleActor);
+        FKeyRippleControlRigHelper::GetAllControllerNames(KeyRippleActor);
 
     TArray<FString> ExistingObjects;
     TArray<FString> MissingObjects;
@@ -610,7 +170,7 @@ void UKeyRippleControlRigProcessor::CheckObjectsStatus(
 
 void UKeyRippleControlRigProcessor::SetupAllObjects(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("SetupAllObjects"))) {
         return;
     }
@@ -645,10 +205,10 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
 
     // 现在可以安全地获取 ControlRig 了
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -665,14 +225,14 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
             ControlRigBlueprint, KeyRippleActor);
     }
 
-    FKeyRippleControlRigHelpers::InitializeRecorderTransforms(KeyRippleActor);
+    FKeyRippleControlRigHelper::InitializeRecorderTransforms(KeyRippleActor);
 
     UE_LOG(LogTemp, Warning, TEXT("All KeyRipple objects have been set up"));
 }
 
 void UKeyRippleControlRigProcessor::SaveState(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("SaveState"))) {
         return;
     }
@@ -703,10 +263,10 @@ void UKeyRippleControlRigProcessor::SaveState(
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -729,7 +289,7 @@ void UKeyRippleControlRigProcessor::SaveState(
         return;
     }
 
-    FKeyRippleControlRigHelpers::LogStandardStart(TEXT("SaveState"));
+    FKeyRippleControlRigHelper::LogStandardStart(TEXT("SaveState"));
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== KeyRippleUnreal Current Status =========="));
@@ -763,34 +323,34 @@ void UKeyRippleControlRigProcessor::SaveState(
 
     ControlRigInstance->Evaluate_AnyThread();
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->FingerControllers,
         SavedCount, FailedCount, true, true);
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->HandControllers,
         SavedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->ShoulderControllers,
         SavedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, SavedCount,
         FailedCount, false, true);
 
     UE_LOG(LogTemp, Warning,
            TEXT("Processing state-independent controllers..."));
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->KeyBoardPositions,
         SavedCount, FailedCount, false, false);
 
-    FKeyRippleControlRigHelpers::SaveControllers(
+    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->Guidelines, SavedCount,
         FailedCount, false, false);
 
-    FKeyRippleControlRigHelpers::LogStandardEnd(
+    FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("SaveState"), SavedCount, FailedCount,
         KeyRippleActor->RecorderTransforms.Num());
 
@@ -801,7 +361,7 @@ void UKeyRippleControlRigProcessor::SaveState(
 
 void UKeyRippleControlRigProcessor::LoadState(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("LoadState"))) {
         return;
     }
@@ -832,10 +392,10 @@ void UKeyRippleControlRigProcessor::LoadState(
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -851,7 +411,7 @@ void UKeyRippleControlRigProcessor::LoadState(
         return;
     }
 
-    FKeyRippleControlRigHelpers::LogStandardStart(TEXT("LoadState"));
+    FKeyRippleControlRigHelper::LogStandardStart(TEXT("LoadState"));
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== KeyRippleUnreal Current Status =========="));
@@ -883,40 +443,55 @@ void UKeyRippleControlRigProcessor::LoadState(
 
     UE_LOG(LogTemp, Warning, TEXT("Loading state-dependent controllers..."));
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->FingerControllers,
         LoadedCount, FailedCount, true, true);
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->HandControllers,
         LoadedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->ShoulderControllers,
         LoadedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, LoadedCount,
         FailedCount, false, true);
 
     UE_LOG(LogTemp, Warning, TEXT("Loading state-independent controllers..."));
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->KeyBoardPositions,
         LoadedCount, FailedCount, false, false);
 
-    FKeyRippleControlRigHelpers::LoadControllers(
+    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->Guidelines, LoadedCount,
         FailedCount, false, false);
 
-    FKeyRippleControlRigHelpers::LogStandardEnd(
+#if WITH_EDITOR
+    // 通知 Sequencer 强制重新求値，使控制器位置在当前帧持久化
+    {
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                ActiveLevelSequence, ActiveSequencer)) {
+            if (ActiveSequencer.IsValid()) {
+                ActiveSequencer->ForceEvaluate();
+            }
+        }
+    }
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+#endif
+
+    FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("LoadState"), LoadedCount, FailedCount,
         KeyRippleActor->RecorderTransforms.Num());
 }
 
 void UKeyRippleControlRigProcessor::SetupControllers(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("SetupControllers"))) {
         return;
     }
@@ -947,10 +522,10 @@ void UKeyRippleControlRigProcessor::SetupControllers(
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -971,8 +546,8 @@ void UKeyRippleControlRigProcessor::SetupControllers(
 
     // 步骤 0 - 在开始之前清理任何重复的Controls
     TSet<FString> AllControllerNames =
-        FKeyRippleControlRigHelpers::GetAllControllerNames(KeyRippleActor);
-    FKeyRippleControlRigHelpers::CleanupDuplicateControls(
+        FKeyRippleControlRigHelper::GetAllControllerNames(KeyRippleActor);
+    FKeyRippleControlRigHelper::CleanupDuplicateControls(
         KeyRippleActor, RigHierarchy, AllControllerNames);
 
     // 第1步：创建 base_root（最上层的根控制器）
@@ -1005,8 +580,8 @@ void UKeyRippleControlRigProcessor::SetupControllers(
 
     // 遍历所有其他控制器名称，检查是否存在，如果不存在则创建
     for (const FString& ControllerName : SortedControllerNames) {
-        bool bExists = FKeyRippleControlRigHelpers::StrictControlExistenceCheck(
-            RigHierarchy, ControllerName);
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        bool bExists = RigHierarchy->Contains(ElementKey);
 
         if (!bExists) {
             UE_LOG(LogTemp, Warning,
@@ -1062,7 +637,7 @@ void UKeyRippleControlRigProcessor::SetupControllers(
 AActor* UKeyRippleControlRigProcessor::CreateController(
     AKeyRippleUnreal* KeyRippleActor, const FString& ControllerName,
     const FString& ParentControllerName) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("CreateController"))) {
         return nullptr;
     }
@@ -1093,10 +668,10 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -1121,7 +696,7 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
 
 void UKeyRippleControlRigProcessor::SetupTargetActorDriver(
     AKeyRippleUnreal* KeyRippleActor, AActor* TargetActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("SetupTargetActorDriver"))) {
         return;
     }
@@ -1143,7 +718,7 @@ void UKeyRippleControlRigProcessor::SetupTargetActorDriver(
 
 void UKeyRippleControlRigProcessor::CleanupUnusedActors(
     AKeyRippleUnreal* KeyRippleActor) {
-    if (!FKeyRippleControlRigHelpers::ValidateKeyRippleActor(
+    if (!FKeyRippleControlRigHelper::ValidateKeyRippleActor(
             KeyRippleActor, TEXT("CleanupUnusedActors"))) {
         return;
     }

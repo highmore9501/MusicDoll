@@ -10,7 +10,6 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
 #include "ZhengDriftControlRigProcessor.h"
-#include "ZhengDriftTransformSyncProcessor.h"
 
 // ============================================================
 // 辅助命名空间：JSON 读写工具
@@ -61,7 +60,6 @@ AZhengDriftUnreal::AZhengDriftUnreal() {
     PrimaryActorTick.bCanEverTick = true;
 
     StringNumber = 21;
-    bEnableRealtimeSync = false;
 
     CurrentLeftHandPosition = EZhengDriftHandPosition::MIDDLE;
     CurrentLeftHandAction = EZhengDriftLeftHandAction::NORMAL;
@@ -81,10 +79,6 @@ void AZhengDriftUnreal::BeginPlay() {
 
 void AZhengDriftUnreal::Tick(float DeltaTime) {
     Super::Tick(DeltaTime);
-
-    if (bEnableRealtimeSync) {
-        UZhengDriftTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    }
 }
 
 // ============================================================
@@ -435,6 +429,14 @@ UControlRig* AZhengDriftUnreal::GetCachedControlRig(FName ComponentName) {
         return nullptr;
     }
 
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("Zheng")) {
+        RootControlName = TEXT("zheng_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
+
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
@@ -443,11 +445,11 @@ UControlRig* AZhengDriftUnreal::GetCachedControlRig(FName ComponentName) {
         return nullptr;
     }
 
-    UControlRig* ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence);
+    UControlRig* ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
     if (!ControlRig) {
-        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence);
-        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence);
+        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence, RootControlName);
+        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
         if (!ControlRig) {
             UE_LOG(LogTemp, Error,
@@ -471,11 +473,19 @@ UControlRigBlueprint* AZhengDriftUnreal::GetCachedControlRigBlueprint(
     ASkeletalMeshActor* Actor = GetSkeletalMeshActorByName(ComponentName);
     if (!Actor) return nullptr;
 
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("Zheng")) {
+        RootControlName = TEXT("zheng_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
+
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) return nullptr;
 
-    return CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence);
+    return CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence, RootControlName);
 }
 
 void AZhengDriftUnreal::RegisterAllControlRigs() {

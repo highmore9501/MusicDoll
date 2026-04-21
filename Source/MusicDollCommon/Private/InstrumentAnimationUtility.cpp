@@ -698,6 +698,22 @@ bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
                    TEXT("[InstrumentAnimationUtility] Removed %d sections from "
                         "Control Rig track"),
                    RemovedCount);
+
+            // After removing all sections, create a new empty section to keep
+            // the track in a valid state. A ControlRig track with zero sections
+            // causes crashes in Anim Outliner when Sequencer tries to read the
+            // ChannelProxy (e.g. after save/reload).
+            if (RemovedCount > 0) {
+                UMovieSceneSection* NewSection =
+                    ControlRigTrack->CreateNewSection();
+                if (NewSection) {
+                    ControlRigTrack->AddSection(*NewSection);
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[InstrumentAnimationUtility] Created new empty "
+                                "section for Control Rig track to prevent "
+                                "invalid state"));
+                }
+            }
         }
     }
 
@@ -1161,10 +1177,16 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
 
     if (MinFrame != MAX_int32 && MaxFrame != MIN_int32 &&
         MinFrame <= MaxFrame) {
+        // 将 FramePadding 从显示帧转换为内部帧空间
+        int32 PaddingInInternalFrames = Settings.FramePadding * 
+                                        TickResolution.Numerator * DisplayRate.Denominator /
+                                        (TickResolution.Denominator * DisplayRate.Numerator);
+        
         Section->SetRange(
-            TRange<FFrameNumber>(MinFrame, MaxFrame + Settings.FramePadding));
-        UE_LOG(LogTemp, Warning, TEXT("[COMMON] Set section range to %d - %d"),
-               MinFrame.Value, (MaxFrame + Settings.FramePadding).Value);
+            TRange<FFrameNumber>(MinFrame, MaxFrame + PaddingInInternalFrames));
+        UE_LOG(LogTemp, Warning, TEXT("[COMMON] Set section range to %d - %d (Padding: %d display frames -> %d internal frames)"),
+               MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value,
+               Settings.FramePadding, PaddingInInternalFrames);
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("[COMMON] Warning: Invalid frame range. MinFrame=%d, "

@@ -96,17 +96,15 @@ void UBeatBloomAnimationProcessor::GeneratePerformerAnimation(
                             ProcessedFrames, KeyframesAdded);
     }
     
-    // 处理目标控制器动画
-    if (JsonObject->HasField(TEXT("target_animation"))) {
-        auto TargetObject = JsonObject->GetObjectField(TEXT("target_animation"));
-        ProcessTargetAnimation(TargetObject, ControlKeyframeData, 
-                              ProcessedFrames, KeyframesAdded);
+    // 处理头部控制器动画
+    if (JsonObject->HasField(TEXT("head_control_animation"))) {
+        auto HeadControlArray = JsonObject->GetArrayField(TEXT("head_control_animation"));
+        ProcessHeadControlAnimation(HeadControlArray, ControlKeyframeData, 
+                                   ProcessedFrames, KeyframesAdded);
     }
     
     // 配置批量插入设置
     FBatchInsertKeyframesSettings Settings;
-    // 配置特殊控制器处理（Tar_ 控制器只插入 Z 轴）
-    Settings.SpecialControllerRules.Add(TEXT("Tar_"), ESpecialAxisMode::Z);
     
     // 批量插入关键帧
     UInstrumentAnimationUtility::BatchInsertControlRigKeys(
@@ -272,52 +270,42 @@ void UBeatBloomAnimationProcessor::ProcessFootAnimation(
     }
 }
 
-void UBeatBloomAnimationProcessor::ProcessTargetAnimation(
-    TSharedPtr<FJsonObject> TargetAnimationObject,
+void UBeatBloomAnimationProcessor::ProcessHeadControlAnimation(
+    const TArray<TSharedPtr<FJsonValue>>& AnimationArray,
     TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
     int32& OutProcessedFrames, int32& OutKeyframesAdded) {
-    // 遍历 Tar_Body/Tar_Chest/Tar_Head，每个只写入Z 轴位置
-    // BatchInsertControlRigKeys 会通过 SpecialControllerRules 自动处理只插入 Z 轴
+    // 处理 Head_Control 动画（完整XYZ位置）
+    // JSON 结构：{ "frame": N, "head_control_position": [x, y, z] }
     
-    TArray<FString> TargetNames = {TEXT("Tar_Body"), TEXT("Tar_Chest"), TEXT("Tar_Head")};
-    
-    for (const FString& TargetName : TargetNames) {
-        if (!TargetAnimationObject->HasField(TargetName)) {
+    for (const auto& FrameValue : AnimationArray) {
+        TSharedPtr<FJsonObject> FrameObject = FrameValue->AsObject();
+        if (!FrameObject.IsValid()) {
             continue;
         }
         
-        auto TargetArray = TargetAnimationObject->GetArrayField(TargetName);
+        // 获取帧编号
+        double FrameNumberDouble = FrameObject->GetNumberField(TEXT("frame"));
+        int32 FrameNumber = FMath::RoundToInt(FrameNumberDouble);
         
-        for (const auto& FrameValue : TargetArray) {
-            TSharedPtr<FJsonObject> FrameObject = FrameValue->AsObject();
-            if (!FrameObject.IsValid()) {
-                continue;
-            }
+        // 处理 head_control_position -> Head_Control（使用完整 XYZ）
+        if (FrameObject->HasField(TEXT("head_control_position"))) {
+            auto PositionArray = FrameObject->GetArrayField(TEXT("head_control_position"));
+            FVector Location;
+            Location.X = PositionArray[0]->AsNumber();
+            Location.Y = PositionArray[1]->AsNumber();
+            Location.Z = PositionArray[2]->AsNumber();
             
-            // 获取帧编号
-            double FrameNumberDouble = FrameObject->GetNumberField(TEXT("frame"));
-            int32 FrameNumber = FMath::RoundToInt(FrameNumberDouble);
+            FAnimationKeyframe Keyframe;
+            Keyframe.FrameNumber = FrameNumber;
+            Keyframe.Translation = Location;
+            Keyframe.bHasLocation = true;
+            Keyframe.bHasRotation = false;
             
-            // 处理 position -> Tar_{Name}（只使用 Z 轴）
-            if (FrameObject->HasField(TEXT("position"))) {
-                auto PositionArray = FrameObject->GetArrayField(TEXT("position"));
-                FVector Location;
-                Location.X = PositionArray[0]->AsNumber();
-                Location.Y = PositionArray[1]->AsNumber();
-                Location.Z = PositionArray[2]->AsNumber();
-                
-                FAnimationKeyframe Keyframe;
-                Keyframe.FrameNumber = FrameNumber;
-                Keyframe.Translation = Location;
-                Keyframe.bHasLocation = true;
-                Keyframe.bHasRotation = false;
-                
-                ControlKeyframeData.FindOrAdd(TargetName).Add(Keyframe);
-                OutKeyframesAdded++;
-            }
-            
-            OutProcessedFrames++;
+            ControlKeyframeData.FindOrAdd(TEXT("Head_Control")).Add(Keyframe);
+            OutKeyframesAdded++;
         }
+        
+        OutProcessedFrames++;
     }
 }
 
@@ -331,9 +319,8 @@ UBeatBloomAnimationProcessor::GetValidBeatBloomControllerNames() {
         // 脚部 (4个)
         ValidSet.Append({TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_R"),
                          TEXT("F_rotation_R")});
-        // 目标 (3个)
-        ValidSet.Append(
-            {TEXT("Tar_Body"), TEXT("Tar_Chest"), TEXT("Tar_Head")});
+        // 头部控制器
+        ValidSet.Append({TEXT("Head_Control")});
         return ValidSet;
     }();
     return ValidControllers;

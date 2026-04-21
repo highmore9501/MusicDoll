@@ -85,6 +85,63 @@ UControlRig* UControlRigCacheSubsystem::GetControlRig(
     return nullptr;
 }
 
+UControlRig* UControlRigCacheSubsystem::GetControlRig(
+    ASkeletalMeshActor* Actor, ULevelSequence* Sequence, const FString& RootControlName) {
+    if (!Actor || !Sequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRig (with RootControlName): Invalid input parameters"));
+        return nullptr;
+    }
+
+    FString ActorName = Actor->GetName();
+    FControlRigCacheKey CacheKey(ActorName, Sequence);
+    
+    // 检查运行时缓存中是否存在
+    FControlRigRuntimeCacheEntry* CacheEntry =
+        RuntimeControlRigCache.Find(CacheKey);
+    if (CacheEntry) {
+        // 第一层：检查缓存条目是否有效
+        if (CacheEntry->IsValid()) {
+            CacheEntry->UpdateAccessTime();
+            // 再次验证返回的 ControlRig 指针是否真的可用
+            UControlRig* ResultControlRig = CacheEntry->GetControlRig();
+            if (ResultControlRig) {
+                return ResultControlRig;
+            }
+
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRig (with RootControlName): Cache entry is INVALID for Actor %s"),
+                   *ActorName);
+        }
+    }
+
+    // 第一次查询失败，尝试注册后再查询（传递 RootControlName）
+    UE_LOG(LogTemp, Warning,
+           TEXT("GetControlRig (with RootControlName='%s'): First query failed, attempting to register ControlRig for Actor %s"),
+           *RootControlName, *ActorName);
+    
+    TriggerRegistrationIfNeeded(Actor, Sequence, RootControlName);
+    
+    // 再次查询缓存
+    CacheEntry = RuntimeControlRigCache.Find(CacheKey);
+    if (CacheEntry && CacheEntry->IsValid()) {
+        CacheEntry->UpdateAccessTime();
+        UControlRig* ResultControlRig = CacheEntry->GetControlRig();
+        if (ResultControlRig) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("GetControlRig (with RootControlName='%s'): Successfully got ControlRig after registration for Actor %s"),
+                   *RootControlName, *ActorName);
+            return ResultControlRig;
+        }
+    }
+    
+    UE_LOG(LogTemp, Error,
+           TEXT("GetControlRig (with RootControlName='%s'): Still failed to get ControlRig after registration for Actor %s"),
+           *RootControlName, *ActorName);
+    return nullptr;
+}
+
 UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {
     if (!Actor || !Sequence) {
@@ -118,6 +175,44 @@ UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
             TEXT(
                 "GetControlRigBlueprint: ControlRigClass is null for Actor %s"),
             *Actor->GetName());
+    }
+
+    return nullptr;
+}
+
+UControlRigBlueprint* UControlRigCacheSubsystem::GetControlRigBlueprint(
+    ASkeletalMeshActor* Actor, ULevelSequence* Sequence, const FString& RootControlName) {
+    if (!Actor || !Sequence) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("GetControlRigBlueprint (with RootControlName): Invalid input parameters"));
+        return nullptr;
+    }
+
+    // GetControlRig (with RootControlName) 已经包含了注册重试逻辑
+    UControlRig* ControlRig = GetControlRig(Actor, Sequence, RootControlName);
+    if (!ControlRig) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GetControlRigBlueprint (with RootControlName='%s'): GetControlRig returned null for "
+                    "Actor %s after registration attempt"),
+               *RootControlName, *Actor->GetName());
+        return nullptr;
+    }
+
+    // 从 ControlRig 实例获取 Blueprint
+    UClass* ControlRigClass = ControlRig->GetClass();
+    if (ControlRigClass) {
+        UObject* ClassGeneratedBy = ControlRigClass->ClassGeneratedBy;
+        UControlRigBlueprint* Blueprint =
+            Cast<UControlRigBlueprint>(ClassGeneratedBy);
+        if (Blueprint) {
+            return Blueprint;
+        }
+    } else {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT(
+                "GetControlRigBlueprint (with RootControlName='%s'): ControlRigClass is null for Actor %s"),
+            *RootControlName, *Actor->GetName());
     }
 
     return nullptr;
@@ -179,7 +274,8 @@ void UControlRigCacheSubsystem::ClearAllCaches() {
 
 bool UControlRigCacheSubsystem::FindControlRigFromActorAndSequence(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence,
-    UControlRig*& OutControlRig, UControlRigBlueprint*& OutBlueprint) {
+    UControlRig*& OutControlRig, UControlRigBlueprint*& OutBlueprint,
+    const FString& RootControlName) {
     OutControlRig = nullptr;
     OutBlueprint = nullptr;
 
@@ -189,13 +285,14 @@ bool UControlRigCacheSubsystem::FindControlRigFromActorAndSequence(
 
     // 使用Subsystem内部的方法查找ControlRig
     return GetControlRigFromSkeletalMeshActor(Actor, Sequence, OutControlRig,
-                                              OutBlueprint);
+                                              OutBlueprint, RootControlName);
 }
 
 bool UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor(
     ASkeletalMeshActor* Actor, ULevelSequence* Sequence,
     UControlRig*& OutControlRigInstance,
-    UControlRigBlueprint*& OutControlRigBlueprint) {
+    UControlRigBlueprint*& OutControlRigBlueprint,
+    const FString& RootControlName) {
     OutControlRigInstance = nullptr;
     OutControlRigBlueprint = nullptr;
 
@@ -239,6 +336,10 @@ bool UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor(
         return false;
     }
 
+    // 用于存储第一个找到的ControlRig（作为fallback）
+    UControlRig* FirstFoundControlRig = nullptr;
+    UControlRigBlueprint* FirstFoundBlueprint = nullptr;
+
     // 遍历所有ControlRig绑定，查找绑定到指定SkeletalMeshActor的ControlRig
     for (int32 RigIndex = 0; RigIndex < RigBindings.Num(); ++RigIndex) {
         const FControlRigSequencerBindingProxy& Proxy = RigBindings[RigIndex];
@@ -274,16 +375,29 @@ bool UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor(
                         WeakBoundObjects[ObjIndex];
 
                     if (WeakObj.IsValid() && WeakObj.Get() == Actor) {
-                        // 找到了！设置输出参数
-                        OutControlRigInstance = CurrentControlRigInstance;
-
+                        // 找到了！这是一个绑定到目标Actor的ControlRig
+                        
                         // 获取ControlRig的蓝图
                         UObject* GeneratedBy =
-                            OutControlRigInstance->GetClass()->ClassGeneratedBy;
-                        OutControlRigBlueprint =
+                            CurrentControlRigInstance->GetClass()->ClassGeneratedBy;
+                        UControlRigBlueprint* CurrentBlueprint =
                             Cast<UControlRigBlueprint>(GeneratedBy);
 
-                        if (OutControlRigBlueprint) {
+                        if (!CurrentBlueprint) {
+                            UE_LOG(LogTemp, Warning,
+                                   TEXT("UControlRigCacheSubsystem::"
+                                        "GetControlRigFromSkeletalMeshActor: "
+                                        "Found ControlRig instance but failed "
+                                        "to get blueprint for Actor %s"),
+                                   *Actor->GetName());
+                            continue;
+                        }
+
+                        // 如果没有指定RootControlName，直接返回第一个找到的
+                        if (RootControlName.IsEmpty()) {
+                            OutControlRigInstance = CurrentControlRigInstance;
+                            OutControlRigBlueprint = CurrentBlueprint;
+                            
                             UE_LOG(LogTemp, Verbose,
                                    TEXT("UControlRigCacheSubsystem::"
                                         "GetControlRigFromSkeletalMeshActor: "
@@ -291,21 +405,63 @@ bool UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor(
                                         "Actor %s"),
                                    *Actor->GetName());
                             return true;
-                        } else {
-                            UE_LOG(LogTemp, Warning,
-                                   TEXT("UControlRigCacheSubsystem::"
-                                        "GetControlRigFromSkeletalMeshActor: "
-                                        "Found ControlRig instance but failed "
-                                        "to get blueprint for Actor %s"),
-                                   *Actor->GetName());
-                            return false;
                         }
+
+                        // 记录第一个找到的ControlRig作为fallback
+                        if (!FirstFoundControlRig) {
+                            FirstFoundControlRig = CurrentControlRigInstance;
+                            FirstFoundBlueprint = CurrentBlueprint;
+                        }
+
+                        // 如果指定了RootControlName，检查这个ControlRig是否包含该根控制器
+                        URigHierarchy* RigHierarchy = CurrentBlueprint->GetHierarchy();
+                        if (RigHierarchy) {
+                            FRigElementKey RootControlKey(*RootControlName, ERigElementType::Control);
+                            if (RigHierarchy->Contains(RootControlKey)) {
+                                // 找到了匹配的ControlRig！
+                                OutControlRigInstance = CurrentControlRigInstance;
+                                OutControlRigBlueprint = CurrentBlueprint;
+                                
+                                UE_LOG(LogTemp, Verbose,
+                                       TEXT("UControlRigCacheSubsystem::"
+                                            "GetControlRigFromSkeletalMeshActor: "
+                                            "Successfully found ControlRig with root control '%s' for "
+                                            "Actor %s"),
+                                       *RootControlName, *Actor->GetName());
+                                return true;
+                            }
+                        }
+                        // 如果不匹配，继续查找下一个ControlRig
                     }
                 }
             }
         }
     }
 
+    // 如果指定了RootControlName但没有找到匹配的，使用第一个找到的作为fallback
+    if (!RootControlName.IsEmpty() && FirstFoundControlRig) {
+        OutControlRigInstance = FirstFoundControlRig;
+        OutControlRigBlueprint = FirstFoundBlueprint;
+        
+        UE_LOG(LogTemp, Warning,
+               TEXT("UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor: "
+                    "Root control '%s' not found in any ControlRig, using first found ControlRig for Actor '%s'"),
+               *RootControlName, *Actor->GetName());
+        return true;
+    }
+
+    // 如果指定了RootControlName但一个ControlRig都没找到
+    if (!RootControlName.IsEmpty() && !FirstFoundControlRig) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor: "
+                 "Failed to find any ControlRig bound to SkeletalMeshActor '%s' with root control '%s'"),
+            *Actor->GetName(), *RootControlName);
+        return false;
+    }
+
+    // 没有指定RootControlName的情况，应该已经在循环中返回了
+    // 如果到这里说明没有找到任何ControlRig
     UE_LOG(
         LogTemp, Warning,
         TEXT("UControlRigCacheSubsystem::GetControlRigFromSkeletalMeshActor: "
@@ -384,7 +540,8 @@ FControlRigSequencerBindingProxy UControlRigCacheSubsystem::FindControlRigProxy(
 
 
 void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
-    ASkeletalMeshActor* Actor, ULevelSequence* Sequence) {
+    ASkeletalMeshActor* Actor, ULevelSequence* Sequence,
+    const FString& RootControlName) {
     if (!Actor || !Sequence) {
         return;
     }
@@ -417,7 +574,7 @@ void UControlRigCacheSubsystem::TriggerRegistrationIfNeeded(
            *ActorName);
 
     if (FindControlRigFromActorAndSequence(Actor, Sequence, ControlRig,
-                                           Blueprint)) {
+                                           Blueprint, RootControlName)) {
         UE_LOG(LogTemp, Warning,
                TEXT("TriggerRegistrationIfNeeded: "
                     "FindControlRigFromActorAndSequence SUCCESS for Actor %s, "

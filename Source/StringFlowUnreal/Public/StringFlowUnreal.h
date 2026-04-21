@@ -224,34 +224,6 @@ struct FStringFlowRecorderTransform {
     }
 };
 
-// 同步报告结构体
-USTRUCT(BlueprintType)
-struct FStringFlowSyncReport {
-    GENERATED_BODY()
-
-   public:
-    UPROPERTY()
-    bool bSuccess = true;
-
-    UPROPERTY()
-    TArray<FString> Warnings;
-
-    UPROPERTY()
-    TArray<FString> Errors;
-
-    void AddWarning(const FString& Message) { Warnings.Add(Message); }
-
-    void AddError(const FString& Message) {
-        bSuccess = false;
-        Errors.Add(Message);
-    }
-
-    void Clear() {
-        bSuccess = true;
-        Warnings.Empty();
-        Errors.Empty();
-    }
-};
 
 /**
  * AStringFlowUnreal - 小提琴动画系统的核心Actor类
@@ -293,18 +265,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
 
     // ========== 弦乐器特定配置 ==========
 
-    /** 琴弓的朝向轴（X、Y、Z）用于指向弦触点 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    FVector BowAxisTowardString;
-
-    /** 琴弓的向上轴（X、Y、Z）用于定义弓的上方向 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    FVector BowUpAxis;
-
-    /** 是否启用实时同步弦乐器和琴弓的位置/旋转 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    bool bEnableRealtimeSync;
-
     /** 左手当前位置类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "StringFlow State")
     EStringFlowLeftHandPositionType LeftHandPositionType;
@@ -322,10 +282,7 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     EStringFlowRightHandStringIndex RightHandStringIndex;
 
     // ========== 渲染监控变量 ==========
-
-    /** 渲染监控计数器 */
-    UPROPERTY(Transient)
-    uint32 RenderingLogCounter;
+    
 
     /** 弦材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
@@ -355,10 +312,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     /** 右手掌部控制器 */
     UPROPERTY()
     TMap<FString, FString> RightHandControllers;
-
-    /** 其他控制器（触弦点、弓等） */
-    UPROPERTY()
-    TMap<FString, FString> OtherControllers;
 
     // ========== 记录器映射 ==========
 
@@ -539,29 +492,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     UFUNCTION(BlueprintCallable, Category = "StringFlow")
     bool ImportRecorderInfo(const FString& FilePath);
 
-    /**
-     * 同步乐器变换
-     */
-    UFUNCTION(BlueprintCallable, Category = "StringFlow")
-    void SyncInstrumentTransforms();
-
-    /**
-     * 初始化弦乐器同步关系（手动调用）
-     * 计算并缓存 controller_root 与 violin_root 之间的相对变换矩阵
-     * 此方法应在场景设置完成后手动调用一次，而不是在每帧Tick中检查
-     * @return 是否成功初始化
-     */
-    UFUNCTION(BlueprintCallable, Category = "StringFlow")
-    bool InitializeStringInstrumentSync();
-
-#if WITH_EDITOR
-    /**
-     * 在编辑器中属性改变时调用，用于实时同步乐器位置
-     */
-    virtual void PostEditChangeProperty(
-        FPropertyChangedEvent& PropertyChangedEvent) override;
-#endif
-
     // ========== 已创建的对象 ==========
 
     /** 已创建的Actor对象映射 */
@@ -572,40 +502,18 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, class UMaterialInstanceConstant*> GeneratedMaterials;
 
-    // ========== 缓存的父子关系变换存储 ==========
-
-    /**
-     * 小提琴相对于演奏者的相对变换矩阵
-     * 在第一次同步时初始化，然后每帧复用此矩阵进行快速更新
-     */
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    FTransform CachedStringInstrumentRelativeTransform;
-    
-
-    /**
-     * 用于检测初始化值是否改变的缓存数组
-     * 存储顺序: [0] ParentInitGlobalTransform
-     *           [1] ChildInitGlobalTransform
-     *           [2] ParentActorWorldTransform
-     *           [3] ChildActorWorldTransform
-     * 当这些值发生变化时，需要重新初始化相对变换矩阵
-     */
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    TArray<FTransform> CachedInitializationValues;
 
     // ========== FTickableGameObject 接口实现 ==========
 
     /**
      * 检查该对象是否可 Tick
      */
-    virtual bool IsTickable() const override { return bEnableRealtimeSync; }
+    virtual bool IsTickable() const override { return true; }
 
     /**
      * 检查该对象是否在编辑器中可 Tick
      */
-    virtual bool IsTickableInEditor() const override {
-        return bEnableRealtimeSync;
-    }
+    virtual bool IsTickableInEditor() const override { return true; }
 
     /**
      * 获取统计信息ID（用于性能分析）

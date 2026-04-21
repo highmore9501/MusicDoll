@@ -33,9 +33,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Bake Task")
 	FString ControlName;
 
-	/** UI 显示名称（如 "StringFlow.Performer.controller_root"） */
+	/** UI 显示名称(如 "StringFlow.Performer.controller_root") */
 	UPROPERTY(BlueprintReadOnly, Category = "Bake Task")
 	FString DisplayName;
+	
+	/** 乐器实例标识符(用于区分同一类型的不同乐器实例,如 Guitar_1, Guitar_2) */
+	UPROPERTY(BlueprintReadOnly, Category = "Bake Task")
+	FString InstrumentInstanceId;
 
 	FBakeTask()
 		: TaskId(FGuid::NewGuid())
@@ -43,13 +47,14 @@ public:
 
 	FBakeTask(AActor* InOwnerActor, const FString& InModuleName, 
 			  UControlRig* InControlRig, const FString& InControlName, 
-			  const FString& InDisplayName)
+			  const FString& InDisplayName, const FString& InInstrumentInstanceId = TEXT(""))
 		: TaskId(FGuid::NewGuid())
 		, OwnerActor(InOwnerActor)
 		, OwnerModuleName(InModuleName)
 		, ControlRigInstance(InControlRig)
 		, ControlName(InControlName)
 		, DisplayName(InDisplayName)
+		, InstrumentInstanceId(InInstrumentInstanceId)
 	{}
 
 	bool IsValid() const
@@ -74,10 +79,10 @@ public:
 
 	// ========== 任务管理 ==========
 
-	/** 添加任务，返回任务 ID */
+	/** 添加任务,返回任务 ID */
 	FGuid AddTask(AActor* OwnerActor, const FString& ModuleName,
 				  UControlRig* ControlRig, const FString& ControlName,
-				  const FString& DisplayName);
+				  const FString& DisplayName, const FString& InstrumentInstanceId = TEXT(""));
 
 	/** 移除指定任务 */
 	void RemoveTask(const FGuid& TaskId);
@@ -140,6 +145,6 @@ private:
 	/** 广播任务列表变更 */
 	void BroadcastTaskListChanged();
 
-	/** 检查任务是否已存在（防止重复添加） */
-	bool IsTaskDuplicate(UControlRig* ControlRig, const FString& ControlName) const;
+	/** 检查任务是否已存在(防止重复添加) */
+	bool IsTaskDuplicate(UControlRig* ControlRig, const FString& ControlName, const FString& InstrumentInstanceId = TEXT("")) const;
 };

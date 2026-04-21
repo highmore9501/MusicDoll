@@ -198,6 +198,7 @@ void UZhengDriftMusicInstrumentProcessor::
            TEXT("========== InitializeStringVibrationAnimationChannels "
                 "[ZhengDrift] Started =========="));
 
+    // 获取 Control Rig Blueprint
     UControlRigBlueprint* Blueprint =
         ZhengDriftActor->GetCachedControlRigBlueprint(TEXT("Zheng"));
     if (!Blueprint) {
@@ -207,33 +208,32 @@ void UZhengDriftMusicInstrumentProcessor::
         return;
     }
 
-    // 生成 42 个通道名称：string0_press, string0_vib, ..., string20_press, string20_vib
-    TArray<FString> ChannelNames;
-    for (int32 i = 0; i <= 20; ++i) {
-        ChannelNames.Add(FString::Printf(TEXT("string%d_press"), i));
-        ChannelNames.Add(FString::Printf(TEXT("string%d_vib"), i));
-    }
+    // 获取古筝的 SkeletalMeshComponent
+    USkeletalMeshComponent* SkeletalMeshComp =
+        ZhengDriftActor->Zheng->GetSkeletalMeshComponent();
 
-    // 确保 zheng_root 控制器存在
-    if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-            Blueprint, TEXT("zheng_root"))) {
+    if (!SkeletalMeshComp) {
         UE_LOG(LogTemp, Error,
-               TEXT("InitializeStringVibrationAnimationChannels: "
-                    "Root control 'zheng_root' does not exist. "
-                    "Please create it manually in the Control Rig Blueprint."));
+               TEXT("Zheng does not have a SkeletalMeshComponent"));
         return;
     }
 
-    FRigElementKey RootKey(TEXT("zheng_root"), ERigElementType::Control);
+    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+        SkeletalMeshComp,
+        Blueprint,
+        TEXT("zheng_root")
+    );
 
-    int32 ChannelsAdded =
-        UInstrumentMorphTargetUtility::AddAnimationChannels(
-            Blueprint, RootKey, ChannelNames);
+    if (ChannelsAdded == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to initialize morph target channels for Zheng"));
+        return;
+    }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("InitializeStringVibrationAnimationChannels [ZhengDrift]: "
-                "Created/verified %d channels (expected %d)"),
-           ChannelsAdded, ChannelNames.Num());
+           TEXT("========== InitializeStringVibrationAnimationChannels "
+                "[ZhengDrift] Completed =========="));
 }
 
 // ============================================================
@@ -385,8 +385,12 @@ bool UZhengDriftMusicInstrumentProcessor::
         FString MorphName = FString::Printf(
             TEXT("string%d_%s"), StringIndex, *TypeSuffix);
 
-        // 直接使用原始帧号（秒数），由 WriteMorphTargetKeyframes 直接使用
-        FFrameNumber FrameNumber(static_cast<int32>(FMath::RoundToInt(FrameDouble)));
+        // 转换帧编号：将秒数转换为 Tick 单位
+        float ScaledFrameNumberFloat =
+            FrameDouble * TickResolution.AsDecimal() / DisplayRate.AsDecimal();
+        int32 ScaledFrameNumber = static_cast<int32>(
+            FMath::RoundToInt(ScaledFrameNumberFloat));
+        FFrameNumber FrameNumber(ScaledFrameNumber);
 
         FMorphTargetKeyframeData* Data = ChannelDataMap.Find(MorphName);
         if (!Data) {

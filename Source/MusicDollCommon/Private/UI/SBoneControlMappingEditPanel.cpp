@@ -1,6 +1,7 @@
 ﻿#include "UI/SBoneControlMappingEditPanel.h"
 
 #include "BoneControlMappingUtility.h"
+#include "ControlInitTransformUtility.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
 #include "DesktopPlatformModule.h"
@@ -72,6 +73,12 @@ void SBoneControlMappingEditPanel::Construct(const FArguments& InArgs) {
                            [SNew(SButton)
                                 .Text(LOCTEXT("SyncBoneControlPairsButton", "SyncBoneControlPairs"))
                                 .OnClicked(this, &SBoneControlMappingEditPanel::OnSyncBoneControlPairsClicked)]
+                     + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
+                           [SNew(SButton)
+                                .Text(LOCTEXT("ApplySelectedControlsInitButton", "Apply Selected To Init"))
+                                .OnClicked(this, &SBoneControlMappingEditPanel::OnApplySelectedControlsInitTransformClicked)
+                                .ToolTipText(LOCTEXT("ApplySelectedControlsInitTooltip", 
+                                    "将当前Sequence中选中的Control的变换写入ControlRigBlueprint的初始值"))]
                      + SVerticalBox::Slot().AutoHeight().Padding(5.0f)
                            [SNew(SSearchBox)
                                 .HintText(FText::FromString(TEXT("Search Bones...")))
@@ -671,6 +678,14 @@ FReply SBoneControlMappingEditPanel::OnInitBoneControlMappingClicked() {
                bVariableExists ? TEXT("reset") : TEXT("create"));
     }
 
+    // AddBoneControlMappingVariable 内部会调用 MarkBlueprintAsStructurallyModified
+    // 触发蓝图重编译，GeneratedClass 会被重建，当前持有的 ControlRigBlueprint
+    // 引用在重编译后仍然有效，但 UI 中所有行的 ComboBox 仍然持有旧的
+    // FilteredBoneNames/FilteredControlNames 指针，需要强制刷新整个列表
+    // 以重新获取最新 Blueprint 引用并重建所有行 widget，避免悬空引用导致崩溃。
+    ControlRigBlueprint.Reset();
+    RefreshMappingList();
+
     return FReply::Handled();
 }
 
@@ -714,6 +729,11 @@ FReply SBoneControlMappingEditPanel::OnSyncBoneControlPairsClicked() {
                TEXT("OnSyncBoneControlPairsClicked: Failed to sync "
                     "bone-control pairs"));
     }
+
+    // SyncBoneControlPairs 内部会调用 MarkBlueprintAsStructurallyModified，
+    // 触发蓝图重编译，需要重置引用并刷新列表，防止悬空引用导致崩溃。
+    ControlRigBlueprint.Reset();
+    RefreshMappingList();
 
     return FReply::Handled();
 }
@@ -1203,6 +1223,45 @@ bool SBoneControlMappingEditPanel::RetrieveControlRigBlueprint(
     ControlRigBlueprint = RetrievedBlueprint;
 
     return true;
+}
+
+FReply SBoneControlMappingEditPanel::OnApplySelectedControlsInitTransformClicked() {
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnApplySelectedControlsInitTransformClicked: Starting..."));
+
+    int32 AppliedCount = 0;
+    int32 SkippedCount = 0;
+
+    if (!FControlInitTransformUtility::ApplySelectedControlsTransformToInitial(
+            AppliedCount, SkippedCount)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("OnApplySelectedControlsInitTransformClicked: "
+                    "No controls were applied. Applied=%d, Skipped=%d"),
+               AppliedCount, SkippedCount);
+
+        FNotificationInfo Info(FText::Format(
+            LOCTEXT("ApplySelectedControlsInitFailed",
+                    "未能写入任何Control的初始值\n已应用: {0}, 已跳过: {1}"),
+            FText::AsNumber(AppliedCount), FText::AsNumber(SkippedCount)));
+        Info.ExpireDuration = 5.0f;
+        FSlateNotificationManager::Get().AddNotification(Info);
+
+        return FReply::Handled();
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("OnApplySelectedControlsInitTransformClicked: "
+                "Successfully applied. Applied=%d, Skipped=%d"),
+           AppliedCount, SkippedCount);
+
+    FNotificationInfo Info(FText::Format(
+        LOCTEXT("ApplySelectedControlsInitSuccess",
+                "成功将选中Control的变换写入初始值\n已应用: {0}, 已跳过: {1}"),
+        FText::AsNumber(AppliedCount), FText::AsNumber(SkippedCount)));
+    Info.ExpireDuration = 5.0f;
+    FSlateNotificationManager::Get().AddNotification(Info);
+
+    return FReply::Handled();
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -6,7 +6,6 @@
 #include "ControlRigCacheSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-#include "FretDanceTransformSyncProcessor.h"
 #include "FretDanceUnreal.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
@@ -43,10 +42,6 @@ void UFretDanceMusicInstrumentProcessor::InitializeGuitarInstrument(
     // 使用统一的注册方法注册所有 ControlRig（演奏者 + 吉他）
     FretDanceActor->RegisterAllControlRigs();
 
-    // 0. 初始化吉他同步关系（controller_root <-> guitar_root）
-    // 这会在开始每帧同步前计算并缓存相对变换矩阵
-    UFretDanceTransformSyncProcessor::InitializeGuitarSync(FretDanceActor);
-
     // 1. 清理现有动画数据
     CleanupExistingGuitarAnimations(FretDanceActor);
 
@@ -58,6 +53,8 @@ void UFretDanceMusicInstrumentProcessor::InitializeGuitarInstrument(
         InitializeStringMaterialAnimationTracks(FretDanceActor);
 
     // 4. 初始化弦振动动画通道（Morph Target）
+    // 内部会通过 EnsureRootControlExists 创建 guitar_root（如果不存在），
+    // 然后在其下批量添加 animation channels，修改 Blueprint Hierarchy。
     InitializeStringVibrationAnimationChannels(FretDanceActor);
 
     UE_LOG(LogTemp, Warning,
@@ -186,77 +183,29 @@ void UFretDanceMusicInstrumentProcessor::
         return;
     }
 
-    // 生成所有需要的通道名称
-    TArray<FString> ChannelNamesToCreate;
+    // 获取吉他的 SkeletalMeshComponent
+    USkeletalMeshComponent* SkeletalMeshComp =
+        FretDanceActor->Guitar->GetSkeletalMeshComponent();
 
-    const int32 MaxStringIndex = 5;  // 吉他 6 根弦 (0-5)
-    const int32 MinFretNumber = 0;   // 从第 0 品格开始
-    const int32 MaxFretNumber = 20;  // 到第 20 品格
-    const TArray<FString> Directions = {TEXT("up"),
-                                        TEXT("down")};  // 两个振动方向
-
-    for (int32 StringIndex = 0; StringIndex <= MaxStringIndex; ++StringIndex) {
-        for (int32 FretNumber = MinFretNumber; FretNumber <= MaxFretNumber;
-             ++FretNumber) {
-            for (const FString& Direction : Directions) {
-                FString ChannelStr = FString::Printf(
-                    TEXT("s%dfret%d%s"), StringIndex, FretNumber, *Direction);
-                ChannelNamesToCreate.Add(ChannelStr);
-            }
-        }
-    }
-
-    UE_LOG(
-        LogTemp, Warning,
-        TEXT("Creating vibration animation channels for %d channel names..."),
-        ChannelNamesToCreate.Num());
-
-    // 使用 Common 模块的通用方法：检查 Root Control 是否存在
-    if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-            ControlRigBlueprint, TEXT("guitar_root"))) {
-        UE_LOG(LogTemp, Error, TEXT("====== INITIALIZATION FAILED ======"));
+    if (!SkeletalMeshComp) {
         UE_LOG(LogTemp, Error,
-               TEXT("Root Control 'guitar_root' does not exist in Control Rig "
-                    "Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT(""));
-        UE_LOG(LogTemp, Error,
-               TEXT("Please manually create the Root Control 'guitar_root' in "
-                    "your Control Rig Blueprint:"));
-        UE_LOG(LogTemp, Error, TEXT("  1. Open the Control Rig Blueprint"));
-        UE_LOG(LogTemp, Error, TEXT("  2. Go to the Hierarchy panel"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  3. Right-click and create a new Control named "
-                    "'guitar_root'"));
-        UE_LOG(LogTemp, Error,
-               TEXT("  4. Set the Control Type to 'Transform'"));
-        UE_LOG(LogTemp, Error, TEXT("  5. Save the Blueprint and try again"));
-        UE_LOG(LogTemp, Error, TEXT("====== END OF ERROR REPORT ======"));
+               TEXT("Guitar does not have a SkeletalMeshComponent"));
         return;
     }
 
-    // 获取 Root Control 的 Key 用于后续操作
-    FRigElementKey RootControlKey(TEXT("guitar_root"),
-                                  ERigElementType::Control);
+    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+        SkeletalMeshComp,
+        ControlRigBlueprint,
+        TEXT("guitar_root")
+    );
 
-    // 使用 Common 模块的通用方法：批量添加动画通道
-    if (ChannelNamesToCreate.Num() == 0) {
-        UE_LOG(LogTemp, Error, TEXT("ChannelNamesToCreate is empty"));
+    if (ChannelsAdded == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to initialize morph target channels for Guitar"));
         return;
     }
 
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::AddAnimationChannels(
-        ControlRigBlueprint, RootControlKey, ChannelNamesToCreate);
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeStringVibrationAnimationChannels "
-                "Summary =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Successfully created/verified: %d channels"),
-           ChannelsAdded);
-    UE_LOG(LogTemp, Warning,
-           TEXT("Expected total: %d channels (%d strings × %d frets × %d "
-                "directions)"),
-           ChannelsAdded, MaxStringIndex + 1, MaxFretNumber - MinFretNumber + 1,
-           Directions.Num());
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeStringVibrationAnimationChannels "
                 "Completed =========="));

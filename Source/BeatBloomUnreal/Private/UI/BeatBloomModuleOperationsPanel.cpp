@@ -16,6 +16,15 @@ void SBeatBloomModuleOperationsPanel::Construct(const FArguments& InArgs) {
     // 调用基类构造函数，使用基类的参数类型
     SModuleOperationsPanel::FArguments BaseArgs;
     SModuleOperationsPanel::Construct(BaseArgs);
+    
+    // 初始化双线性状态选项
+    BilinearStateOptions = {
+        MakeShareable(new FString(TEXT("A"))),
+        MakeShareable(new FString(TEXT("B"))),
+        MakeShareable(new FString(TEXT("C"))),
+        MakeShareable(new FString(TEXT("D")))
+    };
+    SelectedBilinearState = BilinearStateOptions[0];  // 默认选择 A
 }
 
 void SBeatBloomModuleOperationsPanel::SetActor(AActor* InActor) {
@@ -65,12 +74,9 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentLeftHandDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target: 同时更新 DrumKit 和 State
-                                     BeatBloom->CurrentTargetDrumKit = *NewSelection;
-                                     BeatBloom->CurrentTargetState = BeatBloom->CurrentLeftHandState;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: LeftHandDrumKit "
-                                                 "changed to %s, TargetDrumKit and TargetState synced"),
+                                                 "changed to %s"),
                                             **NewSelection);
                                  }
                              })
@@ -106,14 +112,11 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                        BeatBloom->CurrentLeftHandState =
                                            EBeatBloomState::REST;
 
-                                   // 同步到 Target: 同时更新 State 和 DrumKit
-                                   BeatBloom->CurrentTargetState = BeatBloom->CurrentLeftHandState;
-                                   BeatBloom->CurrentTargetDrumKit = BeatBloom->CurrentLeftHandDrumKit;
                                    UE_LOG(
                                        LogTemp, Warning,
                                        TEXT(
                                            "BeatBloom: LeftHandState "
-                                           "changed to %s, TargetState and TargetDrumKit synced"),
+                                           "changed to %s"),
                                        **NewSelection);
                                }
                            })
@@ -152,12 +155,9 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                      BeatBloom->CurrentRightHandDrumKit =
                                          *NewSelection;
 
-                                     // 同步到 Target: 同时更新 DrumKit 和 State
-                                     BeatBloom->CurrentTargetDrumKit = *NewSelection;
-                                     BeatBloom->CurrentTargetState = BeatBloom->CurrentRightHandState;
                                      UE_LOG(LogTemp, Warning,
                                             TEXT("BeatBloom: RightHandDrumKit "
-                                                 "changed to %s, TargetDrumKit and TargetState synced"),
+                                                 "changed to %s"),
                                             **NewSelection);
                                  }
                              })
@@ -193,14 +193,9 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                                        BeatBloom->CurrentRightHandState =
                                            EBeatBloomState::REST;
 
-                                   // 同步到 Target: 同时更新 State 和 DrumKit
-                                   BeatBloom->CurrentTargetState = BeatBloom->CurrentRightHandState;
-                                   BeatBloom->CurrentTargetDrumKit = BeatBloom->CurrentRightHandDrumKit;
-                                   UE_LOG(
-                                       LogTemp, Warning,
-                                       TEXT(
-                                           "BeatBloom: RightHandState "
-                                           "changed to %s, TargetState and TargetDrumKit synced"),
+                                   UE_LOG(LogTemp, Warning,
+                                            TEXT("BeatBloom: RightHandState "
+                                                 "changed to %s"),
                                        **NewSelection);
                                }
                            })
@@ -410,6 +405,39 @@ void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
+    // Bilinear Mapping Helpers Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Bilinear Mapping Helpers"))];
+
+    // 状态选择下拉菜单和保存/加载按钮
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SHorizontalBox)
+            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f).VAlign(VAlign_Center)
+                [SNew(STextBlock).Text(LOCTEXT("BilinearStateLabel", "State:"))]
+            + SHorizontalBox::Slot().FillWidth(1.0f).Padding(2.0f)
+                [SNew(SComboBox<TSharedPtr<FString>>)
+                    .OptionsSource(&BilinearStateOptions)  // 使用成员变量
+                    .OnGenerateWidget(this, &SBeatBloomModuleOperationsPanel::OnGenerateBilinearStateWidget)
+                    .OnSelectionChanged(this, &SBeatBloomModuleOperationsPanel::OnBilinearStateChanged)
+                    .InitiallySelectedItem(SelectedBilinearState)
+                    .Content()
+                        [SNew(STextBlock).Text_Lambda([this]() {
+                            return FText::FromString(*SelectedBilinearState.Get());
+                        })]]
+            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+                [SNew(SButton)
+                    .Text(LOCTEXT("SaveBilinearState", "Save"))
+                    .ToolTipText(LOCTEXT("SaveBilinearStateTooltip", 
+                        "Save current Middle_Hand and Head_Control positions to selected state"))
+                    .OnClicked(this, &SBeatBloomModuleOperationsPanel::OnSaveBilinearHelperState)]
+            + SHorizontalBox::Slot().AutoWidth().Padding(2.0f)
+                [SNew(SButton)
+                    .Text(LOCTEXT("LoadBilinearState", "Load"))
+                    .ToolTipText(LOCTEXT("LoadBilinearStateTooltip", 
+                        "Auto-detect current Middle_Hand position and load matching Head_Control"))
+                    .OnClicked(this, &SBeatBloomModuleOperationsPanel::OnLoadBilinearHelperState)]];
+
     // Animation Generation Section
     Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
@@ -534,7 +562,6 @@ void SBeatBloomModuleOperationsPanel::UpdateDrumKitOptions() {
     RightHandKitOptions.Empty();
     LeftFootKitOptions.Empty();
     RightFootKitOptions.Empty();
-    TargetKitOptions.Empty();
 
     // 添加"休息"选项到所有肢体类型
     TSharedPtr<FString> RestOption = MakeShareable(new FString(TEXT("Rest")));
@@ -542,74 +569,73 @@ void SBeatBloomModuleOperationsPanel::UpdateDrumKitOptions() {
     RightHandKitOptions.Add(RestOption);
     LeftFootKitOptions.Add(RestOption);
     RightFootKitOptions.Add(RestOption);
-    TargetKitOptions.Add(RestOption);
     UE_LOG(LogTemp, Warning,
            TEXT("BeatBloom: UpdateDrumKitOptions() - Added 'Rest' option to "
                 "all limbs"));
+
+    // 用于防止同一个名称在同一个列表里重复添加
+    TSet<FString> AddedToLH, AddedToRH, AddedToLF, AddedToRF;
+
+    // 辅助函数：为组件或特殊动作按肢体类型添加到对应下拉列表（每个列表去重）
+    auto AddOptionForLimbs = [&](const FString& Name, const TArray<FString>& Limbs) {
+        TSharedPtr<FString> OptionName = MakeShareable(new FString(Name));
+        for (const FString& Limb : Limbs) {
+            if (Limb == TEXT("left_hand")) {
+                if (!AddedToLH.Contains(Name)) {
+                    LeftHandKitOptions.Add(OptionName);
+                    AddedToLH.Add(Name);
+                }
+            } else if (Limb == TEXT("right_hand")) {
+                if (!AddedToRH.Contains(Name)) {
+                    RightHandKitOptions.Add(OptionName);
+                    AddedToRH.Add(Name);
+                }
+            } else if (Limb == TEXT("left_foot")) {
+                if (!AddedToLF.Contains(Name)) {
+                    LeftFootKitOptions.Add(OptionName);
+                    AddedToLF.Add(Name);
+                }
+            } else if (Limb == TEXT("right_foot")) {
+                if (!AddedToRF.Contains(Name)) {
+                    RightFootKitOptions.Add(OptionName);
+                    AddedToRF.Add(Name);
+                }
+            } else {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("BeatBloom: '%s' has unrecognized limb '%s'"),
+                       *Name, *Limb);
+            }
+        }
+    };
 
     // 遍历 DrumKitConfig 中的所有组件
     int32 ComponentIndex = 0;
     for (const FBeatBloomDrumComponent& Component :
          BeatBloom->DrumKitConfig.Components) {
-        TSharedPtr<FString> ComponentName =
-            MakeShareable(new FString(Component.Name));
         UE_LOG(LogTemp, Warning,
                TEXT("BeatBloom: Processing Component[%d] - Name: %s, "
                     "DrivableLimbs.Count: %d"),
                ComponentIndex, *Component.Name, Component.DrivableLimbs.Num());
 
-        // Target 鼓组项目：添加所有组件（参考 Blender插件逻辑）
-        TargetKitOptions.Add(ComponentName);
-        UE_LOG(
-            LogTemp, Verbose,
-            TEXT("BeatBloom:   -> Added to TargetKitOptions (all components)"));
-
-        // 根据 DrivableLimbs 分配到对应的肢体选项
-        for (const FBeatBloomDrivableLimb& DrivableLimb :
-             Component.DrivableLimbs) {
-            const FString& Limb = DrivableLimb.Limb;
-            UE_LOG(LogTemp, Verbose,
-                   TEXT("BeatBloom:   - DrivableLimb: %s, Coefficient: %f"),
-                   *Limb, DrivableLimb.Coefficient);
-
-            // 根据肢体名称分配到对应的下拉菜单
-            if (Limb.Contains(TEXT("left_hand"), ESearchCase::IgnoreCase)) {
-                LeftHandKitOptions.Add(ComponentName);
-                UE_LOG(LogTemp, Verbose,
-                       TEXT("BeatBloom:     -> Added to LeftHandKitOptions"));
-            } else if (Limb.Contains(TEXT("right_hand"),
-                                     ESearchCase::IgnoreCase)) {
-                RightHandKitOptions.Add(ComponentName);
-                UE_LOG(LogTemp, Verbose,
-                       TEXT("BeatBloom:     -> Added to RightHandKitOptions"));
-            } else if (Limb.Contains(TEXT("left_foot"),
-                                     ESearchCase::IgnoreCase)) {
-                LeftFootKitOptions.Add(ComponentName);
-                UE_LOG(LogTemp, Verbose,
-                       TEXT("BeatBloom:     -> Added to LeftFootKitOptions"));
-            } else if (Limb.Contains(TEXT("right_foot"),
-                                     ESearchCase::IgnoreCase)) {
-                RightFootKitOptions.Add(ComponentName);
-                UE_LOG(LogTemp, Verbose,
-                       TEXT("BeatBloom:     -> Added to RightFootKitOptions"));
-            } else {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("BeatBloom:     -> WARNING: Limb '%s' does not "
-                            "match any category"),
-                       *Limb);
-            }
+        TArray<FString> LimbNames;
+        for (const FBeatBloomDrivableLimb& DL : Component.DrivableLimbs) {
+            LimbNames.Add(DL.Limb);
         }
+        AddOptionForLimbs(Component.Name, LimbNames);
         ComponentIndex++;
     }
 
-    // 添加特殊动作到 Target 鼓组项目（参考 Blender插件逻辑）
-    for (const auto& SpecialAction : BeatBloom->DrumKitConfig.SpecialActions) {
-        TSharedPtr<FString> ActionName =
-            MakeShareable(new FString(SpecialAction.Name));
-        TargetKitOptions.Add(ActionName);
+    // 遍历 DrumKitConfig 中的所有特殊动作（如 Sticks）
+    int32 ActionIndex = 0;
+    for (const FBeatBloomSpecialAction& Action :
+         BeatBloom->DrumKitConfig.SpecialActions) {
         UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Added SpecialAction '%s' to TargetKitOptions"),
-               *SpecialAction.Name);
+               TEXT("BeatBloom: Processing SpecialAction[%d] - Name: %s, "
+                    "Limbs.Count: %d"),
+               ActionIndex, *Action.Name, Action.Limbs.Num());
+
+        AddOptionForLimbs(Action.Name, Action.Limbs);
+        ActionIndex++;
     }
 
     // 初始化 StateOptions: beat/ready/rest
@@ -623,10 +649,9 @@ void SBeatBloomModuleOperationsPanel::UpdateDrumKitOptions() {
 
     UE_LOG(LogTemp, Warning,
            TEXT("BeatBloom: UpdateDrumKitOptions() - Final counts - LH:%d, "
-                "RH:%d, LF:%d, RF:%d, Target:%d"),
+                "RH:%d, LF:%d, RF:%d"),
            LeftHandKitOptions.Num(), RightHandKitOptions.Num(),
-           LeftFootKitOptions.Num(), RightFootKitOptions.Num(),
-           TargetKitOptions.Num());
+           LeftFootKitOptions.Num(), RightFootKitOptions.Num());
 }
 
 // ===== 状态管理 =====
@@ -641,12 +666,12 @@ FReply SBeatBloomModuleOperationsPanel::OnSaveHand() {
     // 保存手部状态
     UBeatBloomControlRigProcessor::SaveHandState(BeatBloomActor.Get());
 
-    // 同时保存目标状态
-    UBeatBloomControlRigProcessor::SaveTargetState(BeatBloomActor.Get());
+    // 同时保存 Head_Control 状态
+    UBeatBloomControlRigProcessor::SaveHeadControlState(BeatBloomActor.Get());
 
     UE_LOG(
         LogTemp, Warning,
-        TEXT("BeatBloom: Save Hand State + Target State operation triggered"));
+        TEXT("BeatBloom: Save Hand State + Head_Control State operation triggered"));
     return FReply::Handled();
 }
 
@@ -668,13 +693,13 @@ FReply SBeatBloomModuleOperationsPanel::OnSaveFoot() {
 FReply SBeatBloomModuleOperationsPanel::OnSaveTarget() {
     if (!BeatBloomActor.IsValid()) {
         UE_LOG(LogTemp, Error,
-               TEXT("BeatBloom: No actor selected for save target state"));
+               TEXT("BeatBloom: No actor selected for save head control state"));
         return FReply::Handled();
     }
 
-    UBeatBloomControlRigProcessor::SaveTargetState(BeatBloomActor.Get());
+    UBeatBloomControlRigProcessor::SaveHeadControlState(BeatBloomActor.Get());
     UE_LOG(LogTemp, Warning,
-           TEXT("BeatBloom: Save Target State operation triggered"));
+           TEXT("BeatBloom: Save Head_Control State operation triggered"));
     return FReply::Handled();
 }
 
@@ -800,6 +825,58 @@ FReply SBeatBloomModuleOperationsPanel::OnTriggerControlRigReregistration() {
     UE_LOG(LogTemp, Warning,
            TEXT("BeatBloom: Trigger Control Rig Re-registration operation "
                 "triggered"));
+    return FReply::Handled();
+}
+
+// ===== 双线性映射辅助记录器回调函数 =====
+
+TSharedRef<SWidget> SBeatBloomModuleOperationsPanel::OnGenerateBilinearStateWidget(
+    TSharedPtr<FString> InItem) {
+    return SNew(STextBlock).Text(FText::FromString(*InItem));
+}
+
+void SBeatBloomModuleOperationsPanel::OnBilinearStateChanged(
+    TSharedPtr<FString> NewValue, ESelectInfo::Type SelectInfo) {
+    if (NewValue.IsValid()) {
+        SelectedBilinearState = NewValue;
+    }
+}
+
+FReply SBeatBloomModuleOperationsPanel::OnSaveBilinearHelperState() {
+    
+    if (!BeatBloomActor.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor selected"));
+        return FReply::Handled();
+    }
+    
+    if (!SelectedBilinearState.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No state selected"));
+        return FReply::Handled();
+    }
+    
+    FString StateSuffix = *SelectedBilinearState;  // "A", "B", "C", 或 "D"
+    
+    ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
+    UBeatBloomControlRigProcessor::SaveBilinearHelperState(BeatBloom, StateSuffix);
+    
+    UE_LOG(LogTemp, Warning, 
+           TEXT("BeatBloom: Saved bilinear helper state %s"), *StateSuffix);
+    
+    return FReply::Handled();
+}
+
+FReply SBeatBloomModuleOperationsPanel::OnLoadBilinearHelperState() {
+    
+    if (!BeatBloomActor.IsValid()) {
+        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor selected"));
+        return FReply::Handled();
+    }
+    
+    ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
+    UBeatBloomControlRigProcessor::LoadBilinearHelperState(BeatBloom);
+    
+    // LoadBilinearHelperState 内部已经有日志输出，这里不需要重复
+    
     return FReply::Handled();
 }
 

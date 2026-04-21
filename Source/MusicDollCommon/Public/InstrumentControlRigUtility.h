@@ -65,89 +65,9 @@ class MUSICDOLLCOMMON_API FInstrumentControlRigUtility {
         ASkeletalMeshActor* InSkeletalMeshActor, const FString& ControlName,
         const FVector& NewWorldLocation, const FQuat& NewWorldRotation);
 
-    /**
-     * 初始化父子 Control 关系（仅第一次调用时使用）
-     * 计算并缓存初始的相对变换矩阵，用于后续每帧快速更新
-     *
-     * 相对变换矩阵的计算方式：
-     * 1. 将父、子 Control 的初始变换从 Control Rig 坐标系转换到世界坐标系
-     * 2. 计算 Child 相对于 Parent 的相对位置和旋转
-     * 3. 这个相对关系在整个生命周期中保持不变
-     *
-     * @param ParentControlRig 父 Control 所属的 Control Rig 实例
-     * @param ParentControlName 父 Control 的名称
-     * @param ChildControlRig 子 Control 所属的 Control Rig 实例
-     * @param ChildControlName 子 Control 的名称
-     * @param OutRelativeTransform 输出的相对变换矩阵
-     * @return 是否成功初始化
-     *
-     * @note 该方法应该在应用启动或 Child 第一次绑定到 Parent 时调用一次
-     *       之后使用 UpdateChildControlFromParent 每帧更新即可
-     *
-     * @see UpdateChildControlFromParent
-     */
-    static bool InitializeControlRelationship(
-        ASkeletalMeshActor* ParentControlRig, const FString& ParentControlName,
-        ASkeletalMeshActor* ChildControlRig, const FString& ChildControlName,
-        FTransform& OutRelativeTransform);
+    
 
-    /**
-     * 根据缓存的相对变换矩阵更新子 Control 的位置（每帧调用）
-     * 使用预先计算的相对变换矩阵，快速将 Child 更新到相对于当前 Parent 的位置
-     *
-     * 工作原理：
-     * - 使用 GetControlRigControlWorldTransform 获取 Parent 的当前世界变换
-     * - ChildNewWorldTransform = RelativeTransform *
-     * ParentCurrentWorldTransform
-     * - 然后使用 SetControlRigWorldTransform 将世界坐标应用到 Child
-     *
-     * @param ParentControlRigInstance 父 Control 所属的已获取的 Control Rig
-     * 实例
-     * @param ParentControlName 父 Control 的名称
-     * @param ParentSkeletalMeshActor 父 Control 所属的骨骼网格
-     * Actor（用于世界变换计算）
-     * @param ChildSkeletalMeshActor 子 Control 所属的骨骼网格 Actor
-     * @param ChildControlName 子 Control 的名称
-     * @param RelativeTransform 预先计算好的相对变换矩阵（来自
-     * InitializeControlRelationship）
-     * @return 是否成功更新
-     *
-     * @note 该方法设计用于每帧调用，性能开销较小
-     * @note RelativeTransform 必须由 InitializeControlRelationship 提供
-     *
-     * @see InitializeControlRelationship
-     */
-    static bool UpdateChildControlFromParent(
-        UControlRig* ParentControlRigInstance, const FString& ParentControlName,
-        ASkeletalMeshActor* ParentSkeletalMeshActor,
-        ASkeletalMeshActor* ChildSkeletalMeshActor,
-        const FString& ChildControlName, const FTransform& RelativeTransform);
-
-    /**
-     * 检测初始化值是否发生了变化
-     * 用于判断是否需要重新初始化相对变换矩阵
-     *
-     * 检查的值包括：
-     * 1. 父 Control 的初始化全局变换
-     * 2. 子 Control 的初始化全局变换
-     * 3. 父 Control Rig Actor 的世界变换
-     * 4. 子 Control Rig Actor 的世界变换
-     *
-     * @param ParentControlRig 父 Control 所属的 Control Rig 实例
-     * @param ParentControlName 父 Control 的名称
-     * @param ChildControlRig 子 Control 所属的 Control Rig 实例
-     * @param ChildControlName 子 Control 的名称
-     * @param CachedValues 上一次缓存的初始化值数组（大小应为4）
-     * @param OutNewValues 输出当前的初始化值数组（大小为4）
-     * @return 如果任何值发生了变化返回 true，否则返回 false
-     *
-     * @note 返回 true 表示需要重新初始化相对变换矩阵
-     */
-    static bool HasInitializationValuesChanged(
-        ASkeletalMeshActor* ParentControlRig, const FString& ParentControlName,
-        ASkeletalMeshActor* ChildControlRig, const FString& ChildControlName,
-        const TArray<FTransform>& CachedValues,
-        TArray<FTransform>& OutNewValues);
+    
 
    private:
     /**

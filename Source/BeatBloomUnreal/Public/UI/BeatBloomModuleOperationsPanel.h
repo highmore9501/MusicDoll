@@ -12,7 +12,7 @@ class ABeatBloomUnreal;
  * 布局区域：
  * - Hand State Configuration：左/右手鼓件 + 状态下拉菜单
  * - Foot State Configuration：左/右脚鼓件 + 状态下拉菜单
- * - State Management: SaveHandState（同时保存 Target）/SaveFootState（同时保存 Target）/LoadState 按钮
+ * - State Management: SaveHandState（同时保存 Head_Control）/SaveFootState/LoadState 按钮
  * - Animation Generation：生成演奏动画/鼓组动画/全部动画 按钮
  * - Control Rig：初始化鼓组、重新注册 ControlRig 按钮
  *
@@ -49,8 +49,11 @@ private:
     TArray<TSharedPtr<FString>> RightHandKitOptions;
     TArray<TSharedPtr<FString>> LeftFootKitOptions;
     TArray<TSharedPtr<FString>> RightFootKitOptions;
-    TArray<TSharedPtr<FString>> TargetKitOptions;
     TArray<TSharedPtr<FString>> StateOptions;
+
+    // 双线性映射辅助记录器状态选择
+    TSharedPtr<FString> SelectedBilinearState;
+    TArray<TSharedPtr<FString>> BilinearStateOptions;
 
     // ===== 按钮回调 =====
 
@@ -59,7 +62,13 @@ private:
     FReply OnSaveFoot();
     FReply OnSaveTarget();
     FReply OnSaveAll();
-    FReply OnLoadState();    
+    FReply OnLoadState();
+    
+    // 双线性映射辅助记录器
+    TSharedRef<SWidget> OnGenerateBilinearStateWidget(TSharedPtr<FString> InItem);
+    void OnBilinearStateChanged(TSharedPtr<FString> NewValue, ESelectInfo::Type SelectInfo);
+    FReply OnSaveBilinearHelperState();
+    FReply OnLoadBilinearHelperState();    
 
     // 动画生成
     FReply OnGeneratePerformerAnimation();

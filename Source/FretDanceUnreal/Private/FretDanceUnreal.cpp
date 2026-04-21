@@ -7,7 +7,6 @@
 #include "ControlRigCacheSubsystem.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
-#include "FretDanceTransformSyncProcessor.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
 #include "Misc/FileHelper.h"
@@ -108,9 +107,6 @@ AFretDanceUnreal::AFretDanceUnreal() {
     InstrumentType = EFretDanceInstrumentType::FINGER_STYLE_GUITAR;
     StringNumber = 6;
     CurrentBasePosition = EFretDanceBasePosition::P0;
-    CurrentLeftHandState = EFretDanceLeftHandState::NORMAL;
-    CurrentRightHandState = EFretDanceRightHandState::LOW;
-    bEnableRealtimeSync = false;
 
     // 初始化所有控制器和记录器
     InitializeControllersAndRecorders();
@@ -153,11 +149,6 @@ FString AFretDanceUnreal::MapRightHandPositionKeyName(
 
 void AFretDanceUnreal::Tick(float DeltaTime) {
     Super::Tick(DeltaTime);
-
-    // 实时同步逻辑将在后续阶段实现
-    if (bEnableRealtimeSync) {
-        UFretDanceTransformSyncProcessor::SyncAllInstrumentTransforms(this);
-    }
 }
 
 void AFretDanceUnreal::InitializeControllersAndRecorders() {
@@ -1206,22 +1197,30 @@ UControlRig* AFretDanceUnreal::GetCachedControlRig(FName ComponentName) {
         return nullptr;
     }
 
+    // 根据 ComponentName 确定 RootControlName
+    FString RootControlName;
+    if (ComponentName == TEXT("Guitar")) {
+        RootControlName = TEXT("guitar_root");
+    } else if (ComponentName == TEXT("Performer")) {
+        RootControlName = TEXT("controller_root");
+    }
+
     // 使用通用接口查询 ControlRig
     UControlRig* ControlRig =
-        CacheSubsystem->GetControlRig(Actor, LevelSequence);
+        CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
     // 如果 ControlRig 为空，尝试触发注册后再查询
     if (!ControlRig) {
         UE_LOG(LogTemp, Warning,
                TEXT("GetCachedControlRig: ControlRig is null, triggering "
-                    "registration for %s"),
-               *Actor->GetName());
+                    "registration for %s with root control '%s'"),
+               *Actor->GetName(), *RootControlName);
 
         // 触发注册
-        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence);
+        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence, RootControlName);
 
         // 再次查询
-        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence);
+        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
         if (!ControlRig) {
             UE_LOG(LogTemp, Error,

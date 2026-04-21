@@ -9,10 +9,13 @@
 #include "ControlRigCacheSubsystem.h"
 #include "ControlRigCreationUtility.h"
 #include "Engine/SkeletalMesh.h"
+#include "ISequencer.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Json.h"
 #include "JsonUtilities.h"
+#include "LevelEditorSequencerIntegration.h"
 #include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
 #include "Misc/FileHelper.h"
@@ -421,7 +424,8 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(
 int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
     class ASkeletalMeshActor* Instrument,
     const TArray<FMorphTargetKeyframeData>& KeyframeData,
-    class ULevelSequence* LevelSequence, const FString& RootControlName) {
+    class ULevelSequence* LevelSequence, const FString& RootControlName,
+    int32 FramePadding) {
     if (!Instrument) {
         UE_LOG(LogTemp, Error,
                TEXT("[InstrumentMorphTargetUtility] Instrument is null"));
@@ -563,11 +567,19 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
 
     // 更新Section范围
     if (bHasFrames) {
-        Section->SetRange(TRange<FFrameNumber>(MinFrame, MaxFrame + 1));
+        // 将 FramePadding 从显示帧转换为内部帧空间
+        FFrameRate TickResolution = MovieScene->GetTickResolution();
+        FFrameRate DisplayRate = MovieScene->GetDisplayRate();
+        int32 PaddingInInternalFrames = FramePadding * 
+                                        TickResolution.Numerator * DisplayRate.Denominator /
+                                        (TickResolution.Denominator * DisplayRate.Numerator);
+        
+        Section->SetRange(TRange<FFrameNumber>(MinFrame, MaxFrame + PaddingInInternalFrames));
         UE_LOG(LogTemp, Warning,
                TEXT("[InstrumentMorphTargetUtility] Set section range to [%d, "
-                    "%d)"),
-               MinFrame.Value, (MaxFrame + 1).Value);
+                    "%d) (Padding: %d display frames -> %d internal frames)"),
+               MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value,
+               FramePadding, PaddingInInternalFrames);
     }
 
     // 对 Section 和 Track 调用 Modify 确保更改被追踪
@@ -610,4 +622,175 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
            WrittenTargets);
 
     return WrittenTargets;
+}
+
+int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+    USkeletalMeshComponent* SkeletalMeshComp,
+    UControlRigBlueprint* ControlRigBlueprint,
+    const FString& RootControlName,
+    TArray<FString>* OutChannelNames) {
+    // 参数验证
+    if (!SkeletalMeshComp) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] SkeletalMeshComp is null"));
+        return 0;
+    }
+
+    if (!ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
+        return 0;
+    }
+
+    if (RootControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] RootControlName is empty"));
+        return 0;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeMorphTargetChannels Started =========="));
+    UE_LOG(LogTemp, Warning, TEXT("Root Control: %s"), *RootControlName);
+
+    // 步骤 1: 从 SkeletalMesh 动态检测所有 Morph Target 名称
+    TArray<FString> MorphTargetNames;
+    if (!GetMorphTargetNames(SkeletalMeshComp, MorphTargetNames)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Failed to get Morph Target "
+                    "names or no Morph Targets found"));
+        return 0;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentMorphTargetUtility] Found %d Morph Targets on "
+                "SkeletalMesh"),
+           MorphTargetNames.Num());
+
+    if (MorphTargetNames.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] No Morph Targets found"));
+        return 0;
+    }
+
+    // 步骤 2: 确保 Root Control 存在
+    if (!EnsureRootControlExists(ControlRigBlueprint, RootControlName)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Failed to ensure Root "
+                    "Control '%s' exists"),
+               *RootControlName);
+        return 0;
+    }
+
+    // 步骤 3: 批量添加 Animation Channels
+    FRigElementKey RootControlKey(*RootControlName, ERigElementType::Control);
+
+    int32 ChannelsAdded = AddAnimationChannels(ControlRigBlueprint,
+                                               RootControlKey, MorphTargetNames);
+
+    // 输出结果
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeMorphTargetChannels Summary =========="));
+    UE_LOG(LogTemp, Warning,
+           TEXT("Successfully created/verified: %d channels"), ChannelsAdded);
+    UE_LOG(LogTemp, Warning, TEXT("Expected total: %d Morph Targets"),
+           MorphTargetNames.Num());
+
+    if (ChannelsAdded == MorphTargetNames.Num()) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("✓ All Morph Target channels initialized successfully"));
+    } else if (ChannelsAdded > 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("⚠ Partially initialized: %d/%d channels"), ChannelsAdded,
+               MorphTargetNames.Num());
+    } else {
+        UE_LOG(LogTemp, Error,
+               TEXT("✗ Failed to initialize any channels"));
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== InitializeMorphTargetChannels Completed =========="));
+
+    // 如果需要，输出通道名称列表
+    if (OutChannelNames) {
+        *OutChannelNames = MorphTargetNames;
+    }
+
+    // 修改 Blueprint Hierarchy 后，必须触发 Blueprint 重编译。
+    // 否则运行时 ControlRig 实例的 Hierarchy 仍然是旧的结构，
+    // Sequencer 的 ControlRig Parameter Section 也不知道新增了哪些 Channel。
+    // 保存、关闭、重新打开 Sequence 后，Section 会尝试用旧数据匹配新 Hierarchy，
+    // 导致 "Array index out of bounds" 崩溃。
+    //
+    // MarkBlueprintAsStructurallyModified 会：
+    //   1. 重编译 ControlRig VM，同步 Blueprint Hierarchy 到所有运行时实例
+    //   2. 触发依赖此 Blueprint 的 Sequencer 轨道重建其 Channel Proxy
+    //
+    // 重要：Blueprint 重编译后，所有基于该 Blueprint 的运行时 ControlRig 实例
+    // 都会被销毁并重建。ControlRigCacheSubsystem 中缓存的指针全部失效。
+    // 同时，Sequencer 发出 MovieSceneStructureItemsChanged 通知后，
+    // 会对所有轨道（包括其他 Actor 如演奏者的 ControlRig 轨道）进行结构重建。
+    // 如果 Anim Outliner 中仍然持有旧的 ControlRig 内部指针（如 FRigElementKey
+    // 对应的 Element 指针），访问时就会崩溃。
+    //
+    // 修复策略：
+    //   1. 清空 Sequencer 选择（防止 Anim Outliner 持有过时引用）
+    //   2. 重编译 Blueprint（使运行时实例同步）
+    //   3. 清除所有 ControlRig 缓存（因为指针已失效）
+    //   4. 通知 Sequencer 结构变化并强制重新评估
+    //   5. 刷新 UI
+    if (ChannelsAdded > 0) {
+        ULevelSequence* LevelSequence = nullptr;
+        TSharedPtr<ISequencer> Sequencer = nullptr;
+        bool bHasSequencer = UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+            LevelSequence, Sequencer);
+
+        // 步骤 1: 在重编译前先清空 Sequencer 选择，
+        // 防止 Anim Outliner 在重编译过程中访问正在被销毁的 ControlRig 元素
+        if (bHasSequencer && Sequencer.IsValid()) {
+            Sequencer->EmptySelection();
+            UE_LOG(LogTemp, Warning,
+                   TEXT("[InstrumentMorphTargetUtility] Cleared Sequencer "
+                        "selection before Blueprint recompilation"));
+        }
+
+        // 步骤 2: 重编译 Blueprint
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(
+            ControlRigBlueprint);
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentMorphTargetUtility] Marked Blueprint as "
+                    "structurally modified to trigger VM recompilation"));
+
+        // 步骤 3: 清除所有 ControlRig 缓存
+        // Blueprint 重编译后，基于该 Blueprint 的运行时 ControlRig 实例已被重建。
+        // 缓存中的旧指针不再有效，必须清除以防止后续操作使用过时的指针。
+        if (GEngine) {
+            UControlRigCacheSubsystem* CacheSubsystem =
+                GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+            if (CacheSubsystem) {
+                CacheSubsystem->ClearAllCaches();
+                UE_LOG(LogTemp, Warning,
+                       TEXT("[InstrumentMorphTargetUtility] Cleared all "
+                            "ControlRig caches after Blueprint recompilation"));
+            }
+        }
+
+        // 步骤 4: 通知 Sequencer 数据结构已变化并强制重新评估
+        // MovieSceneStructureItemsChanged 会触发所有轨道的评估模板重建，
+        // 包括其他 Actor（如演奏者）的 ControlRig 轨道。
+        // ForceEvaluate 确保 Sequencer 完成一次完整评估循环，
+        // 使所有内部状态（包括 Anim Outliner 的树形结构）完全同步。
+        if (bHasSequencer && Sequencer.IsValid() && LevelSequence) {
+            Sequencer->NotifyMovieSceneDataChanged(
+                EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+            Sequencer->ForceEvaluate();
+            UE_LOG(LogTemp, Warning,
+                   TEXT("[InstrumentMorphTargetUtility] Notified Sequencer of "
+                        "structural change and forced re-evaluation"));
+        }
+
+        // 步骤 5: 刷新 Sequencer UI
+        ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+    }
+
+    return ChannelsAdded;
 }

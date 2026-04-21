@@ -563,8 +563,6 @@ FReply SFretDanceModuleOperationsPanel::OnTriggerControlRigReregistration() {
 
     FretDanceActor->TriggerControlRigReregistration(
         TEXT("Manual trigger from UI panel"));
-
-    FretDanceActor->bEnableRealtimeSync = true;
     UE_LOG(LogTemp, Warning,
            TEXT("FretDance: Trigger Control Rig Re-registration operation "
                 "triggered"));

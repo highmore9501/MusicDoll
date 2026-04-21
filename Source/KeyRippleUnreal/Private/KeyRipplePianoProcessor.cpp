@@ -405,10 +405,10 @@ void UKeyRipplePianoProcessor::InitPianoKeyControlRig(
     }
 
     UControlRig* ControlRigInstance =
-        CacheSubsystem->GetControlRig(KeyRippleActor->Piano, LevelSequence);
+        CacheSubsystem->GetControlRig(KeyRippleActor->Piano, LevelSequence, TEXT("piano_key_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(KeyRippleActor->Piano,
-                                               LevelSequence);
+                                               LevelSequence, TEXT("piano_key_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -423,34 +423,29 @@ void UKeyRipplePianoProcessor::InitPianoKeyControlRig(
         return;
     }
 
-    // 步骤 1: 获取所有 Morph Target 名称
-    TArray<FString> MorphTargetNames;
-    if (!GetPianoMorphTargetNames(KeyRippleActor, MorphTargetNames)) {
+    // 获取钢琴的 SkeletalMeshComponent
+    USkeletalMeshComponent* SkeletalMeshComp =
+        KeyRippleActor->Piano->GetSkeletalMeshComponent();
+
+    if (!SkeletalMeshComp) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Morph Target names in "
-                    "InitPianoKeyControlRig"));
+               TEXT("Piano does not have a SkeletalMeshComponent"));
         return;
     }
 
-    // 步骤 2: 确保 Root Control 存在
-    if (!UInstrumentMorphTargetUtility::EnsureRootControlExists(
-            ControlRigBlueprint, TEXT("piano_key_root"))) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to ensure Root Control exists in "
-                    "InitPianoKeyControlRig"));
-        return;
-    }
-
-    // 步骤 3: 在 Root Control 上添加动画通道
-    FRigElementKey ParentKey(TEXT("piano_key_root"), ERigElementType::Control);
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::AddAnimationChannels(
-        ControlRigBlueprint, ParentKey, MorphTargetNames);
+    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+        SkeletalMeshComp,
+        ControlRigBlueprint,
+        TEXT("piano_key_root")
+    );
 
     if (ChannelsAdded == 0) {
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("No animation channels were added (they may already exist)"));
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to initialize morph target channels for Piano"));
+        return;
     }
+
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitPianoKeyControlRig Completed =========="));
 }

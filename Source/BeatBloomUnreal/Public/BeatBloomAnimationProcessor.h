@@ -9,7 +9,7 @@ class ULevelSequence;
 
 /**
  * BeatBloom 动画处理器
- * 负责从 .animation 文件生成人物四肢动画（手/脚/目标控制器）
+ * 负责从 .animation 文件生成人物四肢动画（手/脚/头部控制器）
  *
  * ============================================================
  * 与 FretDance 的差异：
@@ -18,7 +18,7 @@ class ULevelSequence;
  * 1. 动画文件结构不同：
  *    - FretDance: 配置文件指向两个独立的左/右手 JSON
  *    - BeatBloom: 单个 JSON 包含 5 个动画数组
- *      (left_hand, right_hand, left_foot, right_foot, target_animation)
+ *      (left_hand, right_hand, left_foot, right_foot, head_control_animation)
  *
  * 2. 帧数据结构不同：
  *    - FretDance: { "frame": N, "fingerInfos": { "H_L": [...], ... } }
@@ -27,10 +27,8 @@ class ULevelSequence;
  *
  * 3. 控制器集合不同：
  *    - FretDance: 手掌 + 手指（H/HP/H_rotation + I/M/R/P/T/TP）
- *    - BeatBloom: 手掌 + 脚部 + 目标
- *      (H/HP/H_rotation + F/F_rotation + Tar_Body/Chest/Head)
- *
- * 4. 目标控制器仅写入 Z 轴（X/Y 由 Driver 自动计算）
+ *    - BeatBloom: 手掌 + 脚部 + 头部控制器
+ *      (H/HP/H_rotation + F/F_rotation + Head_Control)
  *
  * ============================================================
  * 控制器列表：
@@ -45,10 +43,8 @@ class ULevelSequence;
  *   - F_L / F_R                脚部主控制器（位置）
  *   - F_rotation_L / F_rotation_R  脚部旋转（四元数）
  *
- * 目标控制器：
- *   - Tar_Body                 身体目标（仅 Z 轴位置）
- *   - Tar_Chest                胸部目标（仅 Z 轴位置）
- *   - Tar_Head                 头部目标（仅 Z 轴位置）
+ * 头部控制器：
+ *   - Head_Control             头部控制器（完整 XYZ 位置）
  *
  * ============================================================
  */
@@ -126,18 +122,18 @@ private:
         int32& OutProcessedFrames, int32& OutKeyframesAdded);
 
     /**
-     * 处理目标控制器动画数据
+     * 处理头部控制器动画数据
      *
-     * 遍历 Tar_Body/Tar_Chest/Tar_Head 三个目标控制器，
-     * 每个控制器只写入 Z 轴位置关键帧
+     * 遍历 head_control_animation 数组，提取 head_control_position -> Head_Control
+     * JSON 结构：{ "frame": N, "head_control_position": [x, y, z] }
      *
-     * @param TargetAnimationObject target_animation JSON 对象
+     * @param AnimationArray 头部控制器帧数据 JSON 数组
      * @param ControlKeyframeData 输出的控制器关键帧数据
      * @param OutProcessedFrames 已处理帧计数
      * @param OutKeyframesAdded 已添加关键帧计数
      */
-    static void ProcessTargetAnimation(
-        TSharedPtr<FJsonObject> TargetAnimationObject,
+    static void ProcessHeadControlAnimation(
+        const TArray<TSharedPtr<FJsonValue>>& AnimationArray,
         TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
         int32& OutProcessedFrames, int32& OutKeyframesAdded);
 

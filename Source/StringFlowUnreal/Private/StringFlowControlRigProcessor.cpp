@@ -14,774 +14,12 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "LevelEditor.h"
 #include "LevelEditorSequencerIntegration.h"
+#include "LevelSequenceEditorBlueprintLibrary.h"
 #include "MovieSceneSequence.h"
 #include "Rigs/RigHierarchyController.h"
+#include "StringFlowControlRigHelper.h"
 
 #define LOCTEXT_NAMESPACE "StringFlowControlRigProcessor"
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Local helper structure - contains all static helper functions
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-struct FStringFlowControlRigHelpers {
-    // ========================================
-    // Validation methods
-    // ========================================
-
-    static bool ValidateStringFlowActorBasic(AStringFlowUnreal* StringFlowActor,
-                                             const FString& FunctionName) {
-        if (!StringFlowActor) {
-            UE_LOG(LogTemp, Error, TEXT("%s: StringFlowActor is null"),
-                   *FunctionName);
-            return false;
-        }
-        return true;
-    }
-
-    static bool ValidateStringFlowActor(AStringFlowUnreal* StringFlowActor,
-                                        const FString& FunctionName) {
-        if (!StringFlowActor) {
-            UE_LOG(LogTemp, Error, TEXT("%s: StringFlowActor is null"),
-                   *FunctionName);
-            return false;
-        }
-        if (!StringFlowActor->StringInstrument) {
-            UE_LOG(
-                LogTemp, Error,
-                TEXT("%s: StringInstrument is not assigned in StringFlowActor"),
-                *FunctionName);
-            return false;
-        }
-        return true;
-    }
-
-    static bool StrictControlExistenceCheck(URigHierarchy* RigHierarchy,
-                                            const FString& ControllerName) {
-        if (!RigHierarchy) {
-            return false;
-        }
-
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-
-        if (!RigHierarchy->Contains(ElementKey)) {
-            return false;
-        }
-
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ElementKey);
-        if (!ControlElement) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Control '%s' exists in hierarchy but element is null"),
-                   *ControllerName);
-            return false;
-        }
-
-        return true;
-    }
-
-    // ========================================
-    // Controller retrieval
-    // ========================================
-
-    static bool GetControlRigInstanceAndBlueprint(
-        AStringFlowUnreal* StringFlowActor, UControlRig*& OutControlRigInstance,
-        UControlRigBlueprint*& OutControlRigBlueprint) {
-        // 直接使用StringFlowActor获取演奏者的ControlRig缓存
-        OutControlRigInstance =
-            StringFlowActor->GetCachedControlRig(TEXT("Performer"));
-        OutControlRigBlueprint =
-            StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-
-        // 不再提供后备查询，如果缓存未命中则直接失败
-        if (!OutControlRigInstance || !OutControlRigBlueprint) {
-            UE_LOG(LogTemp, Error,
-                   TEXT("StringFlowControlRigHelpers: Failed to get ControlRig "
-                        "for Performer - cache miss"));
-            return false;
-        }
-
-        return OutControlRigInstance && OutControlRigBlueprint;
-    }
-
-    // ========================================
-    // Controller name collection
-    // ========================================
-
-    static TSet<FString> GetAllControllerNames(
-        AStringFlowUnreal* StringFlowActor) {
-        TSet<FString> AllControllerNames;
-
-        if (!StringFlowActor) {
-            return AllControllerNames;
-        }
-
-        for (const auto& Pair : StringFlowActor->LeftFingerControllers) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        for (const auto& Pair : StringFlowActor->RightFingerControllers) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        for (const auto& Pair : StringFlowActor->LeftHandControllers) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        for (const auto& Pair : StringFlowActor->RightHandControllers) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        for (const auto& Pair : StringFlowActor->OtherControllers) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        for (const auto& Pair : StringFlowActor->GuideLines) {
-            AllControllerNames.Add(Pair.Value);
-        }
-
-        return AllControllerNames;
-    }
-
-    // ========================================
-    // Control cleanup
-    // ========================================
-
-    static void CleanupDuplicateControls(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        const TSet<FString>& ExpectedControllerNames) {
-        if (!RigHierarchy) {
-            return;
-        }
-
-        FControlRigCreationUtility::CleanupDuplicateControls(
-            RigHierarchy, ExpectedControllerNames, true);
-    }
-
-    // ========================================
-    // Recorder initialization
-    // ========================================
-
-    static void InitializeRecorderTransforms(
-        AStringFlowUnreal* StringFlowActor) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        // 如果已经初始化过，跳过重复初始化
-        if (StringFlowActor->IsInitialized()) {
-            UE_LOG(LogTemp, Verbose,
-                   TEXT("InitializeRecorderTransforms: Already initialized, "
-                        "skipping"));
-            return;
-        }
-
-        StringFlowActor->RecorderTransforms.Empty();
-
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT(
-                "Initializing all recorder keys in RecorderTransforms map from "
-                "existing lists..."));
-
-        int32 KeyCount = 0;
-        FStringFlowRecorderTransform DefaultTransform;
-        DefaultTransform.Location = FVector::ZeroVector;
-        DefaultTransform.Rotation = FQuat::Identity;
-
-        const FStringFlowStringArray* LeftFingerArray =
-            StringFlowActor->LeftFingerRecorders.Find(
-                TEXT("left_finger_recorders"));
-        if (LeftFingerArray) {
-            for (int32 i = 0; i < LeftFingerArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(LeftFingerArray->Get(i),
-                                                        DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* LeftHandPositionArray =
-            StringFlowActor->LeftHandPositionRecorders.Find(
-                TEXT("left_hand_position_recorders"));
-        if (LeftHandPositionArray) {
-            for (int32 i = 0; i < LeftHandPositionArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(
-                    LeftHandPositionArray->Get(i), DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* LeftThumbArray =
-            StringFlowActor->LeftThumbRecorders.Find(
-                TEXT("left_thumb_position_recorders"));
-        if (LeftThumbArray) {
-            for (int32 i = 0; i < LeftThumbArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(LeftThumbArray->Get(i),
-                                                        DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* RightFingerArray =
-            StringFlowActor->RightFingerRecorders.Find(
-                TEXT("right_finger_recorders"));
-        if (RightFingerArray) {
-            for (int32 i = 0; i < RightFingerArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(
-                    RightFingerArray->Get(i), DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* RightHandPositionArray =
-            StringFlowActor->RightHandPositionRecorders.Find(
-                TEXT("right_hand_position_recorders"));
-        if (RightHandPositionArray) {
-            for (int32 i = 0; i < RightHandPositionArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(
-                    RightHandPositionArray->Get(i), DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* RightThumbArray =
-            StringFlowActor->RightThumbRecorders.Find(
-                TEXT("right_thumb_position_recorders"));
-        if (RightThumbArray) {
-            for (int32 i = 0; i < RightThumbArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(RightThumbArray->Get(i),
-                                                        DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        const FStringFlowStringArray* OtherArray =
-            StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
-        if (OtherArray) {
-            for (int32 i = 0; i < OtherArray->Num(); ++i) {
-                StringFlowActor->RecorderTransforms.Add(OtherArray->Get(i),
-                                                        DefaultTransform);
-                KeyCount++;
-            }
-        }
-
-        for (const auto& GuidePair : StringFlowActor->GuideLines) {
-            StringFlowActor->RecorderTransforms.Add(GuidePair.Value,
-                                                    DefaultTransform);
-            KeyCount++;
-        }
-
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("Initialized %d recorder keys in RecorderTransforms map from "
-                 "existing lists"),
-            KeyCount);
-    }
-
-    // ========================================
-    // State-dependent recorder name generation for stp and bow
-    // ========================================
-
-    static FString GenerateStateDependentSTPRecorderName(
-        AStringFlowUnreal* StringFlowActor) {
-        if (!StringFlowActor) {
-            return FString();
-        }
-
-        int32 StringIndex = (int32)StringFlowActor->RightHandStringIndex;
-        FString RightPositionStr =
-            StringFlowActor->GetRightHandPositionTypeString(
-                StringFlowActor->RightHandPositionType);
-        return FString::Printf(TEXT("stp_%d_%s"), StringIndex,
-                               *RightPositionStr);
-    }
-
-    static FString GenerateStateDependentBowRecorderName(
-        AStringFlowUnreal* StringFlowActor) {
-        if (!StringFlowActor) {
-            return FString();
-        }
-
-        int32 StringIndex = (int32)StringFlowActor->RightHandStringIndex;
-        FString RightPositionStr =
-            StringFlowActor->GetRightHandPositionTypeString(
-                StringFlowActor->RightHandPositionType);
-        return FString::Printf(TEXT("bow_position_s%d_%s"), StringIndex,
-                               *RightPositionStr);
-    }
-
-    // ========================================
-    // Single controller save/load methods
-    // ========================================
-
-    static void SaveSingleController(AStringFlowUnreal* StringFlowActor,
-                                     URigHierarchy* RigHierarchy,
-                                     const FString& ControlName,
-                                     const FString& RecorderName,
-                                     int32& SavedCount, int32& FailedCount) {
-        if (!StringFlowActor || !RigHierarchy) {
-            FailedCount++;
-            return;
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("  Processing: %s -> %s"), *ControlName,
-               *RecorderName);
-
-        FStringFlowRecorderTransform* ExistingTransform =
-            StringFlowActor->RecorderTransforms.Find(RecorderName);
-        if (!ExistingTransform) {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("    ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms"),
-                *RecorderName);
-            FailedCount++;
-            return;
-        }
-
-        FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ControlKey)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("    ⚠ Control '%s' NOT FOUND in RigHierarchy"),
-                   *ControlName);
-            FailedCount++;
-            return;
-        }
-
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ControlKey);
-        if (!ControlElement) {
-            UE_LOG(LogTemp, Warning, TEXT("    ⚠ ControlElement '%s' is NULL"),
-                   *ControlName);
-            FailedCount++;
-            return;
-        }
-
-        FRigControlValue CurrentValue = RigHierarchy->GetControlValue(
-            ControlElement, ERigControlValueType::Current);
-        FTransform CurrentTransform =
-            CurrentValue.GetAsTransform(ControlElement->Settings.ControlType,
-                                        ControlElement->Settings.PrimaryAxis);
-
-        FStringFlowRecorderTransform RecorderTransform;
-        RecorderTransform.FromTransform(CurrentTransform);
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("    ✓ Saved: %s -> Loc(%.2f, %.2f, %.2f)"), *RecorderName,
-               RecorderTransform.Location.X, RecorderTransform.Location.Y,
-               RecorderTransform.Location.Z);
-
-        StringFlowActor->RecorderTransforms[RecorderName] = RecorderTransform;
-        SavedCount++;
-    }
-
-    static void LoadSingleController(AStringFlowUnreal* StringFlowActor,
-                                     URigHierarchy* RigHierarchy,
-                                     const FString& ControlName,
-                                     const FString& RecorderName,
-                                     int32& LoadedCount, int32& FailedCount) {
-        if (!StringFlowActor || !RigHierarchy) {
-            FailedCount++;
-            return;
-        }
-
-        UE_LOG(LogTemp, Warning, TEXT("  Processing: %s <- %s"), *ControlName,
-               *RecorderName);
-
-        const FStringFlowRecorderTransform* FoundTransform =
-            StringFlowActor->RecorderTransforms.Find(RecorderName);
-        if (!FoundTransform) {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("    ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms"),
-                *RecorderName);
-            FailedCount++;
-            return;
-        }
-
-        FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ControlKey)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("    ⚠ Control '%s' NOT FOUND in RigHierarchy"),
-                   *ControlName);
-            FailedCount++;
-            return;
-        }
-
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ControlKey);
-        if (!ControlElement) {
-            UE_LOG(LogTemp, Warning, TEXT("    ⚠ ControlElement '%s' is NULL"),
-                   *ControlName);
-            FailedCount++;
-            return;
-        }
-
-        FTransform NewTransform = FoundTransform->ToTransform();
-        FRigControlValue NewValue;
-        NewValue.SetFromTransform(NewTransform,
-                                  ControlElement->Settings.ControlType,
-                                  ControlElement->Settings.PrimaryAxis);
-
-        RigHierarchy->SetControlValue(ControlElement, NewValue,
-                                      ERigControlValueType::Current);
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("    ✓ Loaded: %s <- Loc(%.2f, %.2f, %.2f)"), *RecorderName,
-               FoundTransform->Location.X, FoundTransform->Location.Y,
-               FoundTransform->Location.Z);
-
-        LoadedCount++;
-    }
-
-    // ========================================
-    // Batch controller processing methods
-    // ========================================
-
-    static void SaveStateDependentFingerControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        const TMap<FString, FString>& Controllers, int32 StringIndex,
-        int32 FretIndex, EStringFlowHandType HandType, int32& SavedCount,
-        int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        FString PositionStr =
-            (HandType == EStringFlowHandType::LEFT)
-                ? StringFlowActor->GetLeftHandPositionTypeString(
-                      StringFlowActor->LeftHandPositionType)
-                : StringFlowActor->GetRightHandPositionTypeString(
-                      StringFlowActor->RightHandPositionType);
-
-        for (const auto& ControllerPair : Controllers) {
-            int32 FingerNumber = FCString::Atoi(*ControllerPair.Key);
-            FString ControlName = ControllerPair.Value;
-
-            FString RecorderName;
-            if (HandType == EStringFlowHandType::LEFT) {
-                RecorderName = StringFlowActor->GetLeftFingerRecorderName(
-                    StringIndex, FretIndex, FingerNumber, PositionStr);
-            } else {
-                // 右手不包含品格信息，使用专用方法
-                RecorderName = StringFlowActor->GetRightFingerRecorderName(
-                    StringIndex, FingerNumber, PositionStr);
-            }
-
-            SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, SavedCount, FailedCount);
-        }
-    }
-
-    static void LoadStateDependentFingerControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        const TMap<FString, FString>& Controllers, int32 StringIndex,
-        int32 FretIndex, EStringFlowHandType HandType, int32& LoadedCount,
-        int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        FString PositionStr =
-            (HandType == EStringFlowHandType::LEFT)
-                ? StringFlowActor->GetLeftHandPositionTypeString(
-                      StringFlowActor->LeftHandPositionType)
-                : StringFlowActor->GetRightHandPositionTypeString(
-                      StringFlowActor->RightHandPositionType);
-
-        for (const auto& ControllerPair : Controllers) {
-            int32 FingerNumber = FCString::Atoi(*ControllerPair.Key);
-            FString ControlName = ControllerPair.Value;
-
-            FString RecorderName;
-            if (HandType == EStringFlowHandType::LEFT) {
-                RecorderName = StringFlowActor->GetLeftFingerRecorderName(
-                    StringIndex, FretIndex, FingerNumber, PositionStr);
-            } else {
-                // 右手不包含品格信息，使用专用方法
-                RecorderName = StringFlowActor->GetRightFingerRecorderName(
-                    StringIndex, FingerNumber, PositionStr);
-            }
-
-            LoadSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, LoadedCount, FailedCount);
-        }
-    }
-
-    static void SaveStateDependentHandControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        const TMap<FString, FString>& Controllers, int32 StringIndex,
-        int32 FretIndex, EStringFlowHandType HandType, int32& SavedCount,
-        int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        FString PositionStr =
-            (HandType == EStringFlowHandType::LEFT)
-                ? StringFlowActor->GetLeftHandPositionTypeString(
-                      StringFlowActor->LeftHandPositionType)
-                : StringFlowActor->GetRightHandPositionTypeString(
-                      StringFlowActor->RightHandPositionType);
-
-        for (const auto& ControllerPair : Controllers) {
-            FString ControlName = ControllerPair.Value;
-            FString HandControllerType = ControllerPair.Key;
-
-            FString RecorderName;
-            if (HandType == EStringFlowHandType::LEFT) {
-                RecorderName = StringFlowActor->GetLeftHandRecorderName(
-                    StringIndex, FretIndex, HandControllerType, PositionStr);
-            } else {
-                // 右手不包含品格信息，使用专用方法
-                RecorderName = StringFlowActor->GetRightHandRecorderName(
-                    StringIndex, HandControllerType, PositionStr);
-            }
-
-            SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, SavedCount, FailedCount);
-        }
-    }
-
-    static void LoadStateDependentHandControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        const TMap<FString, FString>& Controllers, int32 StringIndex,
-        int32 FretIndex, EStringFlowHandType HandType, int32& LoadedCount,
-        int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        FString PositionStr =
-            (HandType == EStringFlowHandType::LEFT)
-                ? StringFlowActor->GetLeftHandPositionTypeString(
-                      StringFlowActor->LeftHandPositionType)
-                : StringFlowActor->GetRightHandPositionTypeString(
-                      StringFlowActor->RightHandPositionType);
-
-        for (const auto& ControllerPair : Controllers) {
-            FString ControlName = ControllerPair.Value;
-            FString HandControllerType = ControllerPair.Key;
-
-            FString RecorderName;
-            if (HandType == EStringFlowHandType::LEFT) {
-                RecorderName = StringFlowActor->GetLeftHandRecorderName(
-                    StringIndex, FretIndex, HandControllerType, PositionStr);
-            } else {
-                // 右手不包含品格信息，使用专用方法
-                RecorderName = StringFlowActor->GetRightHandRecorderName(
-                    StringIndex, HandControllerType, PositionStr);
-            }
-
-            LoadSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, LoadedCount, FailedCount);
-        }
-    }
-
-    // ========================================
-    // State-dependent other controllers (stp, bow_position)
-    // ========================================
-
-    static void SaveStateDependentOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& SavedCount, int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("Processing state-dependent other controllers (stp, "
-                    "bow_position)..."));
-
-        // 保存 String_Touch_Point 到当前弦对应的 stp 记录器
-        FString STPRecorderName =
-            FStringFlowControlRigHelpers::GenerateStateDependentSTPRecorderName(
-                StringFlowActor);
-
-        SaveSingleController(StringFlowActor, RigHierarchy,
-                             TEXT("String_Touch_Point"), STPRecorderName,
-                             SavedCount, FailedCount);
-
-        // 保存 Bow_Controller 到当前弦对应的 bow_position 记录器
-        FString BowRecorderName =
-            FStringFlowControlRigHelpers::GenerateStateDependentBowRecorderName(
-                StringFlowActor);
-
-        SaveSingleController(StringFlowActor, RigHierarchy,
-                             TEXT("Bow_Controller"), BowRecorderName,
-                             SavedCount, FailedCount);
-    }
-
-    static void LoadStateDependentOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& LoadedCount, int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("Processing state-dependent other controllers (stp, "
-                    "bow_position)..."));
-
-        // 从当前弦对应的 stp 记录器加载到 String_Touch_Point
-        FString STPRecorderName =
-            FStringFlowControlRigHelpers::GenerateStateDependentSTPRecorderName(
-                StringFlowActor);
-
-        LoadSingleController(StringFlowActor, RigHierarchy,
-                             TEXT("String_Touch_Point"), STPRecorderName,
-                             LoadedCount, FailedCount);
-
-        // 从当前弦对应的 bow_position 记录器加载到 Bow_Controller
-        FString BowRecorderName =
-            FStringFlowControlRigHelpers::GenerateStateDependentBowRecorderName(
-                StringFlowActor);
-
-        LoadSingleController(StringFlowActor, RigHierarchy,
-                             TEXT("Bow_Controller"), BowRecorderName,
-                             LoadedCount, FailedCount);
-    }
-
-    // ========================================
-    // Stateless other controllers (mid_s*, f9_s*, position_s*_f*, etc.)
-    // ========================================
-
-    static void SaveStatelessOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& SavedCount, int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("Processing stateless other controllers (position_s*_f*)..."));
-
-        // 从 OtherRecorders 中提取所有记录器，除了 stp、bow_position、mid_s 和
-        // f9_s
-        const FStringFlowStringArray* OtherArray =
-            StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
-        if (!OtherArray) {
-            return;
-        }
-
-        for (int32 i = 0; i < OtherArray->Num(); ++i) {
-            FString RecorderName = OtherArray->Get(i);
-
-            // 跳过状态相关的 stp 和 bow_position 记录器
-            if (RecorderName.StartsWith(TEXT("stp_")) ||
-                RecorderName.StartsWith(TEXT("bow_position_"))) {
-                continue;
-            }
-
-            // 跳过 mid_s 和 f9_s（蓝图生成的参考点，不需要保存）
-            if (RecorderName.StartsWith(TEXT("mid_s")) ||
-                RecorderName.StartsWith(TEXT("f9_s"))) {
-                continue;
-            }
-
-            // 从记录器名称提取控制器名称
-            FString ControlName = RecorderName;
-
-            // 使用 SaveSingleController 来正确地从 RigHierarchy 读取数据并保存
-            SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, SavedCount, FailedCount);
-        }
-
-        // 保存 GuideLines 控制器
-        for (const auto& GuidePair : StringFlowActor->GuideLines) {
-            FString ControlName = GuidePair.Value;
-            FString RecorderName = GuidePair.Value;
-
-            SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                                 RecorderName, SavedCount, FailedCount);
-        }
-    }
-
-    static void LoadStatelessOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& LoadedCount, int32& FailedCount) {
-        if (!StringFlowActor) {
-            return;
-        }
-
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("Processing stateless other controllers (position_s*_f*)..."));
-
-        // 从 OtherRecorders 中提取所有记录器，除了 stp、bow_position、mid_s 和
-        // f9_s
-        const FStringFlowStringArray* OtherArray =
-            StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
-        if (!OtherArray) {
-            return;
-        }
-
-        for (int32 i = 0; i < OtherArray->Num(); ++i) {
-            FString RecorderName = OtherArray->Get(i);
-
-            // 跳过状态相关的 stp 和 bow_position 记录器
-            if (RecorderName.StartsWith(TEXT("stp_")) ||
-                RecorderName.StartsWith(TEXT("bow_position_"))) {
-                continue;
-            }
-
-            // 跳过 mid_s 和 f9_s（蓝图生成的参考点，不需要加载）
-            if (RecorderName.StartsWith(TEXT("mid_s")) ||
-                RecorderName.StartsWith(TEXT("f9_s"))) {
-                continue;
-            }
-
-            // 检查记录器是否存在于 RecorderTransforms 中
-            const FStringFlowRecorderTransform* FoundTransform =
-                StringFlowActor->RecorderTransforms.Find(RecorderName);
-            if (!FoundTransform) {
-                UE_LOG(
-                    LogTemp, Warning,
-                    TEXT(
-                        "  ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms"),
-                    *RecorderName);
-                FailedCount++;
-                continue;
-            }
-
-            // 从记录器名称提取控制器名称
-            FString ControlName = RecorderName;
-
-            FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-            if (!RigHierarchy->Contains(ControlKey)) {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("    ⚠ Control '%s' NOT FOUND in RigHierarchy"),
-                       *ControlName);
-                FailedCount++;
-                continue;
-            }
-
-            FRigControlElement* ControlElement =
-                RigHierarchy->Find<FRigControlElement>(ControlKey);
-            if (!ControlElement) {
-                UE_LOG(LogTemp, Warning,
-                       TEXT("    ⚠ ControlElement '%s' is NULL"), *ControlName);
-                FailedCount++;
-                continue;
-            }
-
-            FTransform NewTransform = FoundTransform->ToTransform();
-            FRigControlValue NewValue;
-            NewValue.SetFromTransform(NewTransform,
-                                      ControlElement->Settings.ControlType,
-                                      ControlElement->Settings.PrimaryAxis);
-
-            RigHierarchy->SetControlValue(ControlElement, NewValue,
-                                          ERigControlValueType::Current);
-
-            UE_LOG(LogTemp, Warning,
-                   TEXT("    ✓ Loaded: %s <- Loc(%.2f, %.2f, %.2f)"),
-                   *RecorderName, FoundTransform->Location.X,
-                   FoundTransform->Location.Y, FoundTransform->Location.Z);
-
-            LoadedCount++;
-        }
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // UStringFlowControlRigProcessor implementations
@@ -844,9 +82,9 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
 
     // 使用Subsystem获取ControlRig
     OutControlRigInstance =
-        CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence);
+        CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence, TEXT("violin_root"));
     OutControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(
-        StringInstrumentActor, CurrentSequence);
+        StringInstrumentActor, CurrentSequence, TEXT("violin_root"));
 
     // 如果获取失败，Subsystem会自动处理注册和更新逻辑，我们只需记录日志
     if (!OutControlRigInstance || !OutControlRigBlueprint) {
@@ -862,18 +100,20 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
 
 void UStringFlowControlRigProcessor::CheckObjectsStatus(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActor(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActor(
             StringFlowActor, TEXT("CheckObjectsStatus"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         return;
     }
 
@@ -908,10 +148,6 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
         ExpectedObjects.Add(Pair.Value);
     }
 
-    for (const auto& Pair : StringFlowActor->OtherControllers) {
-        ExpectedObjects.Add(Pair.Value);
-    }
-
     for (const auto& Pair : StringFlowActor->GuideLines) {
         ExpectedObjects.Add(Pair.Value);
     }
@@ -919,6 +155,7 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
     // 添加特殊的实际控制器
     ExpectedObjects.Add(TEXT("String_Touch_Point"));
     ExpectedObjects.Add(TEXT("Bow_Controller"));
+    ExpectedObjects.Add(TEXT("Right_Hand_Tar")); 
 
     // 添加参考点控制器（这些是真实的控制器，不是记录器）
     // 注：mid_s* 和 f9_s* 由蓝图自动生成，不需要在这里验证
@@ -1001,7 +238,7 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
 
 void UStringFlowControlRigProcessor::SetupAllObjects(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActor(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActor(
             StringFlowActor, TEXT("SetupAllObjects"))) {
         return;
     }
@@ -1020,13 +257,15 @@ void UStringFlowControlRigProcessor::SetupAllObjects(
         }
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         return;
     }
 
@@ -1038,25 +277,27 @@ void UStringFlowControlRigProcessor::SetupAllObjects(
             ControlRigBlueprint, StringFlowActor);
     }
 
-    FStringFlowControlRigHelpers::InitializeRecorderTransforms(StringFlowActor);
+    FStringFlowControlRigHelper::InitializeRecorderTransforms(StringFlowActor);
 
     UE_LOG(LogTemp, Warning, TEXT("All StringFlow objects have been set up"));
 }
 
 void UStringFlowControlRigProcessor::SetupControllers(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActor(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActor(
             StringFlowActor, TEXT("SetupControllers"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         return;
     }
 
@@ -1071,9 +312,9 @@ void UStringFlowControlRigProcessor::SetupControllers(
            TEXT("========== SetupControllers Started =========="));
 
     TSet<FString> AllControllerNames =
-        FStringFlowControlRigHelpers::GetAllControllerNames(StringFlowActor);
-    FStringFlowControlRigHelpers::CleanupDuplicateControls(
-        StringFlowActor, RigHierarchy, AllControllerNames);
+        FStringFlowControlRigHelper::GetAllControllerNames(StringFlowActor);
+    FControlRigCreationUtility::CleanupDuplicateControls(
+        RigHierarchy, AllControllerNames, true);
 
     // 使用新的 CreateControl 接口
     if (!FControlRigCreationUtility::CreateControl(
@@ -1091,8 +332,8 @@ void UStringFlowControlRigProcessor::SetupControllers(
     TArray<FString> SortedControllerNames = AllControllerNames.Array();
 
     for (const FString& ControllerName : SortedControllerNames) {
-        if (FStringFlowControlRigHelpers::StrictControlExistenceCheck(
-                RigHierarchy, ControllerName)) {
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        if (RigHierarchy->Contains(ElementKey)) {
             UE_LOG(LogTemp, Warning, TEXT("✓ Controller '%s' already exists"),
                    *ControllerName);
             continue;
@@ -1105,8 +346,8 @@ void UStringFlowControlRigProcessor::SetupControllers(
     UE_LOG(LogTemp, Warning, TEXT("Creating special controllers..."));
 
     // 创建 String_Touch_Point 控制器
-    if (!FStringFlowControlRigHelpers::StrictControlExistenceCheck(
-            RigHierarchy, TEXT("String_Touch_Point"))) {
+    FRigElementKey STPElementKey(TEXT("String_Touch_Point"), ERigElementType::Control);
+    if (!RigHierarchy->Contains(STPElementKey)) {
         FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
                                                   TEXT("String_Touch_Point"),
                                                   TEXT("controller_root"));
@@ -1116,14 +357,46 @@ void UStringFlowControlRigProcessor::SetupControllers(
     }
 
     // 创建 Bow_Controller 控制器
-    if (!FStringFlowControlRigHelpers::StrictControlExistenceCheck(
-            RigHierarchy, TEXT("Bow_Controller"))) {
+    FRigElementKey BowElementKey(TEXT("Bow_Controller"), ERigElementType::Control);
+    if (!RigHierarchy->Contains(BowElementKey)) {
         FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
                                                   TEXT("Bow_Controller"),
                                                   TEXT("controller_root"));
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("✓ Controller 'Bow_Controller' already exists"));
+    }
+
+    // 创建 Right_Hand_Tar 控制器（作为 Bow_Controller 的子级）
+    FRigElementKey RHTElementKey(TEXT("Right_Hand_Tar"), ERigElementType::Control);
+    if (!RigHierarchy->Contains(RHTElementKey)) {
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  TEXT("Right_Hand_Tar"),
+                                                  TEXT("Bow_Controller"));
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("✓ Controller 'Right_Hand_Tar' already exists"));
+    }
+
+    // 设置 TP 控制器为 H 的子级
+    UE_LOG(LogTemp, Warning, TEXT("Setting TP controllers as children of H controllers..."));
+    
+    // 左手 TP_L -> H_L
+    FRigElementKey TPLKey(TEXT("TP_L"), ERigElementType::Control);
+    if (RigHierarchy->Contains(TPLKey)) {
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  TEXT("TP_L"),
+                                                  TEXT("H_L"));
+        UE_LOG(LogTemp, Warning, TEXT("✓ Set TP_L as child of H_L"));
+    }
+    
+    // 右手 TP_R -> H_R
+    FRigElementKey TPRKey(TEXT("TP_R"), ERigElementType::Control);
+    if (RigHierarchy->Contains(TPRKey)) {
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  TEXT("TP_R"),
+                                                  TEXT("H_R"));
+        UE_LOG(LogTemp, Warning, TEXT("✓ Set TP_R as child of H_R"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Creating pole controls for fingers..."));
@@ -1180,18 +453,20 @@ void UStringFlowControlRigProcessor::SetupControllers(
 
 void UStringFlowControlRigProcessor::SaveState(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActorBasic(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActorBasic(
             StringFlowActor, TEXT("SaveState"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         return;
     }
 
@@ -1254,35 +529,35 @@ void UStringFlowControlRigProcessor::SaveState(
            *LeftPositionStr, *RightPositionStr);
 
     // 保存左手手指控制器
-    FStringFlowControlRigHelpers::SaveStateDependentFingerControllers(
+    FStringFlowControlRigHelper::SaveStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftFingerControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT, SavedCount,
         FailedCount);
 
     // 保存右手手指控制器
-    FStringFlowControlRigHelpers::SaveStateDependentFingerControllers(
+    FStringFlowControlRigHelper::SaveStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightFingerControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::RIGHT,
         SavedCount, FailedCount);
 
     // 保存左手掌控制器
-    FStringFlowControlRigHelpers::SaveStateDependentHandControllers(
+    FStringFlowControlRigHelper::SaveStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftHandControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT, SavedCount,
         FailedCount);
 
     // 保存右手掌控制器
-    FStringFlowControlRigHelpers::SaveStateDependentHandControllers(
+    FStringFlowControlRigHelper::SaveStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightHandControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::RIGHT,
         SavedCount, FailedCount);
 
     // 保存状态相关的其他控制器 (stp, bow_position)
-    FStringFlowControlRigHelpers::SaveStateDependentOtherControllers(
+    FStringFlowControlRigHelper::SaveStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelpers::SaveStatelessOtherControllers(
+    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     UE_LOG(LogTemp, Warning,
@@ -1293,18 +568,20 @@ void UStringFlowControlRigProcessor::SaveState(
 
 void UStringFlowControlRigProcessor::SaveLeft(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActorBasic(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActorBasic(
             StringFlowActor, TEXT("SaveLeft"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         // 尝试重新注册 ControlRig
         UE_LOG(LogTemp, Warning,
                TEXT("SaveLeft: Attempting to re-register ControlRig..."));
@@ -1312,8 +589,12 @@ void UStringFlowControlRigProcessor::SaveLeft(
             TEXT("ControlRig not found during SaveLeft"));
         
         // 重新尝试获取 ControlRig
-        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+        ControlRigInstance =
+            StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+        ControlRigBlueprint =
+            StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+        
+        if (!ControlRigInstance || !ControlRigBlueprint) {
             UE_LOG(LogTemp, Error,
                    TEXT("Still failed to get ControlRig after re-registration"));
             return;
@@ -1372,19 +653,19 @@ void UStringFlowControlRigProcessor::SaveLeft(
            *LeftPositionStr);
 
     // 保存左手手指控制器
-    FStringFlowControlRigHelpers::SaveStateDependentFingerControllers(
+    FStringFlowControlRigHelper::SaveStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftFingerControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT, SavedCount,
         FailedCount);
 
     // 保存左手掌控制器
-    FStringFlowControlRigHelpers::SaveStateDependentHandControllers(
+    FStringFlowControlRigHelper::SaveStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftHandControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT, SavedCount,
         FailedCount);
 
     // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelpers::SaveStatelessOtherControllers(
+    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     UE_LOG(LogTemp, Warning,
@@ -1404,18 +685,20 @@ void UStringFlowControlRigProcessor::SaveLeft(
 
 void UStringFlowControlRigProcessor::SaveRight(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActorBasic(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActorBasic(
             StringFlowActor, TEXT("SaveRight"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         // 尝试重新注册 ControlRig
         UE_LOG(LogTemp, Warning,
                TEXT("SaveRight: Attempting to re-register ControlRig..."));
@@ -1423,8 +706,12 @@ void UStringFlowControlRigProcessor::SaveRight(
             TEXT("ControlRig not found during SaveRight"));
         
         // 重新尝试获取 ControlRig
-        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+        ControlRigInstance =
+            StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+        ControlRigBlueprint =
+            StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+        
+        if (!ControlRigInstance || !ControlRigBlueprint) {
             UE_LOG(LogTemp, Error,
                    TEXT("Still failed to get ControlRig after re-registration"));
             return;
@@ -1470,23 +757,23 @@ void UStringFlowControlRigProcessor::SaveRight(
            *RightPositionStr);
 
     // 保存右手手指控制器
-    FStringFlowControlRigHelpers::SaveStateDependentFingerControllers(
+    FStringFlowControlRigHelper::SaveStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightFingerControllers,
         CurrentStringNum, 0, EStringFlowHandType::RIGHT, SavedCount,
         FailedCount);
 
     // 保存右手掌控制器
-    FStringFlowControlRigHelpers::SaveStateDependentHandControllers(
+    FStringFlowControlRigHelper::SaveStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightHandControllers,
         CurrentStringNum, 0, EStringFlowHandType::RIGHT, SavedCount,
         FailedCount);
 
     // 保存状态相关的其他控制器 (stp, bow_position)
-    FStringFlowControlRigHelpers::SaveStateDependentOtherControllers(
+    FStringFlowControlRigHelper::SaveStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelpers::SaveStatelessOtherControllers(
+    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
     UE_LOG(LogTemp, Warning,
@@ -1506,18 +793,20 @@ void UStringFlowControlRigProcessor::SaveRight(
 
 void UStringFlowControlRigProcessor::LoadState(
     AStringFlowUnreal* StringFlowActor) {
-    if (!FStringFlowControlRigHelpers::ValidateStringFlowActorBasic(
+    if (!FStringFlowControlRigHelper::ValidateStringFlowActorBasic(
             StringFlowActor, TEXT("LoadState"))) {
         return;
     }
 
-    UControlRig* ControlRigInstance = nullptr;
-    UControlRigBlueprint* ControlRigBlueprint = nullptr;
+    UControlRig* ControlRigInstance =
+        StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRigBlueprint* ControlRigBlueprint =
+        StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
 
-    if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-            StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+    if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to get Control Rig Instance or Blueprint"));
+               TEXT("Failed to get Control Rig Instance or Blueprint from "
+                    "StringFlowActor"));
         // 尝试重新注册 ControlRig
         UE_LOG(LogTemp, Warning,
                TEXT("LoadState: Attempting to re-register ControlRig..."));
@@ -1525,8 +814,12 @@ void UStringFlowControlRigProcessor::LoadState(
             TEXT("ControlRig not found during LoadState"));
         
         // 重新尝试获取 ControlRig
-        if (!FStringFlowControlRigHelpers::GetControlRigInstanceAndBlueprint(
-                StringFlowActor, ControlRigInstance, ControlRigBlueprint)) {
+        ControlRigInstance =
+            StringFlowActor->GetCachedControlRig(TEXT("Performer"));
+        ControlRigBlueprint =
+            StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
+        
+        if (!ControlRigInstance || !ControlRigBlueprint) {
             UE_LOG(LogTemp, Error,
                    TEXT("Still failed to get ControlRig after re-registration"));
             return;
@@ -1590,39 +883,46 @@ void UStringFlowControlRigProcessor::LoadState(
            *LeftPositionStr, *RightPositionStr);
 
     // 加载左手手指控制器
-    FStringFlowControlRigHelpers::LoadStateDependentFingerControllers(
+    FStringFlowControlRigHelper::LoadStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftFingerControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT,
         LoadedCount, FailedCount);
 
     // 加载右手手指控制器
-    FStringFlowControlRigHelpers::LoadStateDependentFingerControllers(
+    FStringFlowControlRigHelper::LoadStateDependentFingerControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightFingerControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::RIGHT,
         LoadedCount, FailedCount);
 
     // 加载左手掌控制器
-    FStringFlowControlRigHelpers::LoadStateDependentHandControllers(
+    FStringFlowControlRigHelper::LoadStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->LeftHandControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT,
         LoadedCount, FailedCount);
 
     // 加载右手掌控制器
-    FStringFlowControlRigHelpers::LoadStateDependentHandControllers(
+    FStringFlowControlRigHelper::LoadStateDependentHandControllers(
         StringFlowActor, RigHierarchy, StringFlowActor->RightHandControllers,
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::RIGHT,
         LoadedCount, FailedCount);
 
     // 加载状态相关的其他控制器 (stp, bow_position)
-    FStringFlowControlRigHelpers::LoadStateDependentOtherControllers(
+    FStringFlowControlRigHelper::LoadStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, LoadedCount, FailedCount);
 
     // 加载状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelpers::LoadStatelessOtherControllers(
+    FStringFlowControlRigHelper::LoadStatelessOtherControllers(
         StringFlowActor, RigHierarchy, LoadedCount, FailedCount);
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== StringFlow LoadState Summary =========="));
+// 重新评估 Control Rig 以传播变更（约束、IK 等）
+// 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
+// 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
+if (ControlRigInstance) {
+    ControlRigInstance->Evaluate_AnyThread();
+}
+
+UE_LOG(LogTemp, Warning,
+       TEXT("========== StringFlow LoadState Summary =========="));
     UE_LOG(LogTemp, Warning, TEXT("Playing State -> String: %d, Fret: %d"),
            CurrentStringNum, CurrentFretNum);
     UE_LOG(LogTemp, Warning, TEXT("Successfully loaded: %d transforms"),

@@ -136,14 +136,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZhengDrift State")
     EZhengDriftRightHandAction CurrentRightHandAction;
 
-    // ========== Transform 同步 ==========
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Transform Sync")
-    bool bEnableRealtimeSync;
-
-    UPROPERTY(VisibleAnywhere, Category = "Transform Sync Cache")
-    FTransform CachedZhengRelativeTransform;
-
     // ========== 控制器映射 ==========
 
     /** 左手控制器：key=内部名称, value=Control Rig 名称（12 个） */

@@ -374,7 +374,6 @@ FReply SZhengDriftModuleOperationsPanel::OnTriggerControlRigReregistration() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
     ZhengDriftActor->TriggerControlRigReregistration(
         TEXT("Manual trigger from UI panel"));
-    ZhengDriftActor->bEnableRealtimeSync = true;
     return FReply::Handled();
 }
 

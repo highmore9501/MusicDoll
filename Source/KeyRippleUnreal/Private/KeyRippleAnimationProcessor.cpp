@@ -158,10 +158,10 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
     }
 
     UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence);
+        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence);
+            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
