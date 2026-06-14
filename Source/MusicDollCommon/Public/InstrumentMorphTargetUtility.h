@@ -202,56 +202,28 @@ class MUSICDOLLCOMMON_API UInstrumentMorphTargetUtility : public UObject {
     // ========== 统一的初始化流程 ==========
 
     /**
+     * 从Control Rig Blueprint的Curve Container获取所有曲线名称
+     *
+     * @param ControlRigBlueprint Control Rig蓝图
+     * @param OutNames 输出：曲线名称数组
+     * @return 是否成功获取（至少有一条曲线）
+     */
+    static bool GetCurveNamesFromBlueprint(
+        UControlRigBlueprint* ControlRigBlueprint,
+        TArray<FString>& OutNames);
+
+    /**
      * 初始化乐器的Morph Target动画通道（统一入口）
      *
-     * 这是所有乐器模块都应该使用的标准初始化流程，包含：
-     * 1. 从SkeletalMesh动态检测所有Morph Target名称
-     * 2. 确保Root Control存在（不存在则创建）
-     * 3. 批量添加Animation Channels（每个Morph Target对应一个通道）
+     * 从ControlRig Blueprint的Curve Container读取所有曲线名称，
+     * 并在指定的Root Control下批量创建对应的Animation Channels。
      *
-     * @param SkeletalMeshComp 乐器的骨骼网格组件
      * @param ControlRigBlueprint Control Rig蓝图
-     * @param RootControlName Root Control名称（如 "guitar_root", "violin_root", "piano_key_root", "drumkit_control"）
+     * @param RootControlName Root Control名称（如 "guitar_root", "violin_root", "piano_key_root"）
      * @param OutChannelNames 输出：成功创建的通道名称数组（可选）
      * @return 成功创建/验证的通道数量，失败返回0
-     *
-     * @note 这是一个完整的初始化流程，各乐器模块应直接调用此方法
-     * @note 如果某个通道已存在且是Animation Channel，会被计入成功数但不会重复创建
-     * @note 该方法会输出详细的日志信息，包括找到的Morph Target数量和创建的通道数量
-     *
-     * 使用示例：
-     * @code
-     * // FretDance（吉他）
-     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-     *     Guitar->GetSkeletalMeshComponent(),
-     *     GuitarBlueprint,
-     *     TEXT("guitar_root")
-     * );
-     *
-     * // StringFlow（小提琴）
-     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-     *     StringInstrument->GetSkeletalMeshComponent(),
-     *     InstrumentBlueprint,
-     *     TEXT("violin_root")
-     * );
-     *
-     * // KeyRipple（钢琴）
-     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-     *     Piano->GetSkeletalMeshComponent(),
-     *     PianoBlueprint,
-     *     TEXT("piano_key_root")
-     * );
-     *
-     * // BeatBloom（打击乐）
-     * int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-     *     DrumKit->GetSkeletalMeshComponent(),
-     *     DrumKitBlueprint,
-     *     TEXT("drumkit_control")
-     * );
-     * @endcode
      */
     static int32 InitializeMorphTargetChannels(
-        USkeletalMeshComponent* SkeletalMeshComp,
         UControlRigBlueprint* ControlRigBlueprint,
         const FString& RootControlName,
         TArray<FString>* OutChannelNames = nullptr);

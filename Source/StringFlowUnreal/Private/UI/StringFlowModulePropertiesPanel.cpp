@@ -57,12 +57,17 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("OneHandFingerNumber"), StringFlow->OneHandFingerNumber,
-        TEXT("OneHandFingerNumber"), FSimpleDelegate())];
+        TEXT("OneHandFingerNumber"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("StringNumber"), StringFlow->StringNumber, TEXT("StringNumber"),
-        FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     // Instrument Configuration
     Container->AddSlot().AutoHeight().Padding(
@@ -147,7 +152,10 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
                 5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
                 PropertyName,
                 StringFlow->CurrentInstrumentConfig.StringNotes[i],
-                PropertyName, FSimpleDelegate())];
+                PropertyName, 
+                [this](const FString& InPropertyPath, int32 NewValue) {
+                    OnNumericPropertyChanged(InPropertyPath, NewValue);
+                })];
         }
     }
 
@@ -301,18 +309,22 @@ FReply SStringFlowModulePropertiesPanel::OnSetupAllObjects() {
 }
 
 FReply SStringFlowModulePropertiesPanel::OnExportRecorderInfo() {
-    if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("StringFlow: No actor selected for export recorder info"));
-        return FReply::Handled();
-    }
+if (!StringFlowActor.IsValid()) {
+    UE_LOG(LogTemp, Error,
+           TEXT("StringFlow: No actor selected for export recorder info"));
+    return FReply::Handled();
+}
 
-    if (StringFlowActor->IOFilePath.IsEmpty()) {
-        UE_LOG(LogTemp, Error, TEXT("StringFlow: IO file path is empty"));
-        return FReply::Handled();
-    }
+if (StringFlowActor->IOFilePath.IsEmpty()) {
+    UE_LOG(LogTemp, Error, TEXT("StringFlow: IO file path is empty"));
+    return FReply::Handled();
+}
 
-    StringFlowActor->ExportRecorderInfo(StringFlowActor->IOFilePath);
+if (!FCommonPanelUtility::ConfirmExportOverwrite(StringFlowActor->IOFilePath)) {
+    return FReply::Handled();
+}
+
+StringFlowActor->ExportRecorderInfo(StringFlowActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("StringFlow: Export Recorder Info operation triggered"));
     return FReply::Handled();

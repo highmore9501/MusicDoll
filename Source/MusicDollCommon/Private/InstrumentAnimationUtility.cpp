@@ -3,6 +3,7 @@
 #include "Animation/SkeletalMeshActor.h"
 #include "Channels/MovieSceneFloatChannel.h"
 #include "ControlRigCacheSubsystem.h"
+#include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "EngineUtils.h"
@@ -12,13 +13,19 @@
 #include "LevelEditorSequencerIntegration.h"
 #include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
+#include "Misc/FileHelper.h"
 #include "MoviePipelineQueueSubsystem.h"
 #include "MovieRenderPipelineCoreModule.h"
 #include "MovieScene.h"
 #include "MovieSceneSequence.h"
+#include "Rigs/RigHierarchy.h"
+#include "Rigs/RigHierarchyController.h"
 #include "Sections/MovieSceneComponentMaterialParameterSection.h"
 #include "Sequencer/ControlRigSequencerHelpers.h"
+#include "Sequencer/MovieSceneControlRigParameterSection.h"
 #include "Sequencer/MovieSceneControlRigParameterTrack.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Tracks/MovieSceneMaterialTrack.h"
 
 // ========== Sequencer 集成 ==========
@@ -1536,6 +1543,237 @@ void UInstrumentAnimationUtility::ProcessControlsContainer(
 
         OutKeyframesAdded++;
     }
+}
+
+bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+    ASkeletalMeshActor* PerformerActor,
+    const FString& ActivityCurveFilePath,
+    ULevelSequence* LevelSequence) {
+    if (!PerformerActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "PerformerActor is null"));
+        return false;
+    }
+    if (ActivityCurveFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "ActivityCurveFilePath is empty"));
+        return false;
+    }
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "LevelSequence is null"));
+        return false;
+    }
+
+    // 1. 读取 JSON 文件
+    FString FileContent;
+    if (!FFileHelper::LoadFileToString(FileContent, *ActivityCurveFilePath)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "Failed to load file '%s'"),
+               *ActivityCurveFilePath);
+        return false;
+    }
+
+    TArray<TSharedPtr<FJsonValue>> JsonArray;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
+    if (!FJsonSerializer::Deserialize(Reader, JsonArray)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "Failed to parse JSON from '%s'"),
+               *ActivityCurveFilePath);
+        return false;
+    }
+
+    if (JsonArray.Num() == 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "JSON array is empty in '%s'"),
+               *ActivityCurveFilePath);
+        return false;
+    }
+
+    // 2. 获取 MovieScene 帧率信息
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "MovieScene is null"));
+        return false;
+    }
+
+    FFrameRate TickResolution = MovieScene->GetTickResolution();
+    FFrameRate DisplayRate = MovieScene->GetDisplayRate();
+
+    // 3. 获取 ControlRig
+    if (!GEngine) {
+        return false;
+    }
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        return false;
+    }
+
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(PerformerActor, LevelSequence);
+    UControlRigBlueprint* ControlRigBlueprint =
+        CacheSubsystem->GetControlRigBlueprint(PerformerActor, LevelSequence);
+
+    if (!ControlRigInstance || !ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "Failed to get ControlRig for PerformerActor '%s'"),
+               *PerformerActor->GetName());
+        return false;
+    }
+
+    // 4. 确保 controller_root 下存在 active_curve 动画通道
+    {
+        URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
+        if (!RigHierarchy) {
+            return false;
+        }
+
+        // 确保 controller_root 存在
+        FRigElementKey RootKey(TEXT("controller_root"), ERigElementType::Control);
+        if (!RigHierarchy->Contains(RootKey)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                        "controller_root not found, attempting to create"));
+            if (!FControlRigCreationUtility::CreateControl(
+                    ControlRigBlueprint, TEXT("controller_root"), TEXT(""))) {
+                UE_LOG(LogTemp, Error,
+                       TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                            "Failed to create controller_root"));
+                return false;
+            }
+        }
+
+        // 确保 active_curve 动画通道存在
+        FRigElementKey ChannelKey(TEXT("active_curve"), ERigElementType::Control);
+        if (!RigHierarchy->Contains(ChannelKey)) {
+            URigHierarchyController* HierarchyController =
+                RigHierarchy->GetController();
+            if (HierarchyController) {
+                FRigControlSettings ChannelSettings;
+                ChannelSettings.ControlType = ERigControlType::Float;
+                ChannelSettings.DisplayName = TEXT("active_curve");
+
+                FRigElementKey NewKey = HierarchyController->AddAnimationChannel(
+                    TEXT("active_curve"), RootKey, ChannelSettings, true, false);
+
+                if (NewKey.IsValid()) {
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                                "Created active_curve channel under controller_root"));
+                } else {
+                    UE_LOG(LogTemp, Error,
+                           TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                                "Failed to create active_curve channel"));
+                    return false;
+                }
+            }
+        }
+    }
+
+    // 5. 找到 ControlRig 轨道上的 Section
+    UMovieSceneControlRigParameterTrack* ControlRigTrack =
+        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
+                                                         ControlRigInstance);
+    if (!ControlRigTrack) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "ControlRig track not found"));
+        return false;
+    }
+
+    TArray<UMovieSceneSection*> Sections = ControlRigTrack->GetAllSections();
+    if (Sections.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "ControlRig track has no sections"));
+        return false;
+    }
+
+    UMovieSceneSection* Section = Sections[0];
+
+    // 6. 找到 active_curve 浮点通道
+    FMovieSceneFloatChannel* ActiveCurveChannel =
+        FindFloatChannel(Section, TEXT("controller_root.active_curve"));
+    if (!ActiveCurveChannel) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "active_curve channel not found in section"));
+        return false;
+    }
+
+    // 7. 解析关键帧并写入
+    TArray<FFrameNumber> FrameNumbers;
+    TArray<FMovieSceneFloatValue> FloatValues;
+
+    for (const TSharedPtr<FJsonValue>& EntryVal : JsonArray) {
+        TSharedPtr<FJsonObject> Entry = EntryVal->AsObject();
+        if (!Entry.IsValid()) continue;
+
+        double FrameDouble = 0.0;
+        double Value = 0.0;
+        Entry->TryGetNumberField(TEXT("frame"), FrameDouble);
+        Entry->TryGetNumberField(TEXT("value"), Value);
+
+        int32 ScaledFrameNumber = static_cast<int32>(FMath::RoundToInt(
+            FrameDouble * TickResolution.Numerator * DisplayRate.Denominator /
+            (TickResolution.Denominator * DisplayRate.Numerator)));
+
+        FFrameNumber FrameNumber(ScaledFrameNumber);
+        FMovieSceneFloatValue FloatValue(static_cast<float>(Value));
+        FloatValue.InterpMode = ERichCurveInterpMode::RCIM_Linear;
+
+        FrameNumbers.Add(FrameNumber);
+        FloatValues.Add(FloatValue);
+    }
+
+    if (FrameNumbers.Num() == 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                    "No keyframes parsed"));
+        return false;
+    }
+
+    ActiveCurveChannel->AddKeys(FrameNumbers, FloatValues);
+
+    // 8. 标记修改
+    Section->Modify();
+    ControlRigTrack->Modify();
+    MovieScene->Modify();
+    LevelSequence->MarkPackageDirty();
+
+#if WITH_EDITOR
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                ActiveSequencer->ForceEvaluate();
+            }
+        }
+    }
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+#endif
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                "Successfully wrote %d keyframes for active_curve"),
+           FrameNumbers.Num());
+    return true;
 }
 
 bool UInstrumentAnimationUtility::IsInRenderingScenario() {

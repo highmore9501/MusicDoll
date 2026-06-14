@@ -46,7 +46,8 @@ class KEYRIPPLEUNREAL_API UKeyRippleAnimationProcessor : public UObject {
      */
     static bool ParseKeyRippleFile(AKeyRippleUnreal* KeyRippleActor,
                                    FString& OutAnimationPath,
-                                   FString& OutKeyAnimationPath);
+                                   FString& OutKeyAnimationPath,
+                                   FString& OutActivityCurvePath);
 
     /**
      * 生成钢琴键动画

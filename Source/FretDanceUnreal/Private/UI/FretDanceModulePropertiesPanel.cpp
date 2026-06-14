@@ -57,7 +57,9 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("StringNumber"), FretDance->StringNumber, TEXT("StringNumber"),
-        FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     // Instrument Configuration
     Container->AddSlot().AutoHeight().Padding(
@@ -284,18 +286,22 @@ FReply SFretDanceModulePropertiesPanel::OnSetupAllObjects() {
 }
 
 FReply SFretDanceModulePropertiesPanel::OnExportRecorderInfo() {
-    if (!FretDanceActor.IsValid()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("FretDance: No actor selected for export player info"))
-        return FReply::Handled();
-    }
+if (!FretDanceActor.IsValid()) {
+    UE_LOG(LogTemp, Error,
+           TEXT("FretDance: No actor selected for export player info"))
+    return FReply::Handled();
+}
 
-    if (FretDanceActor->IOFilePath.IsEmpty()) {
-        UE_LOG(LogTemp, Error, TEXT("FretDance: IO file path is empty"));
-        return FReply::Handled();
-    }
+if (FretDanceActor->IOFilePath.IsEmpty()) {
+    UE_LOG(LogTemp, Error, TEXT("FretDance: IO file path is empty"));
+    return FReply::Handled();
+}
 
-    FretDanceActor->ExportRecorderInfo(FretDanceActor->IOFilePath);
+if (!FCommonPanelUtility::ConfirmExportOverwrite(FretDanceActor->IOFilePath)) {
+    return FReply::Handled();
+}
+
+FretDanceActor->ExportRecorderInfo(FretDanceActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("FretDance: Export Player Info operation triggered"));
     return FReply::Handled();

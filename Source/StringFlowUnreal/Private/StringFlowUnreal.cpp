@@ -51,9 +51,7 @@ void AStringFlowUnreal::BeginPlay() { Super::BeginPlay(); }
 
 void AStringFlowUnreal::BeginDestroy() { Super::BeginDestroy(); }
 
-void AStringFlowUnreal::Tick(float DeltaTime) {
-    Super::Tick(DeltaTime);
-}
+void AStringFlowUnreal::Tick(float DeltaTime) { Super::Tick(DeltaTime); }
 
 FString AStringFlowUnreal::GetFingerControllerName(
     int32 FingerNumber, EStringFlowHandType HandType) const {
@@ -180,12 +178,11 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
     RightHandControllers.Add(TEXT("thumb_controller"),
                              GetHandControllerName(TEXT("thumb_controller"),
                                                    EStringFlowHandType::RIGHT));
-    // 注意：TP_R 不加入 RightHandControllers，但会在 SetupControllers 中单独创建
+    // 注意：TP_R 不加入 RightHandControllers，但会在 SetupControllers
+    // 中单独创建
 
     // ========== 初始化辅助线 ==========
     GuideLines.Empty();
-    GuideLines.Add(TEXT("string_vibration_direction"),
-                   TEXT("string_vibration_direction"));
     GuideLines.Add(TEXT("violin_normal_line"), TEXT("violin_normal_line"));
 
     // ========== 初始化左手手指记录器 ==========
@@ -374,7 +371,8 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
                 TEXT("bow_position_s%d_%s"), StringIndex, *PositionStr);
             other_recorders_array.Add(BowRecorderName);
 
-            // Right_Hand_Tar 记录器 (right_hand_tar_{PositionType}_s{StringIndex})
+            // Right_Hand_Tar 记录器
+            // (right_hand_tar_{PositionType}_s{StringIndex})
             FString RHTRecorderName = FString::Printf(
                 TEXT("right_hand_tar_%s_s%d"), *PositionStr, StringIndex);
             other_recorders_array.Add(RHTRecorderName);
@@ -910,8 +908,6 @@ ASkeletalMeshActor* AStringFlowUnreal::GetSkeletalMeshActorByName(
     FName ComponentName) const {
     if (ComponentName == TEXT("StringInstrument")) {
         return StringInstrument;
-    } else if (ComponentName == TEXT("Bow")) {
-        return Bow;
     } else if (ComponentName == TEXT("Performer")) {
         return SkeletalMeshActor;
     }
@@ -955,8 +951,6 @@ UControlRig* AStringFlowUnreal::GetCachedControlRig(FName ComponentName) {
     FString RootControlName;
     if (ComponentName == TEXT("StringInstrument")) {
         RootControlName = TEXT("violin_root");
-    } else if (ComponentName == TEXT("Bow")) {
-        RootControlName = TEXT("bow_root");
     } else if (ComponentName == TEXT("Performer")) {
         RootControlName = TEXT("controller_root");
     }
@@ -1017,8 +1011,6 @@ UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
     FString RootControlName;
     if (ComponentName == TEXT("StringInstrument")) {
         RootControlName = TEXT("violin_root");
-    } else if (ComponentName == TEXT("Bow")) {
-        RootControlName = TEXT("bow_root");
     } else if (ComponentName == TEXT("Performer")) {
         RootControlName = TEXT("controller_root");
     }
@@ -1034,7 +1026,8 @@ UControlRigBlueprint* AStringFlowUnreal::GetCachedControlRigBlueprint(
 
     // 使用通用接口查询ControlRig Blueprint
     UControlRigBlueprint* ControlRigBlueprint =
-        CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence, RootControlName);
+        CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence,
+                                               RootControlName);
 
     return ControlRigBlueprint;
 }
@@ -1070,14 +1063,6 @@ void AStringFlowUnreal::TriggerControlRigReregistration(
                     UE_LOG(LogTemp, Log,
                            TEXT("Re-registering ControlRig for "
                                 "StringInstrument component"));
-                }
-
-                // 为琴弓组件重新注册
-                if (Bow) {
-                    CacheSubsystem->TriggerRegistrationIfNeeded(
-                        Bow, CurrentSequence);
-                    UE_LOG(LogTemp, Log,
-                           TEXT("Re-registering ControlRig for Bow component"));
                 }
             }
         }

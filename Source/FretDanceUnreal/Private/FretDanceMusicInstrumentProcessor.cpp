@@ -81,7 +81,6 @@ void UFretDanceMusicInstrumentProcessor::InitializeStringMaterials(
            TEXT("========== InitializeStringMaterials Started =========="));
 
     // 使用 Common 模块的通用方法初始化弦材质
-    // TODO: 需要根据吉他的骨骼名称调整参数
     // 假设吉他的弦骨骼命名为：string_0, string_1, ..., string_5
 
     UE_LOG(LogTemp, Warning,
@@ -130,7 +129,7 @@ int32 UFretDanceMusicInstrumentProcessor::
         return 0;
     }
 
-    // todo:使用 Common 模块的通用方法初始化材质参数轨道
+    // 使用 Common 模块的通用方法初始化材质参数轨道
     int32 TracksInitialized = 0;
 
     UE_LOG(LogTemp, Warning,
@@ -183,22 +182,11 @@ void UFretDanceMusicInstrumentProcessor::
         return;
     }
 
-    // 获取吉他的 SkeletalMeshComponent
-    USkeletalMeshComponent* SkeletalMeshComp =
-        FretDanceActor->Guitar->GetSkeletalMeshComponent();
-
-    if (!SkeletalMeshComp) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Guitar does not have a SkeletalMeshComponent"));
-        return;
-    }
-
-    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-        SkeletalMeshComp,
-        ControlRigBlueprint,
-        TEXT("guitar_root")
-    );
+    // 使用 Common 模块的统一方法：从 ControlRig Blueprint 的 Curve Container
+    // 读取曲线并创建通道
+    int32 ChannelsAdded =
+        UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+            ControlRigBlueprint, TEXT("guitar_root"));
 
     if (ChannelsAdded == 0) {
         UE_LOG(LogTemp, Error,
@@ -212,8 +200,7 @@ void UFretDanceMusicInstrumentProcessor::
 }
 
 void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
-    AFretDanceUnreal* FretDanceActor,
-    const FString& StringVibrationDataPath) {
+    AFretDanceUnreal* FretDanceActor, const FString& StringVibrationDataPath) {
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateInstrumentAnimation: FretDanceActor is null"));
@@ -228,7 +215,8 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
 
     if (StringVibrationDataPath.IsEmpty()) {
         UE_LOG(LogTemp, Error,
-               TEXT("StringVibrationDataPath is empty in GenerateInstrumentAnimation"));
+               TEXT("StringVibrationDataPath is empty in "
+                    "GenerateInstrumentAnimation"));
         return;
     }
 
@@ -489,7 +477,7 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentMaterialAnimation(
         return;
     }
 
-    // TODO - Phase 7: 实现材质动画生成
+    // Phase 7: 实现材质动画生成
     UE_LOG(LogTemp, Warning,
            TEXT("GenerateInstrumentMaterialAnimation: NOT YET IMPLEMENTED "
                 "(Phase 7)"));

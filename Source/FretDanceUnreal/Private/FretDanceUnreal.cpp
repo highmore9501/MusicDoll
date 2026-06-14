@@ -1437,7 +1437,9 @@ void AFretDanceUnreal::InitializeRecorderTransforms() {
     // 初始化右手位置记录器
     for (const auto& Pair : RightHandPositionRecorders) {
         for (int32 i = 0; i < Pair.Value.Num(); ++i) {
-            RecorderTransforms.Add(Pair.Value[i], DefaultTransform);
+            // ✅ 使用统一的键名映射函数，确保与Save/Load一致
+            FString RecorderKeyName = MapRightHandPositionKeyName(Pair.Value[i]);
+            RecorderTransforms.Add(RecorderKeyName, DefaultTransform);
             KeyCount++;
         }
     }

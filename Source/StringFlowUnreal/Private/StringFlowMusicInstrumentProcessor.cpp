@@ -373,26 +373,16 @@ void UStringFlowMusicInstrumentProcessor::
         return;
     }
 
-    // 获取弦乐器的 SkeletalMeshComponent
-    USkeletalMeshComponent* SkeletalMeshComp =
-        StringFlowActor->StringInstrument->GetSkeletalMeshComponent();
-
-    if (!SkeletalMeshComp) {
-        UE_LOG(LogTemp, Error,
-               TEXT("StringInstrument does not have a SkeletalMeshComponent"));
-        return;
-    }
-
-    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
-    int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-        SkeletalMeshComp,
-        ControlRigBlueprint,
-        TEXT("violin_root")
-    );
+    // 使用 Common 模块的统一方法：从 ControlRig Blueprint 的 Curve Container
+    // 读取曲线并创建通道
+    int32 ChannelsAdded =
+        UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
+            ControlRigBlueprint, TEXT("violin_root"));
 
     if (ChannelsAdded == 0) {
         UE_LOG(LogTemp, Error,
-               TEXT("Failed to initialize morph target channels for StringInstrument"));
+               TEXT("Failed to initialize morph target channels for "
+                    "StringInstrument"));
         return;
     }
 
@@ -785,10 +775,9 @@ int32 UStringFlowMusicInstrumentProcessor::SyncVibrationToMaterialAnimation(
 
 void UStringFlowMusicInstrumentProcessor::CleanupExistingStringAnimations(
     AStringFlowUnreal* StringFlowActor) {
-    if (!StringFlowActor || !StringFlowActor->StringInstrument ||
-        !StringFlowActor->Bow) {
+    if (!StringFlowActor || !StringFlowActor->StringInstrument) {
         UE_LOG(LogTemp, Warning,
-               TEXT("Invalid StringFlowActor or StringInstrument or Bow in "
+               TEXT("Invalid StringFlowActor or StringInstrument in "
                     "CleanupExistingStringAnimations"));
         return;
     }
@@ -796,9 +785,6 @@ void UStringFlowMusicInstrumentProcessor::CleanupExistingStringAnimations(
     // 使用Common模块的通用清理方法清理Sequencer中的轨道
     UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
         StringFlowActor->StringInstrument);
-
-    UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-        StringFlowActor->Bow);
 }
 
 void UStringFlowMusicInstrumentProcessor::GenerateInstrumentAnimation(
@@ -828,10 +814,11 @@ void UStringFlowMusicInstrumentProcessor::GenerateInstrumentAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringVibrationPath;
+    FString ActivityCurvePath;
 
     if (!UStringFlowAnimationProcessor::ParseStringFlowConfigFile(
             StringFlowActor, LeftHandAnimationPath, RightHandAnimationPath,
-            StringVibrationPath)) {
+            StringVibrationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse StringFlow config file in "
                     "GenerateInstrumentAnimation"));

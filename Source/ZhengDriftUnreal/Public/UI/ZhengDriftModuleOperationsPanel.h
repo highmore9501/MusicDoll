@@ -39,4 +39,5 @@ private:
     FReply OnGenerateInstrumentAnimation();
     FReply OnGenerateAllAnimation();
     FReply OnTriggerControlRigReregistration();
+    FReply OnLinearDistributeControls();
 };

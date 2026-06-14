@@ -259,10 +259,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     class ASkeletalMeshActor* StringInstrument;
 
-    /** 琴弓（骨骼网格Actor） */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
-    class ASkeletalMeshActor* Bow;
-
     // ========== 弦乐器特定配置 ==========
 
     /** 左手当前位置类型 */

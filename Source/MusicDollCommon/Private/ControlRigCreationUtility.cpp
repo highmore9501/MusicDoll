@@ -340,3 +340,213 @@ TArray<FName> FControlRigCreationUtility::GetAvailableShapeNames(
 
     return AvailableShapeNames;
 }
+
+// ============================================================
+// GetCommonSuffix
+// ============================================================
+
+FString FControlRigCreationUtility::GetCommonSuffix(const FString& NameA,
+                                                     const FString& NameB) {
+    int32 MinLen = FMath::Min(NameA.Len(), NameB.Len());
+    int32 SuffixLen = 0;
+    for (int32 i = 1; i <= MinLen; ++i) {
+        if (NameA[NameA.Len() - i] == NameB[NameB.Len() - i]) {
+            SuffixLen = i;
+        } else {
+            break;
+        }
+    }
+    if (SuffixLen == 0) return TEXT("");
+    return NameA.Right(SuffixLen);
+}
+
+// ============================================================
+// ParseControlIndex
+// ============================================================
+
+int32 FControlRigCreationUtility::ParseControlIndex(const FString& Name,
+                                                     const FString& Suffix) {
+    if (Suffix.IsEmpty() || !Name.EndsWith(Suffix)) return -1;
+    FString Prefix = Name.LeftChop(Suffix.Len());
+    // Prefix must end with digits, optionally start with 's'
+    if (Prefix.IsEmpty()) return -1;
+    // Strip leading 's' or 'S'
+    FString NumStr = Prefix;
+    if (NumStr.StartsWith(TEXT("s")) || NumStr.StartsWith(TEXT("S"))) {
+        NumStr = NumStr.RightChop(1);
+    }
+    if (NumStr.IsEmpty()) return -1;
+    for (TCHAR Ch : NumStr) {
+        if (!FChar::IsDigit(Ch)) return -1;
+    }
+    return FCString::Atoi(*NumStr);
+}
+
+// ============================================================
+// LinearDistributeControls
+// ============================================================
+
+int32 FControlRigCreationUtility::LinearDistributeControls(
+    UControlRig* ControlRig) {
+    if (!ControlRig) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: ControlRig is null"));
+        return -1;
+    }
+
+    URigHierarchy* Hierarchy = ControlRig->GetHierarchy();
+    if (!Hierarchy) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Failed to get RigHierarchy"));
+        return -1;
+    }
+
+    // 收集当前选中的控制器
+    TArray<FRigElementKey> SelectedKeys = Hierarchy->GetSelectedKeys();
+    TArray<FRigElementKey> SelectedControls;
+    for (const FRigElementKey& Key : SelectedKeys) {
+        if (Key.Type == ERigElementType::Control) {
+            SelectedControls.Add(Key);
+        }
+    }
+
+    if (SelectedControls.Num() != 2) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Please select exactly 2 "
+                    "controls (selected %d)"),
+               SelectedControls.Num());
+        return -1;
+    }
+
+    FString NameA = SelectedControls[0].Name.ToString();
+    FString NameB = SelectedControls[1].Name.ToString();
+
+    FString Suffix = GetCommonSuffix(NameA, NameB);
+    if (Suffix.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Selected controls '%s' and '%s' "
+                    "have no common suffix"),
+               *NameA, *NameB);
+        return -1;
+    }
+
+    int32 IndexA = ParseControlIndex(NameA, Suffix);
+    int32 IndexB = ParseControlIndex(NameB, Suffix);
+
+    if (IndexA < 0 || IndexB < 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Cannot parse numeric index from "
+                    "'%s' and '%s' with suffix '%s'"),
+               *NameA, *NameB, *Suffix);
+        return -1;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("LinearDistributeControls: suffix='%s', A=%d(%s), B=%d(%s)"),
+           *Suffix, IndexA, *NameA, IndexB, *NameB);
+
+    // 收集场景中所有符合 s{N}{Suffix} 模式的控制器
+    TArray<FRigElementKey> AllControlKeys = Hierarchy->GetAllKeys(false);
+    TArray<TPair<int32, FRigElementKey>> Candidates;
+
+    for (const FRigElementKey& Key : AllControlKeys) {
+        if (Key.Type != ERigElementType::Control) continue;
+        FString Name = Key.Name.ToString();
+        int32 Idx = ParseControlIndex(Name, Suffix);
+        if (Idx < 0) continue;
+        Candidates.Add({Idx, Key});
+    }
+
+    if (Candidates.Num() < 2) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Not enough controls with suffix "
+                    "'%s'"),
+               *Suffix);
+        return -1;
+    }
+
+    Candidates.Sort([](const TPair<int32, FRigElementKey>& A,
+                       const TPair<int32, FRigElementKey>& B) {
+        return A.Key < B.Key;
+    });
+
+    int32 MinIdx = FMath::Min(IndexA, IndexB);
+    int32 MaxIdx = FMath::Max(IndexA, IndexB);
+
+    // 筛选范围内的控制器
+    TArray<TPair<int32, FRigElementKey>> Targets;
+    for (const auto& Pair : Candidates) {
+        if (Pair.Key >= MinIdx && Pair.Key <= MaxIdx) {
+            Targets.Add(Pair);
+        }
+    }
+
+    if (Targets.Num() < 2) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Not enough controls in range "
+                    "[%d, %d]"),
+               MinIdx, MaxIdx);
+        return -1;
+    }
+
+    // 获取端点位置（当前值）
+    auto GetControlLocation = [&](const FRigElementKey& Key) -> FVector {
+        FRigControlElement* Elem = Hierarchy->Find<FRigControlElement>(Key);
+        if (!Elem) return FVector::ZeroVector;
+        FRigControlValue Val = Hierarchy->GetControlValue(
+            Elem, ERigControlValueType::Current);
+        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
+                                          Elem->Settings.PrimaryAxis);
+        return T.GetLocation();
+    };
+
+    // 找到选中的两个端点 Key
+    FRigElementKey KeyA = SelectedControls[0];
+    FRigElementKey KeyB = SelectedControls[1];
+    FVector PosA = GetControlLocation(KeyA);
+    FVector PosB = GetControlLocation(KeyB);
+
+    int32 StartNum = Targets[0].Key;
+    int32 EndNum = Targets.Last().Key;
+    int32 NumSpan = EndNum - StartNum;
+
+    if (NumSpan == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls: Index span is zero"));
+        return -1;
+    }
+
+    // 以 StartNum/EndNum 对应 PosA/PosB（按实际索引线性插值）
+    // 先确定哪端对应小索引
+    FVector PosStart = (IndexA < IndexB) ? PosA : PosB;
+    FVector PosEnd = (IndexA < IndexB) ? PosB : PosA;
+
+    int32 DistributedCount = 0;
+    for (const auto& Pair : Targets) {
+        float T = (float)(Pair.Key - StartNum) / (float)NumSpan;
+        FVector NewLocation = FMath::Lerp(PosStart, PosEnd, T);
+
+        FRigControlElement* Elem =
+            Hierarchy->Find<FRigControlElement>(Pair.Value);
+        if (!Elem) continue;
+
+        FRigControlValue CurrentVal = Hierarchy->GetControlValue(
+            Elem, ERigControlValueType::Current);
+        FTransform CurrentTransform = CurrentVal.GetAsTransform(
+            Elem->Settings.ControlType, Elem->Settings.PrimaryAxis);
+        CurrentTransform.SetLocation(NewLocation);
+
+        FRigControlValue NewVal;
+        NewVal.SetFromTransform(CurrentTransform, Elem->Settings.ControlType,
+                                Elem->Settings.PrimaryAxis);
+        Hierarchy->SetControlValue(Elem, NewVal, ERigControlValueType::Current);
+        DistributedCount++;
+    }
+
+    ControlRig->Evaluate_AnyThread();
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("LinearDistributeControls: Distributed %d controls"),
+           DistributedCount);
+    return DistributedCount;
+}

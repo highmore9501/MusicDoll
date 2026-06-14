@@ -55,6 +55,13 @@ public:
                           const TMap<FString, FTransform>& StateData);
 
     /**
+     * 将 Control Rig 中同类名称的控制器按当前选中的两个控制器线性分布
+     * 需先在 Sequencer 中选中恰好两个同类控制器（如 s0end 和 s20end）
+     * @return 成功分布的控制器数量，失败返回 -1
+     */
+    static int32 LinearDistributeControls(AZhengDriftUnreal* ZhengDriftActor);
+
+    /**
      * 将 RecorderTransforms 中的弦位置数据回写到 Control Rig 控制器
      * 仅在 ImportRecorderInfo 之后调用
      */

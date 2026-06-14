@@ -91,7 +91,9 @@ void SBeatBloomModulePropertiesPanel::CreatePropertyWidgets() {
                 TEXT("Limb Count"),
                 BeatBloom->DrumKitConfig.Limbs.Num(),
                 TEXT("LimbCount"),
-                FSimpleDelegate())];
+                [this](const FString& PropertyPath, int32 NewValue) {
+                    OnNumericPropertyChanged(PropertyPath, NewValue);
+                })];
         
         // 鼓件数量
         Container->AddSlot().AutoHeight().Padding(5.0f)
@@ -99,7 +101,9 @@ void SBeatBloomModulePropertiesPanel::CreatePropertyWidgets() {
                 TEXT("Component Count"),
                 BeatBloom->DrumKitConfig.Components.Num(),
                 TEXT("ComponentCount"),
-                FSimpleDelegate())];
+                [this](const FString& PropertyPath, int32 NewValue) {
+                    OnNumericPropertyChanged(PropertyPath, NewValue);
+                })];
         
         // 特殊动作数量
         Container->AddSlot().AutoHeight().Padding(5.0f)
@@ -107,7 +111,9 @@ void SBeatBloomModulePropertiesPanel::CreatePropertyWidgets() {
                 TEXT("Special Action Count"),
                 BeatBloom->DrumKitConfig.SpecialActions.Num(),
                 TEXT("SpecialActionCount"),
-                FSimpleDelegate())];
+                [this](const FString& PropertyPath, int32 NewValue) {
+                    OnNumericPropertyChanged(PropertyPath, NewValue);
+                })];
     }
     
     // Control Rig Section
@@ -172,6 +178,22 @@ void SBeatBloomModulePropertiesPanel::CreatePropertyWidgets() {
             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
+void SBeatBloomModulePropertiesPanel::OnNumericPropertyChanged(
+    const FString& PropertyPath, int32 NewValue) {
+    if (!BeatBloomActor.IsValid()) {
+        return;
+    }
+
+    ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
+    BeatBloom->Modify();
+
+    // Note: These properties are read-only displays of DrumKitConfig data
+    // They cannot be directly modified through the UI
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Numeric property change attempted for %s = %d (read-only)"),
+           *PropertyPath, NewValue);
+}
+
 void SBeatBloomModulePropertiesPanel::OnFilePathChanged(
     const FString& PropertyPath, const FString& NewFilePath) {
     if (!BeatBloomActor.IsValid()) {
@@ -224,6 +246,9 @@ FReply SBeatBloomModulePropertiesPanel::OnLoadDrumKitConfig() {
         
         // 刷新面板显示
         RefreshProperties();
+        
+        // 通知操作面板刷新鼓件下拉选项
+        OnDrumKitConfigLoaded.ExecuteIfBound();
     } else {
         UE_LOG(LogTemp, Error,
                TEXT("BeatBloom: Failed to load drumkit config from %s"), *FilePath);
@@ -259,21 +284,25 @@ FReply SBeatBloomModulePropertiesPanel::OnCheckObjectsStatus() {
 }
 
 FReply SBeatBloomModulePropertiesPanel::OnExportRecorderInfo() {
-    if (!BeatBloomActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor selected for export drummer info"));
-        return FReply::Handled();
-    }
+if (!BeatBloomActor.IsValid()) {
+    UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor selected for export drummer info"));
+    return FReply::Handled();
+}
     
-    ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
+ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
     
-    // 检查是否设置了 IO File Path
-    if (BeatBloom->IOFilePath.IsEmpty()) {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: IO File Path is not set. Please set IO File Path first."));
-        return FReply::Handled();
-    }
-    
-    // 直接使用 IO File Path 进行导出
-    BeatBloom->ExportRecorderInfo(BeatBloom->IOFilePath);
+// 检查是否设置了 IO File Path
+if (BeatBloom->IOFilePath.IsEmpty()) {
+    UE_LOG(LogTemp, Error, TEXT("BeatBloom: IO File Path is not set. Please set IO File Path first."));
+    return FReply::Handled();
+}
+
+if (!FCommonPanelUtility::ConfirmExportOverwrite(BeatBloom->IOFilePath)) {
+    return FReply::Handled();
+}
+
+// 直接使用 IO File Path 进行导出
+BeatBloom->ExportRecorderInfo(BeatBloom->IOFilePath);
     UE_LOG(LogTemp, Warning, TEXT("BeatBloom: Export Drummer Info to %s"), *BeatBloom->IOFilePath);
     
     return FReply::Handled();

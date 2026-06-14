@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "FretDanceUnreal.h"
@@ -151,7 +151,21 @@ class FRETDANCEUNREAL_API UFretDanceAnimationProcessor : public UObject {
     static bool ParseFretDanceConfigFile(AFretDanceUnreal* FretDanceActor,
                                          FString& OutLeftHandAnimationPath,
                                          FString& OutRightHandAnimationPath,
-                                         FString& OutStringRecorderPath);
+                                         FString& OutStringRecorderPath,
+                                         FString& OutControllerRootAnimationPath,
+                                         FString& OutActivityCurvePath);
+
+    /**
+     * 从 JSON 文件生成 controller_root 动画
+     *
+     * @param FretDanceActor 吉他 Actor 实例
+     * @param AnimationFilePath controller_root 动画 JSON 文件路径
+     * @param LevelSequence Level Sequence 实例
+     * @return 无
+     */
+    static void MakeControllerRootAnimation(AFretDanceUnreal* FretDanceActor,
+                                            const FString& AnimationFilePath,
+                                            ULevelSequence* LevelSequence);
 
     /**
      * 从 JSON 文件生成演奏者动画

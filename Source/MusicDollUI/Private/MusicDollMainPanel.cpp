@@ -4,6 +4,7 @@
 #include "BeatBloomUnreal.h"
 #include "EngineUtils.h"
 #include "FretDanceUnreal.h"
+#include "HarpGlideUnreal.h"
 #include "InstrumentBase.h"
 #include "KeyRippleUnreal.h"
 #include "Misc/Paths.h"
@@ -12,6 +13,7 @@
 #include "UI/BakeQueuePanel.h"
 #include "UI/BeatBloomModuleMainPanel.h"
 #include "UI/FretDanceModuleMainPanel.h"
+#include "UI/HarpGlideModuleMainPanel.h"
 #include "UI/KeyRippleModuleMainPanel.h"
 #include "UI/ModuleMainPanelInterface.h"
 #include "UI/StringFlowModuleMainPanel.h"
@@ -349,6 +351,25 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
         if (ModulePanel.IsValid() &&
             ModulePanel->CanHandleActor(BeatBloomActor)) {
             ModulePanel->SetActor(BeatBloomActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中的对象是否为 AHarpGlideUnreal 类型
+    AHarpGlideUnreal* HarpGlideActor = Cast<AHarpGlideUnreal>(InActor);
+    if (HarpGlideActor) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SHarpGlideModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(HarpGlideActor)) {
+            ModulePanel->SetActor(HarpGlideActor);
             CurrentModulePanel =
                 StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 

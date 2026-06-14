@@ -79,12 +79,13 @@ public:
                                          const FString& StateSuffix);
 
     /**
-     * 智能加载双线性映射辅助记录器
-     * 根据当前 Middle_Hand 位置自动匹配已保存的四个状态之一
-     * 如果匹配成功，加载对应的 Head_Control 位置
+     * 加载双线性映射辅助记录器指定状态
+     * 直接按 StateSuffix 指定的状态将 H_L、H_R 和 Head_Control 还原到对应控制器
+     * @param StateSuffix 状态后缀 "A", "B", "C", 或 "D"
      */
     UFUNCTION(BlueprintCallable, Category = "BeatBloom ControlRig Processor")
-    static void LoadBilinearHelperState(ABeatBloomUnreal* BeatBloomActor);
+    static void LoadBilinearHelperState(ABeatBloomUnreal* BeatBloomActor,
+                                        const FString& StateSuffix);
 
     /**
      * 保存 Head_Control 状态

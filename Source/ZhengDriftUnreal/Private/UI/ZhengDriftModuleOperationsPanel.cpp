@@ -326,6 +326,15 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                      OnTriggerControlRigReregistration)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SButton)
+             .Text(LOCTEXT("LinearDistributeBtn", "Linear Distribute Controls"))
+             .OnClicked(
+                 this,
+                 &SZhengDriftModuleOperationsPanel::OnLinearDistributeControls)
+             .HAlign(HAlign_Center)
+             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 // ---- Button handlers ----
@@ -374,6 +383,13 @@ FReply SZhengDriftModuleOperationsPanel::OnTriggerControlRigReregistration() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
     ZhengDriftActor->TriggerControlRigReregistration(
         TEXT("Manual trigger from UI panel"));
+    return FReply::Handled();
+}
+
+FReply SZhengDriftModuleOperationsPanel::OnLinearDistributeControls() {
+    if (!ZhengDriftActor.IsValid()) return FReply::Handled();
+    UZhengDriftControlRigProcessor::LinearDistributeControls(
+        ZhengDriftActor.Get());
     return FReply::Handled();
 }
 

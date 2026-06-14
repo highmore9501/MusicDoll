@@ -488,6 +488,23 @@ bool UZhengDriftControlRigProcessor::CreateController(
                                                      ParentName);
 }
 
+int32 UZhengDriftControlRigProcessor::LinearDistributeControls(
+    AZhengDriftUnreal* ZhengDriftActor) {
+    if (!ValidateZhengDriftActor(ZhengDriftActor,
+                                  TEXT("LinearDistributeControls")))
+        return -1;
+
+    UControlRig* ControlRig = GetControlRig(ZhengDriftActor);
+    if (!ControlRig) {
+        UE_LOG(LogTemp, Error,
+               TEXT("LinearDistributeControls [ZhengDrift]: Failed to get "
+                    "ControlRig"));
+        return -1;
+    }
+
+    return FControlRigCreationUtility::LinearDistributeControls(ControlRig);
+}
+
 TArray<FString> UZhengDriftControlRigProcessor::GetExpectedControllerNames(
     AZhengDriftUnreal* Actor) {
     TArray<FString> Names;

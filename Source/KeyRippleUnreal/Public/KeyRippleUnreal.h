@@ -216,11 +216,7 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /** 键盘关键位置点 */
     UPROPERTY()
-    TMap<FString, FString> KeyBoardPositions;
-
-    /** 方向线 */
-    UPROPERTY()
-    TMap<FString, FString> Guidelines;
+    TMap<FString, FString> KeyBoardPositions;    
 
     /** 人物朝向控制器 */
     UPROPERTY()
@@ -228,23 +224,11 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /** 人物朝向记录器 */
     UPROPERTY()
-    TMap<FString, FStringArray> TargetPointsRecorders;
-
-    /** 肩部控制器 */
-    UPROPERTY()
-    TMap<FString, FString> ShoulderControllers;
-
-    /** 肩部记录器 */
-    UPROPERTY()
-    TMap<FString, FStringArray> ShoulderRecorders;
+    TMap<FString, FStringArray> TargetPointsRecorders;    
 
     /** 手指极向量 */
     UPROPERTY()   
-    TMap<FString, FString> PolePoints;
-
-    /** 右手原始方向 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Configuration")
-    FVector RightHandOriginalDirection;
+    TMap<FString, FString> PolePoints;    
 
     /** 左手原始方向 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Configuration")

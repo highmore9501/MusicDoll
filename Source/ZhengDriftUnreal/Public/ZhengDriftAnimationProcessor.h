@@ -54,7 +54,8 @@ public:
         AZhengDriftUnreal* ZhengDriftActor,
         FString& OutPerformanceAnimationPath,
         FString& OutTargetAnimationPath,
-        FString& OutStringAnimationPath);
+        FString& OutStringAnimationPath,
+        FString& OutActivityCurvePath);
 
 private:
     /**

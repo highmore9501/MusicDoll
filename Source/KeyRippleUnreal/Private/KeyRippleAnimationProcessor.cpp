@@ -19,13 +19,12 @@ namespace KeyRippleAnimationHelper {
  */
 static const TSet<FString>& GetValidKeyRippleControllerNames() {
     static const TSet<FString> ValidControllerNames = {
-        TEXT("H_L"),          TEXT("H_R"),       TEXT("H_rotation_L"),
-        TEXT("H_rotation_R"), TEXT("HP_L"),      TEXT("HP_R"),
-        TEXT("0_L"),          TEXT("1_L"),       TEXT("2_L"),
-        TEXT("3_L"),          TEXT("4_L"),       TEXT("5_R"),
-        TEXT("6_R"),          TEXT("7_R"),       TEXT("8_R"),
-        TEXT("9_R"),          TEXT("S_L"),       TEXT("S_R"),
-        TEXT("Tar_Body"),     TEXT("Tar_Chest"), TEXT("Tar_Butt")};
+        TEXT("H_L"),          TEXT("H_R"),         TEXT("H_rotation_L"),
+        TEXT("H_rotation_R"), TEXT("HP_L"),        TEXT("HP_R"),
+        TEXT("0_L"),          TEXT("1_L"),         TEXT("2_L"),
+        TEXT("3_L"),          TEXT("4_L"),         TEXT("5_R"),
+        TEXT("6_R"),          TEXT("7_R"),         TEXT("8_R"),
+        TEXT("9_R"),          TEXT("Head_Control")};
     return ValidControllerNames;
 }
 
@@ -48,13 +47,8 @@ static void CollectKeyRippleControllerNames(AKeyRippleUnreal* KeyRippleActor,
         OutControllerNames.Add(Pair.Value);
     }
 
-    // 收集目标点（Tar_Body, Tar_Chest, Tar_Butt）
+    // 收集目标点（Head_Control, Look_At, Mid_Hand）
     for (const auto& Pair : KeyRippleActor->TargetPoints) {
-        OutControllerNames.Add(Pair.Value);
-    }
-
-    // 收集肩部控制器
-    for (const auto& Pair : KeyRippleActor->ShoulderControllers) {
         OutControllerNames.Add(Pair.Value);
     }
 }
@@ -74,9 +68,11 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimation(
 
     FString AnimationPath;
     FString KeyAnimationPath;
+    FString ActivityCurvePath;
 
     // 解析KeyRipple文件
-    if (!ParseKeyRippleFile(KeyRippleActor, AnimationPath, KeyAnimationPath)) {
+    if (!ParseKeyRippleFile(KeyRippleActor, AnimationPath, KeyAnimationPath,
+                            ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse KeyRipple file in "
                     "GeneratePerformerAnimation"));
@@ -94,6 +90,20 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimation(
 
     // 调用直接处理动画文件的方法
     GeneratePerformerAnimationDirect(KeyRippleActor, AnimationPath);
+
+    // 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && KeyRippleActor->SkeletalMeshActor) {
+        ULevelSequence* LevelSequence = nullptr;
+        TSharedPtr<ISequencer> Sequencer = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                LevelSequence, Sequencer)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+            UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+                KeyRippleActor->SkeletalMeshActor, ActivityCurvePath,
+                LevelSequence);
+        }
+    }
 }
 
 void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
@@ -157,11 +167,13 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
         return;
     }
 
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -240,8 +252,8 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
 }
 
 bool UKeyRippleAnimationProcessor::ParseKeyRippleFile(
-    AKeyRippleUnreal* KeyRippleActor, FString& OutAnimationPath,
-    FString& OutKeyAnimationPath) {
+AKeyRippleUnreal* KeyRippleActor, FString& OutAnimationPath,
+FString& OutKeyAnimationPath, FString& OutActivityCurvePath) {
     if (!KeyRippleActor) {
         UE_LOG(LogTemp, Error,
                TEXT("ParseKeyRippleFile: KeyRippleActor is null"));
@@ -296,10 +308,20 @@ bool UKeyRippleAnimationProcessor::ParseKeyRippleFile(
         OutKeyAnimationPath = FString();
     }
 
+    // 提取 activity curve 路径
+    if (JsonObject->HasField(TEXT("activity_curve_path"))) {
+        OutActivityCurvePath =
+            JsonObject->GetStringField(TEXT("activity_curve_path"));
+    } else {
+        OutActivityCurvePath = FString();
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("ParseKeyRippleFile succeeded"));
     UE_LOG(LogTemp, Warning, TEXT("  Animation Path: %s"), *OutAnimationPath);
     UE_LOG(LogTemp, Warning, TEXT("  Key Animation Path: %s"),
            *OutKeyAnimationPath);
+    UE_LOG(LogTemp, Warning, TEXT("  Activity Curve Path: %s"),
+           *OutActivityCurvePath);
 
     return true;
 }
@@ -342,9 +364,11 @@ void UKeyRippleAnimationProcessor::GenerateAllAnimation(
 
     FString AnimationPath;
     FString KeyAnimationPath;
+    FString ActivityCurvePath;
 
     // 解析KeyRipple文件
-    if (!ParseKeyRippleFile(KeyRippleActor, AnimationPath, KeyAnimationPath)) {
+    if (!ParseKeyRippleFile(KeyRippleActor, AnimationPath, KeyAnimationPath,
+                            ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse KeyRipple file in GenerateAllAnimation"));
         return;
@@ -359,6 +383,20 @@ void UKeyRippleAnimationProcessor::GenerateAllAnimation(
         UE_LOG(LogTemp, Warning,
                TEXT("Animation path is empty, skipping performer animation "
                     "generation"));
+    }
+
+    // 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && KeyRippleActor->SkeletalMeshActor) {
+        ULevelSequence* LevelSequence = nullptr;
+        TSharedPtr<ISequencer> Sequencer = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                LevelSequence, Sequencer)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+            UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+                KeyRippleActor->SkeletalMeshActor, ActivityCurvePath,
+                LevelSequence);
+        }
     }
 
     // 生成钢琴键动画

@@ -20,6 +20,7 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 | **FretDanceUnreal**  | 吉他/贝斯   | ✅ 已发布 |
 | **BeatBloomUnreal**  | 打击乐/鼓组 | ✅ 已发布 |
 | **ZhengDriftUnreal** | 古筝        | ✅ 已发布 |
+| **HarpGlideUnreal**  | 竖琴        | ✅ 已发布 |
 
 ### 公共模块
 
@@ -42,37 +43,62 @@ MusicDoll是一个系列软件的统称，旨在连接 MIDI 文件与虚拟乐�
 
 #### KeyRippleUnreal（钢琴）
 
-- 黑白键识别
-- 多位置类型（高/中/低）
-- 钢琴键形变动画系统
-- 左右手独立控制
+- 支持白键/黑键按键逻辑，根据 MIDI 音高自动判定按键类型
+- 多位置类型（高/中/低音区）映射手部位置
+- 钢琴琴键 Morph Target 形变动画系统
+- 左右手独立控制，支持单手指跨度配置
+- 基于 .keyripple 配置文件的动画数据驱动
 
 #### StringFlowUnreal（弦乐）
 
-- 实时同步系统
-- 弓法控制
-- 触弦点控制
-- 多种演奏技法
+- 支持小提琴/中提琴/大提琴/自定义四弦乐器
+- 左手四指（1-4指）按弦品位控制（品格索引 FRET_1/9/12）
+- 右手弓法控制（弓位置、触弦点 String_Touch_Point）
+- 左手位置类型（NORMAL/INNER/OUTER）和右手位置类型（NEAR/FAR/PIZZICATO）
+- 四根弦独立调音配置（各乐器预设标准定弦音高）
+- 弦振动 Morph Target 动画 + 实时同步系统
 
 #### FretDanceUnreal（吉他/贝斯）
 
-- 指弹吉他/电吉他/贝斯支持
-- 左手把位系统
-- 右手拨弦/扫弦控制
-- 品丝检测
+- 支持指弹吉他/电吉他/贝斯三种乐器类型
+- 左手把位系统：5个基础位置（P0-P4）+ 4种手部状态（NORMAL/OUTER/INNER/BARRE）
+- 右手拨弦/扫弦：5根手指（拇指 T + 食指 I + 中指 M + 无名指 R + 小指 P）+ 手掌 H
+- 电吉他特殊控制器层级（手掌与拇指同级，食指为拇指子级）
+- 基于 .fretdance 配置文件的动画数据驱动
 
 #### BeatBloomUnreal（打击乐）
 
-- 多肢体协调（双手双脚）
-- 节拍器系统
-- 多种击打模式
-- 动态力度控制
+- 四肢协调驱动：双手 + 双脚独立控制
+- 鼓组配置由 .drumkit 文件动态加载（非硬编码），支持自定义鼓件
+- 每个鼓件可配置驱动肢体、MIDI 音符触发和双面组件
+- 特殊动作系统：支持组合肢体动作
+- 鼓面/镲片 Morph Target 形变动画
+- 身体朝向控制（Middle_Hand/Look_At/Head_Control）
+
+#### ZhengDriftUnreal（古筝）
+
+- 21 根弦（索引 0-20），无品格概念
+- 左手动作：普通拨弦 + 按弦（PRESS）
+- 右手动作：普通拨弦 + 摇指（TREMOLO）
+- 手部位置：FAR/MIDDLE/NEAR 三区映射
+- 35 个 Control Rig 控制器（双手 + 脚部 + 朝向 + 双线性辅助）
+- 弦振动 Morph Target 动画 + 弦独立材质实例
+- 身体朝向动画（Head_Control 位置驱动）
+
+#### HarpGlideUnreal（竖琴）🆕
+
+- 47 根弦（索引 0-46），双手仅拨弦无按弦
+- 手部姿势系统：FAR/NEAR/ATTACK/REST 四态切换
+- 7 个踏板（D/C/B/E/F/G/A），每个 5 档（Flat → Sharp），控制音高升降
+- 竖琴单支点三态倾斜（NEAR/MID/FAR），模拟演奏者身体倾斜
+- 94 个弦位置记录器（47弦 × 2端点）+ 弦振动 Morph Target + 踏板 Morph Target
+- 基于 .harpglide 配置文件的动画数据驱动
 
 ## 🏗️ 技术架构
 
 ```
 MusicDoll Plugin
-├── 乐器特定模块 (KeyRipple, StringFlow, FretDance, BeatBloom, ZhengDrift)
+├── 乐器特定模块 (KeyRipple, StringFlow, FretDance, BeatBloom, ZhengDrift, HarpGlide)
 │   ├── Actor 类（场景入口）
 │   ├── 处理器类（Animation, ControlRig, Instrument）
 │   └── UI 面板（Properties, Operations）

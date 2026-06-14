@@ -746,7 +746,7 @@ void SBeatBloomModuleOperationsPanel::RefreshOperations() {
                     ".drumkit file in Properties panel first."));
     } else {
         // 刷新下拉菜单选项
-        RefreshOperations();
+        UpdateDrumKitOptions();
         UE_LOG(LogTemp, Warning,
                TEXT("BeatBloom: Drumkit options refreshed from loaded config"));
     }
@@ -873,9 +873,10 @@ FReply SBeatBloomModuleOperationsPanel::OnLoadBilinearHelperState() {
     }
     
     ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
-    UBeatBloomControlRigProcessor::LoadBilinearHelperState(BeatBloom);
+    UBeatBloomControlRigProcessor::LoadBilinearHelperState(BeatBloom, *SelectedBilinearState);
     
-    // LoadBilinearHelperState 内部已经有日志输出，这里不需要重复
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Loaded bilinear helper state %s"), *(*SelectedBilinearState));
     
     return FReply::Handled();
 }

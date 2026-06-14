@@ -27,6 +27,13 @@ void SBeatBloomModuleMainPanel::Construct(const FArguments& InArgs) {
                   LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
     RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
 
+    // 属性面板加载 drumkit 配置后，通知操作面板刷新下拉选项
+    PropertiesPanel->OnDrumKitConfigLoaded.BindLambda([this]() {
+        if (OperationsPanel.IsValid()) {
+            OperationsPanel->RefreshOperations();
+        }
+    });
+
     // Show first panel after all panels are registered
     ShowFirstPanel();
 }

@@ -208,19 +208,8 @@ void UZhengDriftMusicInstrumentProcessor::
         return;
     }
 
-    // 获取古筝的 SkeletalMeshComponent
-    USkeletalMeshComponent* SkeletalMeshComp =
-        ZhengDriftActor->Zheng->GetSkeletalMeshComponent();
-
-    if (!SkeletalMeshComp) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Zheng does not have a SkeletalMeshComponent"));
-        return;
-    }
-
-    // 使用 Common 模块的统一方法：动态检测 Morph Target 并创建通道
+    // 使用 Common 模块的统一方法：从 ControlRig Blueprint 的 Curve Container 读取曲线并创建通道
     int32 ChannelsAdded = UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-        SkeletalMeshComp,
         Blueprint,
         TEXT("zheng_root")
     );

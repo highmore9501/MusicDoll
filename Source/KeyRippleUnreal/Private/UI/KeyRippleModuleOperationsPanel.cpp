@@ -459,9 +459,11 @@ FReply SKeyRippleModuleOperationsPanel::OnGeneratePianoKeyAnimation() {
 
     FString AnimationPath;
     FString KeyAnimationPath;
+    FString ActivityCurvePath;
 
     if (!UKeyRippleAnimationProcessor::ParseKeyRippleFile(
-            KeyRippleActor.Get(), AnimationPath, KeyAnimationPath)) {
+            KeyRippleActor.Get(), AnimationPath, KeyAnimationPath,
+            ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("KeyRipple: Failed to parse KeyRipple file"));
         return FReply::Handled();

@@ -241,7 +241,8 @@ class STRINGFLOWUNREAL_API UStringFlowAnimationProcessor : public UObject {
     static bool ParseStringFlowConfigFile(AStringFlowUnreal* StringFlowActor,
                                           FString& OutLeftHandAnimationPath,
                                           FString& OutRightHandAnimationPath,
-                                          FString& OutStringVibrationPath);
+                                          FString& OutStringVibrationPath,
+                                          FString& OutActivityCurvePath);
 
    private:
     /**

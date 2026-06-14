@@ -33,9 +33,7 @@ class KEYRIPPLEUNREAL_API SKeyRippleModulePropertiesPanel
     void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
     void OnStringPropertyChanged(const FString& PropertyPath,
                                  const FString& NewValue);
-    void OnEnumPropertyChanged(const FString& PropertyPath, uint8 NewValue);
-    void OnVector3PropertyChanged(const FString& PropertyPath,
-                                  int32 ComponentIndex, float NewValue);
+    void OnEnumPropertyChanged(const FString& PropertyPath, uint8 NewValue);    
 
     // Initialization operation handlers
     FReply OnCheckObjectsStatus();

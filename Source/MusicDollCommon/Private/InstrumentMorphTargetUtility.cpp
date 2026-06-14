@@ -624,18 +624,43 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
     return WrittenTargets;
 }
 
+bool UInstrumentMorphTargetUtility::GetCurveNamesFromBlueprint(
+    UControlRigBlueprint* ControlRigBlueprint,
+    TArray<FString>& OutNames) {
+    OutNames.Empty();
+
+    if (!ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
+        return false;
+    }
+
+    URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
+    if (!RigHierarchy) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Failed to get RigHierarchy from Blueprint"));
+        return false;
+    }
+
+    TArray<FRigElementKey> CurveKeys = RigHierarchy->GetAllKeys();
+    for (const FRigElementKey& Key : CurveKeys) {
+        if (Key.Type == ERigElementType::Curve) {
+            OutNames.Add(Key.Name.ToString());
+        }
+    }
+
+    UE_LOG(LogTemp, Log,
+           TEXT("[InstrumentMorphTargetUtility] Found %d curves in ControlRig Blueprint"),
+           OutNames.Num());
+
+    return OutNames.Num() > 0;
+}
+
 int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-    USkeletalMeshComponent* SkeletalMeshComp,
     UControlRigBlueprint* ControlRigBlueprint,
     const FString& RootControlName,
     TArray<FString>* OutChannelNames) {
     // 参数验证
-    if (!SkeletalMeshComp) {
-        UE_LOG(LogTemp, Error,
-               TEXT("[InstrumentMorphTargetUtility] SkeletalMeshComp is null"));
-        return 0;
-    }
-
     if (!ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
                TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
@@ -652,18 +677,18 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
            TEXT("========== InitializeMorphTargetChannels Started =========="));
     UE_LOG(LogTemp, Warning, TEXT("Root Control: %s"), *RootControlName);
 
-    // 步骤 1: 从 SkeletalMesh 动态检测所有 Morph Target 名称
+    // 步骤 1: 从 ControlRig Blueprint 的 Curve Container 读取所有曲线名称
     TArray<FString> MorphTargetNames;
-    if (!GetMorphTargetNames(SkeletalMeshComp, MorphTargetNames)) {
+    if (!GetCurveNamesFromBlueprint(ControlRigBlueprint, MorphTargetNames)) {
         UE_LOG(LogTemp, Error,
-               TEXT("[InstrumentMorphTargetUtility] Failed to get Morph Target "
-                    "names or no Morph Targets found"));
+               TEXT("[InstrumentMorphTargetUtility] Failed to get curve names "
+                    "from ControlRig Blueprint"));
         return 0;
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("[InstrumentMorphTargetUtility] Found %d Morph Targets on "
-                "SkeletalMesh"),
+           TEXT("[InstrumentMorphTargetUtility] Found %d curves in "
+                "ControlRig Blueprint"),
            MorphTargetNames.Num());
 
     if (MorphTargetNames.Num() == 0) {

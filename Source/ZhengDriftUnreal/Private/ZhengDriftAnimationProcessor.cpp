@@ -18,13 +18,15 @@
 // ============================================================
 
 bool UZhengDriftAnimationProcessor::ParseZhengDriftConfigFile(
-    AZhengDriftUnreal* ZhengDriftActor,
-    FString& OutPerformanceAnimationPath,
-    FString& OutTargetAnimationPath,
-    FString& OutStringAnimationPath) {
-    OutPerformanceAnimationPath.Empty();
-    OutTargetAnimationPath.Empty();
-    OutStringAnimationPath.Empty();
+AZhengDriftUnreal* ZhengDriftActor,
+FString& OutPerformanceAnimationPath,
+FString& OutTargetAnimationPath,
+FString& OutStringAnimationPath,
+FString& OutActivityCurvePath) {
+OutPerformanceAnimationPath.Empty();
+OutTargetAnimationPath.Empty();
+OutStringAnimationPath.Empty();
+OutActivityCurvePath.Empty();
 
     if (!ZhengDriftActor) {
         UE_LOG(LogTemp, Error,
@@ -74,15 +76,16 @@ bool UZhengDriftAnimationProcessor::ParseZhengDriftConfigFile(
     ResolvePath(TEXT("performance_animation"), OutPerformanceAnimationPath);
     ResolvePath(TEXT("target_animation"),      OutTargetAnimationPath);
     ResolvePath(TEXT("string_animation"),      OutStringAnimationPath);
+    ResolvePath(TEXT("activity_curve_path"),   OutActivityCurvePath);
 
     bool bAnyValid = !OutPerformanceAnimationPath.IsEmpty() ||
                      !OutTargetAnimationPath.IsEmpty() ||
                      !OutStringAnimationPath.IsEmpty();
 
     UE_LOG(LogTemp, Warning,
-           TEXT("ParseZhengDriftConfigFile: performance='%s' target='%s' string='%s'"),
+           TEXT("ParseZhengDriftConfigFile: performance='%s' target='%s' string='%s' activity_curve='%s'"),
            *OutPerformanceAnimationPath, *OutTargetAnimationPath,
-           *OutStringAnimationPath);
+           *OutStringAnimationPath, *OutActivityCurvePath);
 
     return bAnyValid;
 }
@@ -95,9 +98,9 @@ void UZhengDriftAnimationProcessor::GeneratePerformerAnimation(
     AZhengDriftUnreal* ZhengDriftActor) {
     if (!ZhengDriftActor) return;
 
-    FString PerformancePath, TargetPath, StringPath;
+    FString PerformancePath, TargetPath, StringPath, ActivityCurvePath;
     if (!ParseZhengDriftConfigFile(ZhengDriftActor, PerformancePath,
-                                    TargetPath, StringPath)) {
+                                    TargetPath, StringPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("GeneratePerformerAnimation: Config parse failed"));
         return;
@@ -125,6 +128,15 @@ void UZhengDriftAnimationProcessor::GeneratePerformerAnimation(
     if (!TargetPath.IsEmpty()) {
         MakeTargetAnimation(ZhengDriftActor, TargetPath, LevelSequence);
     }
+
+    // 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && ZhengDriftActor->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+            ZhengDriftActor->SkeletalMeshActor, ActivityCurvePath,
+            LevelSequence);
+    }
 }
 
 // ============================================================
@@ -135,9 +147,9 @@ void UZhengDriftAnimationProcessor::GenerateInstrumentAnimation(
     AZhengDriftUnreal* ZhengDriftActor) {
     if (!ZhengDriftActor) return;
 
-    FString PerformancePath, TargetPath, StringPath;
+    FString PerformancePath, TargetPath, StringPath, ActivityCurvePath;
     if (!ParseZhengDriftConfigFile(ZhengDriftActor, PerformancePath,
-                                    TargetPath, StringPath)) {
+                                    TargetPath, StringPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateInstrumentAnimation: Config parse failed"));
         return;
@@ -161,9 +173,9 @@ void UZhengDriftAnimationProcessor::GenerateAllAnimation(
     AZhengDriftUnreal* ZhengDriftActor) {
     if (!ZhengDriftActor) return;
 
-    FString PerformancePath, TargetPath, StringPath;
+    FString PerformancePath, TargetPath, StringPath, ActivityCurvePath;
     if (!ParseZhengDriftConfigFile(ZhengDriftActor, PerformancePath,
-                                    TargetPath, StringPath)) {
+                                    TargetPath, StringPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateAllAnimation: Config parse failed"));
         return;
@@ -199,6 +211,15 @@ void UZhengDriftAnimationProcessor::GenerateAllAnimation(
     if (!StringPath.IsEmpty()) {
         UZhengDriftMusicInstrumentProcessor::GenerateInstrumentAnimation(
             ZhengDriftActor, StringPath);
+    }
+
+    // 4. 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && ZhengDriftActor->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+            ZhengDriftActor->SkeletalMeshActor, ActivityCurvePath,
+            LevelSequence);
     }
 
     UE_LOG(LogTemp, Warning,

@@ -173,11 +173,12 @@ void UStringFlowAnimationProcessor::GeneratePerformerAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringVibrationPath;
+    FString ActivityCurvePath;
 
     // 解析配置文件
     if (!ParseStringFlowConfigFile(StringFlowActor, LeftHandAnimationPath,
                                    RightHandAnimationPath,
-                                   StringVibrationPath)) {
+                                   StringVibrationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse StringFlow config file in "
                     "GeneratePerformerAnimation"));
@@ -205,6 +206,15 @@ void UStringFlowAnimationProcessor::GeneratePerformerAnimation(
     } else {
         UE_LOG(LogTemp, Warning, TEXT("Right hand animation path is empty"));
     }
+
+    // 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && StringFlowActor->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+            StringFlowActor->SkeletalMeshActor, ActivityCurvePath,
+            LevelSequence);
+    }
 }
 
 void UStringFlowAnimationProcessor::GenerateInstrumentAnimation(
@@ -231,11 +241,12 @@ void UStringFlowAnimationProcessor::GenerateAllAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringVibrationPath;
+    FString ActivityCurvePath;
 
     // 解析配置文件
     if (!ParseStringFlowConfigFile(StringFlowActor, LeftHandAnimationPath,
                                    RightHandAnimationPath,
-                                   StringVibrationPath)) {
+                                   StringVibrationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse StringFlow config file in "
                     "GenerateAllAnimation"));
@@ -563,11 +574,13 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
 }
 
 bool UStringFlowAnimationProcessor::ParseStringFlowConfigFile(
-    AStringFlowUnreal* StringFlowActor, FString& OutLeftHandAnimationPath,
-    FString& OutRightHandAnimationPath, FString& OutStringVibrationPath) {
-    OutLeftHandAnimationPath.Empty();
-    OutRightHandAnimationPath.Empty();
-    OutStringVibrationPath.Empty();
+AStringFlowUnreal* StringFlowActor, FString& OutLeftHandAnimationPath,
+FString& OutRightHandAnimationPath, FString& OutStringVibrationPath,
+FString& OutActivityCurvePath) {
+OutLeftHandAnimationPath.Empty();
+OutRightHandAnimationPath.Empty();
+OutStringVibrationPath.Empty();
+OutActivityCurvePath.Empty();
 
     if (!StringFlowActor) {
         UE_LOG(LogTemp, Error,
@@ -616,6 +629,12 @@ bool UStringFlowAnimationProcessor::ParseStringFlowConfigFile(
     if (JsonObject->HasField(TEXT("string_animation_file"))) {
         OutStringVibrationPath =
             JsonObject->GetStringField(TEXT("string_animation_file"));
+    }
+
+    // 解析 activity curve 路径
+    if (JsonObject->HasField(TEXT("activity_curve_path"))) {
+        OutActivityCurvePath =
+            JsonObject->GetStringField(TEXT("activity_curve_path"));
     }
 
     return true;

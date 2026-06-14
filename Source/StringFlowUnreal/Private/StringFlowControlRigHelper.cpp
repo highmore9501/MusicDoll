@@ -1,4 +1,4 @@
-#include "StringFlowControlRigHelper.h"
+﻿#include "StringFlowControlRigHelper.h"
 
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
@@ -74,35 +74,27 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
         return;
     }
 
-    // 如果已经初始化过，跳过重复初始化
-    if (StringFlowActor->IsInitialized()) {
-        UE_LOG(LogTemp, Verbose,
-               TEXT("InitializeRecorderTransforms: Already initialized, "
-                    "skipping"));
-        return;
-    }
-
-    StringFlowActor->RecorderTransforms.Empty();
-
     UE_LOG(
-        LogTemp, Warning,
+        LogTemp, Verbose,
         TEXT(
-            "Initializing all recorder keys in RecorderTransforms map from "
-            "existing lists..."));
+            "Ensuring all recorder keys exist in RecorderTransforms map..."));
 
     int32 KeyCount = 0;
     FStringFlowRecorderTransform DefaultTransform;
     DefaultTransform.Location = FVector::ZeroVector;
     DefaultTransform.Rotation = FQuat::Identity;
 
+    auto EnsureKey = [&](const FString& Key) {
+        StringFlowActor->RecorderTransforms.FindOrAdd(Key, DefaultTransform);
+        KeyCount++;
+    };
+
     const FStringFlowStringArray* LeftFingerArray =
         StringFlowActor->LeftFingerRecorders.Find(
             TEXT("left_finger_recorders"));
     if (LeftFingerArray) {
         for (int32 i = 0; i < LeftFingerArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(LeftFingerArray->Get(i),
-                                                    DefaultTransform);
-            KeyCount++;
+            EnsureKey(LeftFingerArray->Get(i));
         }
     }
 
@@ -111,9 +103,7 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
             TEXT("left_hand_position_recorders"));
     if (LeftHandPositionArray) {
         for (int32 i = 0; i < LeftHandPositionArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(
-                LeftHandPositionArray->Get(i), DefaultTransform);
-            KeyCount++;
+            EnsureKey(LeftHandPositionArray->Get(i));
         }
     }
 
@@ -122,9 +112,7 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
             TEXT("left_thumb_position_recorders"));
     if (LeftThumbArray) {
         for (int32 i = 0; i < LeftThumbArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(LeftThumbArray->Get(i),
-                                                    DefaultTransform);
-            KeyCount++;
+            EnsureKey(LeftThumbArray->Get(i));
         }
     }
 
@@ -133,9 +121,7 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
             TEXT("right_finger_recorders"));
     if (RightFingerArray) {
         for (int32 i = 0; i < RightFingerArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(
-                RightFingerArray->Get(i), DefaultTransform);
-            KeyCount++;
+            EnsureKey(RightFingerArray->Get(i));
         }
     }
 
@@ -144,9 +130,7 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
             TEXT("right_hand_position_recorders"));
     if (RightHandPositionArray) {
         for (int32 i = 0; i < RightHandPositionArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(
-                RightHandPositionArray->Get(i), DefaultTransform);
-            KeyCount++;
+            EnsureKey(RightHandPositionArray->Get(i));
         }
     }
 
@@ -155,9 +139,7 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
             TEXT("right_thumb_position_recorders"));
     if (RightThumbArray) {
         for (int32 i = 0; i < RightThumbArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(RightThumbArray->Get(i),
-                                                    DefaultTransform);
-            KeyCount++;
+            EnsureKey(RightThumbArray->Get(i));
         }
     }
 
@@ -165,22 +147,17 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
         StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
     if (OtherArray) {
         for (int32 i = 0; i < OtherArray->Num(); ++i) {
-            StringFlowActor->RecorderTransforms.Add(OtherArray->Get(i),
-                                                    DefaultTransform);
-            KeyCount++;
+            EnsureKey(OtherArray->Get(i));
         }
     }
 
     for (const auto& GuidePair : StringFlowActor->GuideLines) {
-        StringFlowActor->RecorderTransforms.Add(GuidePair.Value,
-                                                DefaultTransform);
-        KeyCount++;
+        EnsureKey(GuidePair.Value);
     }
 
     UE_LOG(
-        LogTemp, Warning,
-        TEXT("Initialized %d recorder keys in RecorderTransforms map from "
-             "existing lists"),
+        LogTemp, Verbose,
+        TEXT("Ensured %d recorder keys exist in RecorderTransforms map"),
         KeyCount);
 }
 
@@ -243,10 +220,12 @@ void FStringFlowControlRigHelper::SaveSingleController(
     if (!ExistingTransform) {
         UE_LOG(
             LogTemp, Warning,
-            TEXT("    ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms"),
+            TEXT("    ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms, adding it"),
             *RecorderName);
-        FailedCount++;
-        return;
+        FStringFlowRecorderTransform DefaultTransform;
+        DefaultTransform.Location = FVector::ZeroVector;
+        DefaultTransform.Rotation = FQuat::Identity;
+        ExistingTransform = &StringFlowActor->RecorderTransforms.Add(RecorderName, DefaultTransform);
     }
 
     FRigElementKey ControlKey(*ControlName, ERigElementType::Control);

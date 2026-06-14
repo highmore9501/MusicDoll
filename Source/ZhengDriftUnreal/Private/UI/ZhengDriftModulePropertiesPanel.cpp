@@ -52,7 +52,9 @@ void SZhengDriftModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("StringNumber"), ZhengDrift->StringNumber, TEXT("StringNumber"),
-        FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     // ---- File Paths ----
     Container->AddSlot().AutoHeight().Padding(
@@ -131,6 +133,19 @@ void SZhengDriftModulePropertiesPanel::CreatePropertyWidgets() {
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
+void SZhengDriftModulePropertiesPanel::OnNumericPropertyChanged(
+    const FString& PropertyPath, int32 NewValue) {
+    if (!ZhengDriftActor.IsValid()) {
+        return;
+    }
+
+    AZhengDriftUnreal* ZhengDrift = ZhengDriftActor.Get();
+    ZhengDrift->Modify();
+
+    if (PropertyPath == TEXT("StringNumber"))
+        ZhengDrift->StringNumber = NewValue;
+}
+
 FReply SZhengDriftModulePropertiesPanel::OnCheckObjectsStatus() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
     UZhengDriftControlRigProcessor::CheckObjectsStatus(ZhengDriftActor.Get());
@@ -154,6 +169,9 @@ FReply SZhengDriftModulePropertiesPanel::OnExportRecorderInfo() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
     if (ZhengDriftActor->IOFilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error, TEXT("ZhengDrift: IOFilePath is empty"));
+        return FReply::Handled();
+    }
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(ZhengDriftActor->IOFilePath)) {
         return FReply::Handled();
     }
     ZhengDriftActor->ExportRecorderInfo(ZhengDriftActor->IOFilePath);

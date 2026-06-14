@@ -82,21 +82,28 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
     if (CreateController(ControlRigBlueprint, TEXT("base_root"))) {
         CreatedCount++;
 
-        // 2. 创建控制器根节点
+        // 2. 创建控制器根节点（绑定到胸骨）
         if (CreateController(ControlRigBlueprint, TEXT("controller_root"),
                              TEXT("base_root"))) {
             CreatedCount++;
+
+            // 2.1 创建 controller_root_offset（用于接收动画数据）
+            if (CreateController(ControlRigBlueprint,
+                                 TEXT("controller_root_offset"),
+                                 TEXT("controller_root"))) {
+                CreatedCount++;
+            }
         }
     }
 
-    // 3. 创建左手控制器
+    // 3. 创建左手控制器（改为挂在 controller_root_offset 下）
     TArray<FString> LeftControllers = {
         TEXT("H_L"),  TEXT("HP_L"), TEXT("T_L"),
         TEXT("TP_L"), TEXT("I_L"),  TEXT("M_L"),
         TEXT("R_L"),  TEXT("P_L"),  TEXT("H_rotation_L")};
 
     for (const FString& ControllerName : LeftControllers) {
-        FString ParentName = TEXT("controller_root");
+        FString ParentName = TEXT("controller_root_offset");
         if (ControllerName == TEXT("TP_L")) {
             ParentName = TEXT("H_L");
         }
@@ -106,11 +113,11 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         }
     }
 
-    // 4. 创建右手控制器
+    // 4. 创建右手控制器（改为挂在 controller_root_offset 下）
     TArray<FString> RightControllers = {TEXT("H_R"), TEXT("HP_R"),
                                         TEXT("H_rotation_R")};
 
-    FString ControllerRootName = TEXT("controller_root");
+    FString ControllerRootName = TEXT("controller_root_offset");
 
     for (const FString& ControllerName : RightControllers) {
         if (CreateController(ControlRigBlueprint, ControllerName,
@@ -122,7 +129,7 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
     // 5. 根据乐器类型创建右手手指控制器
     TMap<FString, FString> RightFingerHierarchy =
         GetRightHandControllerHierarchy(FretDanceActor->InstrumentType,
-                                        *ControllerRootName);
+                                        ControllerRootName);
 
     for (const auto& FingerPair : RightFingerHierarchy) {
         const FString& FingerName = FingerPair.Key;
@@ -138,11 +145,11 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         }
     }
 
-    // 6. 创建指板位置控制器
+    // 6. 创建指板位置控制器（改为挂在 controller_root_offset 下）
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         const FString& RecorderName = FretPair.Value;
         if (CreateController(ControlRigBlueprint, RecorderName,
-                             TEXT("controller_root"))) {
+                             TEXT("controller_root_offset"))) {
             CreatedCount++;
         }
     }
@@ -762,7 +769,7 @@ bool UFretDanceControlRigProcessor::SaveFretPositionsState(
     // RecorderTransforms（与左手状态无关）
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         const FString& PositionKey = FretPair.Key;     // P0, P1, P2, P3, P4
-        const FString& RecorderName = FretPair.Value;  // Fret_P0, Fret_P1, etc
+        const FString& RecorderName = FretPair.Value;  // P0, P1, P2, P3, P4
 
         FRigElementKey ElementKey(*RecorderName, ERigElementType::Control);
         if (ControlRig->GetHierarchy()->Contains(ElementKey)) {
@@ -1026,6 +1033,7 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
     TMap<FString, FString> Hierarchy;
 
     // 所有乐器类型都包含基本的右手控制器
+    // 注意：ControllerRootName 现在是 "controller_root_offset"
     Hierarchy.Add(TEXT("H_R"), ControllerRootName);   // 右手掌（根级）
     Hierarchy.Add(TEXT("HP_R"), ControllerRootName);  // 右手掌枢轴
     Hierarchy.Add(TEXT("T_R"), ControllerRootName);   // 右手拇指
@@ -1039,7 +1047,7 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
         Hierarchy.Add(TEXT("R_R"), TEXT("H_R"));  // 右手无名指
         Hierarchy.Add(TEXT("P_R"), TEXT("H_R"));  // 右手小指
     } else {
-        // 其他乐器类型的层级结构（所有手指直接挂在 controller_root 下）
+        // 其他乐器类型的层级结构（所有手指直接挂在 controller_root_offset 下）
         Hierarchy.Add(TEXT("I_R"), ControllerRootName);  // 右手食指
         Hierarchy.Add(TEXT("M_R"), ControllerRootName);  // 右手中指
         Hierarchy.Add(TEXT("R_R"), ControllerRootName);  // 右手无名指

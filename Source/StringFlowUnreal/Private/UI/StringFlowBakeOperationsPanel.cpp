@@ -161,11 +161,6 @@ void SStringFlowBakeOperationsPanel::UpdateControlOptionsFromScan() {
                 InstrumentControlOptions.Add(
                     MakeShareable(new FString(ControlName)));
             }
-        } else if (Result.BoundActor == StringFlowActor->Bow) {
-            // 琴弓Control
-            for (const FString& ControlName : Result.AvailableControls) {
-                BowControlOptions.Add(MakeShareable(new FString(ControlName)));
-            }
         }
     }
 
@@ -332,37 +327,6 @@ void SStringFlowBakeOperationsPanel::RefreshScanResults() {
         }
     }
 
-    // 扫描琴弓Control Rig
-    if (StringFlowActor->Bow) {
-        UControlRig* BowControlRig = nullptr;
-        UControlRigBlueprint* BowBlueprint = nullptr;
-
-        if (UAnimationBaker::GetControlRigsForActor(
-                StringFlowActor->Bow, LevelSequence, BowControlRig,
-                BowBlueprint) &&
-            BowControlRig && BowBlueprint) {
-            // 获取琴弓Control列表 - 只获取Transform类型的Control
-            URigHierarchy* Hierarchy = BowBlueprint->GetHierarchy();
-            if (Hierarchy) {
-                TArray<FRigControlElement*> ControlElements =
-                    Hierarchy->GetControls(true);
-                for (const FRigControlElement* Element : ControlElements) {
-                    // 只添加Transform和EulerTransform类型的Control，排除Float等自定义Channel
-                    if (Element->Settings.ControlType ==
-                            ERigControlType::Transform ||
-                        Element->Settings.ControlType ==
-                            ERigControlType::EulerTransform) {
-                        BowControlOptions.Add(MakeShareable(
-                            new FString(Element->GetDisplayName().ToString())));
-                    }
-                }
-            }
-
-            UE_LOG(LogTemp, Log, TEXT("Found %d bow controls"),
-                   BowControlOptions.Num() - 1);
-        }
-    }
-
     // 刷新ComboBox
     if (PerformerControlCombo.IsValid()) {
         PerformerControlCombo->RefreshOptions();
@@ -432,26 +396,6 @@ void SStringFlowBakeOperationsPanel::AddSelectedControl() {
                 FString::Printf(TEXT("Instrument.%s"), *ControlName);
 
             if (AddControlToSelection(InstrumentControlRig, ControlName,
-                                      DisplayName)) {
-                bAddedAny = true;
-            }
-        }
-    }
-
-    // 添加琴弓Control - 使用基类帮助方法
-    if (SelectedBowControl.IsValid() && !SelectedBowControl->IsEmpty() &&
-        StringFlowActor->Bow) {
-        UControlRig* BowControlRig = nullptr;
-        UControlRigBlueprint* BowBlueprint = nullptr;
-
-        if (UAnimationBaker::GetControlRigsForActor(
-                StringFlowActor->Bow, LevelSequence, BowControlRig,
-                BowBlueprint) &&
-            BowControlRig) {
-            FString ControlName = *SelectedBowControl;
-            FString DisplayName = FString::Printf(TEXT("Bow.%s"), *ControlName);
-
-            if (AddControlToSelection(BowControlRig, ControlName,
                                       DisplayName)) {
                 bAddedAny = true;
             }

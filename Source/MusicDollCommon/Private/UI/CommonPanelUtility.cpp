@@ -1,6 +1,7 @@
 ﻿#include "UI/CommonPanelUtility.h"
 
 #include "DesktopPlatformModule.h"
+#include "Misc/MessageDialog.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SSpinBox.h"
@@ -9,18 +10,34 @@
 
 TSharedRef<SWidget> FCommonPanelUtility::CreateNumericPropertyRow(
     const FString& PropertyName, int32 Value, const FString& PropertyPath,
-    FSimpleDelegate OnValueChanged) {
+    TFunction<void(const FString&, int32)> OnValueChanged) {
+    TSharedPtr<SSpinBox<int32>> SpinBox;
+
     return SNew(SHorizontalBox) +
            SHorizontalBox::Slot().AutoWidth().Padding(
                5.0f)[SNew(STextBlock)
                          .Text(FText::FromString(PropertyName))
                          .MinDesiredWidth(150.0f)] +
            SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-               5.0f, 0.0f)[SNew(SSpinBox<int32>)
-                               .Value(Value)
-                               .MinValue(-10000)
-                               .MaxValue(10000)
-                               .Delta(1)];
+               5.0f,
+               0.0f)[SAssignNew(SpinBox, SSpinBox<int32>)
+                         .Value(Value)
+                         .MinValue(-10000)
+                         .MaxValue(10000)
+                         .Delta(1)
+                         .OnValueCommitted_Lambda(
+                             [PropertyPath, OnValueChanged](
+                                 int32 InValue, ETextCommit::Type CommitType) {
+                                 if (CommitType == ETextCommit::OnEnter ||
+                                     CommitType ==
+                                         ETextCommit::OnUserMovedFocus) {
+                                     // Execute the callback with property path
+                                     // and new value
+                                     if (OnValueChanged) {
+                                         OnValueChanged(PropertyPath, InValue);
+                                     }
+                                 }
+                             })];
 }
 
 TSharedRef<SWidget> FCommonPanelUtility::CreateStringPropertyRow(
@@ -175,6 +192,20 @@ bool FCommonPanelUtility::BrowseForFile(const FString& FileExtension,
     }
 
     return false;
+}
+
+bool FCommonPanelUtility::ConfirmExportOverwrite(const FString& FilePath) {
+    FText Message = FText::Format(
+        NSLOCTEXT("CommonPanelUtility", "ConfirmExportOverwrite",
+                  "本操作会覆盖下面文件中的所有数据:\n{0}\n\n您确定要继续吗？"),
+        FText::FromString(FilePath));
+
+    EAppReturnType::Type Result =
+        FMessageDialog::Open(EAppMsgType::YesNo, Message,
+                             NSLOCTEXT("CommonPanelUtility",
+                                       "ConfirmExportTitle", "Confirm Export"));
+
+    return Result == EAppReturnType::Yes;
 }
 
 FLinearColor FCommonPanelUtility::GetTabButtonTextColor(bool bIsActive) {

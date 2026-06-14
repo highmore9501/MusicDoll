@@ -16,11 +16,16 @@ class ABeatBloomUnreal;
  *
  * 对标参考：SFretDanceModulePropertiesPanel
  */
+DECLARE_DELEGATE(FOnBeatBloomDrumKitConfigLoaded);
+
 class BEATBLOOMUNREAL_API SBeatBloomModulePropertiesPanel
     : public SModulePropertiesPanel {
 public:
     SLATE_BEGIN_ARGS(SBeatBloomModulePropertiesPanel) {}
     SLATE_END_ARGS()
+
+    /** 当 drumkit 配置成功加载后触发，通知其他面板刷新 */
+    FOnBeatBloomDrumKitConfigLoaded OnDrumKitConfigLoaded;
 
     void Construct(const FArguments& InArgs);
 
@@ -36,6 +41,7 @@ private:
     TWeakObjectPtr<ABeatBloomUnreal> BeatBloomActor;
 
     // 属性变更处理
+    void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
     void OnFilePathChanged(const FString& PropertyPath,
                            const FString& NewFilePath);
 

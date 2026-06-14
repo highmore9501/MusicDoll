@@ -18,11 +18,11 @@ class MUSICDOLLCOMMON_API FCommonPanelUtility {
      * @param PropertyName Display name for the property
      * @param Value Current numeric value
      * @param PropertyPath Internal property identifier
-     * @param OnValueChanged Callback when value changes
+     * @param OnValueChanged Callback when value changes, receives (PropertyPath, NewValue)
      */
     static TSharedRef<SWidget> CreateNumericPropertyRow(
         const FString& PropertyName, int32 Value, const FString& PropertyPath,
-        FSimpleDelegate OnValueChanged);
+        TFunction<void(const FString&, int32)> OnValueChanged);
 
     /**
      * Create a string property row widget
@@ -104,6 +104,14 @@ class MUSICDOLLCOMMON_API FCommonPanelUtility {
     static bool BrowseForFile(const FString& FileExtension,
                               FString& OutFilePath,
                               bool bAllowCreateNew = false);
+
+    /**
+     * Show a confirmation dialog before overwriting a file
+     * Warns the user that the export operation will overwrite all existing data
+     * @param FilePath The file path that will be overwritten
+     * @return True if the user confirmed, false if cancelled
+     */
+    static bool ConfirmExportOverwrite(const FString& FilePath);
 
     /**
      * Get the color for active/inactive tab buttons

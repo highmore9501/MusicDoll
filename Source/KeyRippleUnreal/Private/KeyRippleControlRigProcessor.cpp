@@ -204,11 +204,13 @@ void UKeyRippleControlRigProcessor::SetupAllObjects(
     KeyRippleActor->RegisterAllControlRigs(CacheSubsystem, LevelSequence);
 
     // 现在可以安全地获取 ControlRig 了
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -262,11 +264,13 @@ void UKeyRippleControlRigProcessor::SaveState(
         return;
     }
 
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -332,10 +336,6 @@ void UKeyRippleControlRigProcessor::SaveState(
         SavedCount, FailedCount, false, true);
 
     FKeyRippleControlRigHelper::SaveControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->ShoulderControllers,
-        SavedCount, FailedCount, false, true);
-
-    FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, SavedCount,
         FailedCount, false, true);
 
@@ -345,10 +345,6 @@ void UKeyRippleControlRigProcessor::SaveState(
     FKeyRippleControlRigHelper::SaveControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->KeyBoardPositions,
         SavedCount, FailedCount, false, false);
-
-    FKeyRippleControlRigHelper::SaveControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->Guidelines, SavedCount,
-        FailedCount, false, false);
 
     FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("SaveState"), SavedCount, FailedCount,
@@ -391,11 +387,13 @@ void UKeyRippleControlRigProcessor::LoadState(
         return;
     }
 
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -452,10 +450,6 @@ void UKeyRippleControlRigProcessor::LoadState(
         LoadedCount, FailedCount, false, true);
 
     FKeyRippleControlRigHelper::LoadControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->ShoulderControllers,
-        LoadedCount, FailedCount, false, true);
-
-    FKeyRippleControlRigHelper::LoadControllers(
         KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, LoadedCount,
         FailedCount, false, true);
 
@@ -465,24 +459,12 @@ void UKeyRippleControlRigProcessor::LoadState(
         KeyRippleActor, RigHierarchy, KeyRippleActor->KeyBoardPositions,
         LoadedCount, FailedCount, false, false);
 
-    FKeyRippleControlRigHelper::LoadControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->Guidelines, LoadedCount,
-        FailedCount, false, false);
-
-#if WITH_EDITOR
-    // 通知 Sequencer 强制重新求値，使控制器位置在当前帧持久化
-    {
-        ULevelSequence* ActiveLevelSequence = nullptr;
-        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
-        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
-                ActiveLevelSequence, ActiveSequencer)) {
-            if (ActiveSequencer.IsValid()) {
-                ActiveSequencer->ForceEvaluate();
-            }
-        }
-    }
-    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
-#endif
+// 重新评估 Control Rig 以传播变更（约束、IK 等）
+// 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
+// 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
+if (ControlRigInstance) {
+    ControlRigInstance->Evaluate_AnyThread();
+}
 
     FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("LoadState"), LoadedCount, FailedCount,
@@ -521,11 +503,13 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         return;
     }
 
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
@@ -667,11 +651,13 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
         return nullptr;
     }
 
-    UControlRig* ControlRigInstance = CacheSubsystem->GetControlRig(
-        KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                      LevelSequence, TEXT("controller_root"));
     UControlRigBlueprint* ControlRigBlueprint =
         CacheSubsystem->GetControlRigBlueprint(
-            KeyRippleActor->SkeletalMeshActor, LevelSequence, TEXT("controller_root"));
+            KeyRippleActor->SkeletalMeshActor, LevelSequence,
+            TEXT("controller_root"));
 
     if (!ControlRigInstance || !ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,

@@ -458,6 +458,26 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
      * @return 如果当前正在进行渲染返回true，否则返回false
      */
     static bool IsInRenderingScenario();
+
+    // ===== Active Curve 写入 =====
+
+    /**
+     * 从 activity curve JSON 文件读取关键帧并写入演奏者 Control Rig 的 active_curve 通道
+     *
+     * activity curve JSON 格式（数组）：
+     * [{"frame": 0.0, "value": 0.0}, {"frame": 65.0, "value": 1.0}, ...]
+     *
+     * 如果 active_curve 动画通道尚不存在，会在 controller_root 下自动创建。
+     *
+     * @param PerformerActor 演奏者骨骼网格 Actor
+     * @param ActivityCurveFilePath activity curve JSON 文件路径
+     * @param LevelSequence Level Sequence
+     * @return 是否成功写入至少一个关键帧
+     */
+    static bool WriteActiveCurveFromFile(
+        ASkeletalMeshActor* PerformerActor,
+        const FString& ActivityCurveFilePath,
+        ULevelSequence* LevelSequence);
 };
 
 // ========== 兼容性别名（向后兼容） ==========

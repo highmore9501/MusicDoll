@@ -158,14 +158,29 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringRecorderPath;
+    FString ControllerRootAnimationPath;
+    FString ActivityCurvePath;
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
-                                  RightHandAnimationPath, StringRecorderPath)) {
+                                  RightHandAnimationPath, StringRecorderPath,
+                                  ControllerRootAnimationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GeneratePerformerAnimation"));
         return;
+    }
+
+    // 生成 controller_root 动画
+    if (!ControllerRootAnimationPath.IsEmpty()) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Generating controller root animation from: %s"),
+               *ControllerRootAnimationPath);
+        MakeControllerRootAnimation(FretDanceActor, ControllerRootAnimationPath,
+                                    LevelSequence);
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Controller root animation path is empty"));
     }
 
     // 生成左手动画
@@ -190,6 +205,15 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
         UE_LOG(LogTemp, Warning, TEXT("Right hand animation path is empty"));
     }
 
+    // 写入 active curve
+    if (!ActivityCurvePath.IsEmpty() && FretDanceActor->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UInstrumentAnimationUtility::WriteActiveCurveFromFile(
+            FretDanceActor->SkeletalMeshActor, ActivityCurvePath,
+            LevelSequence);
+    }
+
     FretDanceActor->TriggerControlRigReregistration(
         TEXT("Generate Performer Animation"));
 }
@@ -211,10 +235,13 @@ void UFretDanceAnimationProcessor::GenerateInstrumentAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringRecorderPath;
+    FString ControllerRootAnimationPath;
+    FString ActivityCurvePath;
 
     // 解析配置文件获取弦记录器路径
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
-                                  RightHandAnimationPath, StringRecorderPath)) {
+                                  RightHandAnimationPath, StringRecorderPath,
+                                  ControllerRootAnimationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GenerateInstrumentAnimation"));
@@ -255,10 +282,13 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
     FString LeftHandAnimationPath;
     FString RightHandAnimationPath;
     FString StringRecorderPath;
+    FString ControllerRootAnimationPath;
+    FString ActivityCurvePath;
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
-                                  RightHandAnimationPath, StringRecorderPath)) {
+                                  RightHandAnimationPath, StringRecorderPath,
+                                  ControllerRootAnimationPath, ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GenerateAllAnimation"));
@@ -289,11 +319,14 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
 }
 
 bool UFretDanceAnimationProcessor::ParseFretDanceConfigFile(
-    AFretDanceUnreal* FretDanceActor, FString& OutLeftHandAnimationPath,
-    FString& OutRightHandAnimationPath, FString& OutStringRecorderPath) {
-    OutLeftHandAnimationPath.Empty();
-    OutRightHandAnimationPath.Empty();
-    OutStringRecorderPath.Empty();
+AFretDanceUnreal* FretDanceActor, FString& OutLeftHandAnimationPath,
+FString& OutRightHandAnimationPath, FString& OutStringRecorderPath,
+FString& OutControllerRootAnimationPath, FString& OutActivityCurvePath) {
+OutLeftHandAnimationPath.Empty();
+OutRightHandAnimationPath.Empty();
+OutStringRecorderPath.Empty();
+OutControllerRootAnimationPath.Empty();
+OutActivityCurvePath.Empty();
 
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
@@ -344,7 +377,169 @@ bool UFretDanceAnimationProcessor::ParseFretDanceConfigFile(
             JsonObject->GetStringField(TEXT("guitar_string_recorder_file"));
     }
 
+    // 解析 controller_root 动画路径
+    if (JsonObject->HasField(TEXT("controller_root_animation_file"))) {
+        OutControllerRootAnimationPath =
+            JsonObject->GetStringField(TEXT("controller_root_animation_file"));
+    }
+
+    // 解析 activity curve 路径
+    if (JsonObject->HasField(TEXT("activity_curve_path"))) {
+        OutActivityCurvePath =
+            JsonObject->GetStringField(TEXT("activity_curve_path"));
+    }
+
     return true;
+}
+
+void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
+    AFretDanceUnreal* FretDanceActor, const FString& AnimationFilePath,
+    ULevelSequence* LevelSequence) {
+    if (!FretDanceActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("MakeControllerRootAnimation: FretDanceActor is null"));
+        return;
+    }
+
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Error,
+               TEXT("MakeControllerRootAnimation: LevelSequence is null"));
+        return;
+    }
+
+    if (!FretDanceActor->SkeletalMeshActor) {
+        UE_LOG(LogTemp, Error,
+               TEXT("MakeControllerRootAnimation: SkeletalMeshActor is null"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== MakeControllerRootAnimation Started: %s =========="),
+           *AnimationFilePath);
+
+#if WITH_EDITOR
+    // 1. 读取动画文件
+    FString FileContent;
+    if (!FFileHelper::LoadFileToString(FileContent, *AnimationFilePath)) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to load controller root file: %s"),
+               *AnimationFilePath);
+        return;
+    }
+
+    // 2. 解析 JSON 数组
+    TArray<TSharedPtr<FJsonValue>> JsonArray;
+    TSharedRef<TJsonReader<>> Reader =
+        TJsonReaderFactory<>::Create(FileContent);
+
+    if (!FJsonSerializer::Deserialize(Reader, JsonArray)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("Failed to parse JSON array from file: %s"),
+               *AnimationFilePath);
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Loaded %d controller root frames"),
+           JsonArray.Num());
+
+    // 3. 获取 Control Rig
+    UControlRig* ControlRigInstance =
+        FretDanceActor->GetCachedControlRig(TEXT("Performer"));
+
+    if (!ControlRigInstance) {
+        UE_LOG(LogTemp, Error,
+               TEXT("MakeControllerRootAnimation: Failed to get ControlRig for "
+                    "Performer - cache miss"));
+        return;
+    }
+
+    // 4. 清空 controller_root_offset 的关键帧（改为写入 offset）
+    TSet<FString> ControlNamesToClean = {TEXT("controller_root_offset")};
+    UInstrumentAnimationUtility::ClearControlRigKeyframes(
+        LevelSequence, ControlRigInstance, ControlNamesToClean);
+
+    // 5. 处理每一帧，合并位置和旋转到 controller_root_offset
+    TMap<FString, TArray<FAnimationKeyframe>> ControlKeyframeData;
+    int32 ProcessedFrames = 0;
+    int32 FailedFrames = 0;
+
+    for (int32 FrameIndex = 0; FrameIndex < JsonArray.Num(); ++FrameIndex) {
+        TSharedPtr<FJsonObject> FrameObject =
+            JsonArray[FrameIndex]->AsObject();
+        if (!FrameObject.IsValid()) {
+            FailedFrames++;
+            continue;
+        }
+
+        double FrameNumberDouble = FrameIndex;
+        if (FrameObject->HasField(TEXT("frame"))) {
+            FrameNumberDouble = FrameObject->GetNumberField(TEXT("frame"));
+        }
+        int32 FrameNumber = FMath::RoundToInt(FrameNumberDouble);
+
+        TSharedPtr<FJsonObject> FingerInfos;
+        if (FrameObject->HasField(TEXT("fingerInfos"))) {
+            FingerInfos = FrameObject->GetObjectField(TEXT("fingerInfos"));
+        }
+        if (!FingerInfos.IsValid()) {
+            FailedFrames++;
+            continue;
+        }
+
+        FAnimationKeyframe Keyframe;
+        Keyframe.FrameNumber = FrameNumber;
+
+        // 提取位置
+        if (FingerInfos->HasField(TEXT("controller_root"))) {
+            TArray<TSharedPtr<FJsonValue>> PosArr =
+                FingerInfos->GetArrayField(TEXT("controller_root"));
+            if (PosArr.Num() == 3) {
+                Keyframe.Translation = FVector(PosArr[0]->AsNumber(),
+                                               PosArr[1]->AsNumber(),
+                                               PosArr[2]->AsNumber());
+                Keyframe.bHasLocation = true;
+            }
+        }
+
+        // 提取旋转
+        if (FingerInfos->HasField(TEXT("controller_root_rotation"))) {
+            TArray<TSharedPtr<FJsonValue>> RotArr =
+                FingerInfos->GetArrayField(TEXT("controller_root_rotation"));
+            if (RotArr.Num() == 4) {
+                FQuat Rotation;
+                Rotation.W = RotArr[0]->AsNumber();
+                Rotation.X = RotArr[1]->AsNumber();
+                Rotation.Y = RotArr[2]->AsNumber();
+                Rotation.Z = RotArr[3]->AsNumber();
+                Rotation.Normalize();
+                Keyframe.Rotation = Rotation;
+                Keyframe.bHasRotation = true;
+            }
+        }
+
+        if (Keyframe.bHasLocation || Keyframe.bHasRotation) {
+            // 改为写入 controller_root_offset
+            ControlKeyframeData.FindOrAdd(TEXT("controller_root_offset")).Add(Keyframe);
+        }
+
+        ProcessedFrames++;
+    }
+
+    // 6. 批量插入关键帧
+    FBatchInsertKeyframesSettings Settings;
+    UInstrumentAnimationUtility::BatchInsertControlRigKeys(
+        LevelSequence, ControlRigInstance, ControlKeyframeData, Settings);
+
+    LevelSequence->MarkPackageDirty();
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== MakeControllerRootAnimation Summary =========="));
+    UE_LOG(LogTemp, Warning, TEXT("Successfully processed: %d frames"),
+           ProcessedFrames);
+    UE_LOG(LogTemp, Warning, TEXT("Failed frames: %d"), FailedFrames);
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== MakeControllerRootAnimation Completed =========="));
+
+#endif
 }
 
 void UFretDanceAnimationProcessor::MakePerformerAnimation(

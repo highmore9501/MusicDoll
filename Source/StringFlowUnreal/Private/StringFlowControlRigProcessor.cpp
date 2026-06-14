@@ -331,6 +331,18 @@ void UStringFlowControlRigProcessor::SetupControllers(
 
     TArray<FString> SortedControllerNames = AllControllerNames.Array();
 
+    // 预先收集右手控制器名称集合，用于判断父级
+    TSet<FString> RightFingerControllerNames;
+    for (const auto& Pair : StringFlowActor->RightFingerControllers)
+    {
+        RightFingerControllerNames.Add(Pair.Value);
+    }
+    TSet<FString> RightHandControllerNames;
+    for (const auto& Pair : StringFlowActor->RightHandControllers)
+    {
+        RightHandControllerNames.Add(Pair.Value);
+    }
+
     for (const FString& ControllerName : SortedControllerNames) {
         FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
         if (RigHierarchy->Contains(ElementKey)) {
@@ -339,8 +351,15 @@ void UStringFlowControlRigProcessor::SetupControllers(
             continue;
         }
 
+        // 右手手指/手掌控制器（除 HP_R 外）全部挂在 Bow_Controller 下
+        bool bIsRightHandCtrl = RightFingerControllerNames.Contains(ControllerName)
+                             || RightHandControllerNames.Contains(ControllerName);
+        FString ParentName = (bIsRightHandCtrl && ControllerName != TEXT("HP_R"))
+                             ? TEXT("Bow_Controller")
+                             : TEXT("controller_root");
+
         FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
+            ControlRigBlueprint, ControllerName, ParentName);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Creating special controllers..."));
@@ -415,7 +434,8 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FString FingerControlName = FingerPair.Value;
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
-        FString HandControlName = TEXT("H_R");
+        // 右手 pole 控制器挂在 Bow_Controller 下
+        FString HandControlName = TEXT("Bow_Controller");
 
         FControlRigCreationUtility::CreateControl(
             ControlRigBlueprint, PoleControlName, HandControlName);

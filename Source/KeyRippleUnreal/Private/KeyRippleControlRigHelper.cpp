@@ -47,12 +47,8 @@ TSet<FString> FKeyRippleControlRigHelper::GetAllControllerNames(
     TSet<FString> AllControllerNames;
 
     const TMap<FString, FString>* ControllerMaps[] = {
-        &KeyRippleActor->FingerControllers,
-        &KeyRippleActor->HandControllers,
-        &KeyRippleActor->KeyBoardPositions,
-        &KeyRippleActor->Guidelines,
-        &KeyRippleActor->TargetPoints,
-        &KeyRippleActor->ShoulderControllers,
+        &KeyRippleActor->FingerControllers, &KeyRippleActor->HandControllers,
+        &KeyRippleActor->KeyBoardPositions, &KeyRippleActor->TargetPoints,
         &KeyRippleActor->PolePoints};
 
     for (const auto* ControllerMap : ControllerMaps) {
@@ -122,17 +118,11 @@ void FKeyRippleControlRigHelper::InitializeRecorderTransforms(
     AddControllerRecordersToTransforms(KeyRippleActor,
                                        KeyRippleActor->HandControllers, true);
 
-    AddControllerRecordersToTransforms(
-        KeyRippleActor, KeyRippleActor->ShoulderControllers, true);
-
     AddControllerRecordersToTransforms(KeyRippleActor,
                                        KeyRippleActor->TargetPoints, true);
 
     AddControllerRecordersToTransforms(
         KeyRippleActor, KeyRippleActor->KeyBoardPositions, false);
-
-    AddControllerRecordersToTransforms(KeyRippleActor,
-                                       KeyRippleActor->Guidelines, false);
 }
 
 void FKeyRippleControlRigHelper::SaveControllerTransform(

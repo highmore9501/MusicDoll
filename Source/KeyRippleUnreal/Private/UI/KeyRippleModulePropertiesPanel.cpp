@@ -52,62 +52,77 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("OneHandFingerNumber"), KeyRipple->OneHandFingerNumber,
-        TEXT("OneHandFingerNumber"), FSimpleDelegate())];
+        TEXT("OneHandFingerNumber"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("LeftestPosition"), KeyRipple->LeftestPosition,
-        TEXT("LeftestPosition"), FSimpleDelegate())];
+        TEXT("LeftestPosition"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("LeftPosition"), KeyRipple->LeftPosition, TEXT("LeftPosition"),
-        FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("MiddleLeftPosition"), KeyRipple->MiddleLeftPosition,
-        TEXT("MiddleLeftPosition"), FSimpleDelegate())];
+        TEXT("MiddleLeftPosition"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("MiddleRightPosition"), KeyRipple->MiddleRightPosition,
-        TEXT("MiddleRightPosition"), FSimpleDelegate())];
+        TEXT("MiddleRightPosition"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("RightPosition"), KeyRipple->RightPosition, TEXT("RightPosition"),
-        FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("RightestPosition"), KeyRipple->RightestPosition,
-        TEXT("RightestPosition"), FSimpleDelegate())];
+        TEXT("RightestPosition"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
-        TEXT("MinKey"), KeyRipple->MinKey, TEXT("MinKey"), FSimpleDelegate())];
+        TEXT("MinKey"), KeyRipple->MinKey, TEXT("MinKey"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
-        TEXT("MaxKey"), KeyRipple->MaxKey, TEXT("MaxKey"), FSimpleDelegate())];
+        TEXT("MaxKey"), KeyRipple->MaxKey, TEXT("MaxKey"), 
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("HandRange"), KeyRipple->HandRange, TEXT("HandRange"),
-        FSimpleDelegate())];
-
-    // Vector3 properties for hand original directions
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f)[FCommonPanelUtility::CreateVector3PropertyRow(
-        TEXT("RightHandOriginalDirection"),
-        KeyRipple->RightHandOriginalDirection,
-        TEXT("RightHandOriginalDirection"), FSimpleDelegate())];
-
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f)[FCommonPanelUtility::CreateVector3PropertyRow(
-        TEXT("LeftHandOriginalDirection"), KeyRipple->LeftHandOriginalDirection,
-        TEXT("LeftHandOriginalDirection"), FSimpleDelegate())];
+        [this](const FString& PropertyPath, int32 NewValue) {
+            OnNumericPropertyChanged(PropertyPath, NewValue);
+        })];    
 
     // File path properties
     Container->AddSlot().AutoHeight().Padding(
@@ -217,32 +232,6 @@ void SKeyRippleModulePropertiesPanel::OnStringPropertyChanged(
         KeyRipple->AnimationFilePath = NewValue;
 }
 
-void SKeyRippleModulePropertiesPanel::OnVector3PropertyChanged(
-    const FString& PropertyPath, int32 ComponentIndex, float NewValue) {
-    if (!KeyRippleActor.IsValid()) {
-        return;
-    }
-
-    AKeyRippleUnreal* KeyRipple = KeyRippleActor.Get();
-    KeyRipple->Modify();
-
-    if (PropertyPath == TEXT("RightHandOriginalDirection")) {
-        if (ComponentIndex == 0)
-            KeyRipple->RightHandOriginalDirection.X = NewValue;
-        else if (ComponentIndex == 1)
-            KeyRipple->RightHandOriginalDirection.Y = NewValue;
-        else if (ComponentIndex == 2)
-            KeyRipple->RightHandOriginalDirection.Z = NewValue;
-    } else if (PropertyPath == TEXT("LeftHandOriginalDirection")) {
-        if (ComponentIndex == 0)
-            KeyRipple->LeftHandOriginalDirection.X = NewValue;
-        else if (ComponentIndex == 1)
-            KeyRipple->LeftHandOriginalDirection.Y = NewValue;
-        else if (ComponentIndex == 2)
-            KeyRipple->LeftHandOriginalDirection.Z = NewValue;
-    }
-}
-
 FReply SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus() {
     if (!KeyRippleActor.IsValid()) {
         UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for check player control rig status"))
@@ -266,6 +255,10 @@ FReply SKeyRippleModulePropertiesPanel::OnSetupAllObjects() {
 FReply SKeyRippleModulePropertiesPanel::OnExportRecorderInfo() {
     if (!KeyRippleActor.IsValid()) {
         UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for export player info"))
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(KeyRippleActor->IOFilePath)) {
         return FReply::Handled();
     }
 

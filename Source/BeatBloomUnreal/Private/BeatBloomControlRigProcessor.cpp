@@ -21,7 +21,8 @@ void UBeatBloomControlRigProcessor::SaveHandState(
     }
 
     // 验证是否能获取到 ControlRig 实例
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
         UE_LOG(
             LogTemp, Error,
@@ -66,7 +67,7 @@ void UBeatBloomControlRigProcessor::SaveHandState(
                                     Location, Rotation)) {
             // 根据控制器类型决定保存的数据
             FBeatBloomRecorderTransform RecorderTransform;
-            
+
             // 位置控制器（H_*, HP_*）：同时保存位置和旋转
             RecorderTransform.Location = Location;
             RecorderTransform.Rotation = Rotation;
@@ -106,7 +107,8 @@ void UBeatBloomControlRigProcessor::SaveFootState(
     }
 
     // 验证是否能获取到 ControlRig 实例
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
         UE_LOG(
             LogTemp, Error,
@@ -150,7 +152,7 @@ void UBeatBloomControlRigProcessor::SaveFootState(
                                     Location, Rotation)) {
             // 根据控制器类型决定保存的数据
             FBeatBloomRecorderTransform RecorderTransform;
-            
+
             // 脚部位置控制器（F_*）：同时保存位置和旋转
             RecorderTransform.Location = Location;
             RecorderTransform.Rotation = Rotation;
@@ -180,208 +182,221 @@ void UBeatBloomControlRigProcessor::SaveFootState(
 }
 
 void UBeatBloomControlRigProcessor::SaveBilinearHelperState(
-    ABeatBloomUnreal* BeatBloomActor,
-    const FString& StateSuffix) {
-    
+    ABeatBloomUnreal* BeatBloomActor, const FString& StateSuffix) {
     if (!BeatBloomActor) {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor for SaveBilinearHelperState"));
-        return;
-    }
-
-    if (StateSuffix.IsEmpty() || 
-        (StateSuffix != TEXT("A") && StateSuffix != TEXT("B") && 
-         StateSuffix != TEXT("C") && StateSuffix != TEXT("D"))) {
-        UE_LOG(LogTemp, Error, 
-               TEXT("BeatBloom: Invalid state suffix '%s'. Must be A/B/C/D"), *StateSuffix);
-        return;
-    }
-
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
-    if (!ControlRig) {
         UE_LOG(LogTemp, Error,
-               TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
+               TEXT("BeatBloom: No actor for SaveBilinearHelperState"));
+        return;
+    }
+
+    if (StateSuffix.IsEmpty() ||
+        (StateSuffix != TEXT("A") && StateSuffix != TEXT("B") &&
+         StateSuffix != TEXT("C") && StateSuffix != TEXT("D"))) {
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: Invalid state suffix '%s'. Must be A/B/C/D"),
+               *StateSuffix);
+        return;
+    }
+
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    if (!ControlRig) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
         return;
     }
 
     int32 SavedCount = 0;
 
-    // ========== 1. 计算 Middle_Hand 位置 ==========
+    // ========== 1. 读取并保存左右手位置和旋转，计算 Middle_Hand 位置
+    // ==========
     FVector LeftHandLocation, RightHandLocation;
-    FQuat DummyRotation;
-    
-    bool bHasLeftHand = ReadControllerTransform(BeatBloomActor, TEXT("H_L"), 
-                                                 LeftHandLocation, DummyRotation);
-    bool bHasRightHand = ReadControllerTransform(BeatBloomActor, TEXT("H_R"), 
-                                                  RightHandLocation, DummyRotation);
-    
+    FQuat LeftHandRotation, RightHandRotation;
+
+    bool bHasLeftHand = ReadControllerTransform(
+        BeatBloomActor, TEXT("H_L"), LeftHandLocation, LeftHandRotation);
+    bool bHasRightHand = ReadControllerTransform(
+        BeatBloomActor, TEXT("H_R"), RightHandLocation, RightHandRotation);
+
     if (!bHasLeftHand || !bHasRightHand) {
-        UE_LOG(LogTemp, Warning, 
-               TEXT("BeatBloom: Cannot calculate Middle_Hand - missing hand controllers"));
+        UE_LOG(LogTemp, Warning,
+               TEXT("BeatBloom: Cannot calculate Middle_Hand - missing hand "
+                    "controllers"));
         return;
     }
-    
+
+    // 保存左手位置和旋转到 Left_Hand_{StateSuffix} 记录器
+    FString LeftHandRecorderName = TEXT("Left_Hand_") + StateSuffix;
+    FBeatBloomRecorderTransform LeftHandRecT;
+    LeftHandRecT.Location = LeftHandLocation;
+    LeftHandRecT.Rotation = LeftHandRotation;
+    BeatBloomActor->RecorderTransforms.Add(LeftHandRecorderName, LeftHandRecT);
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Saved Left_Hand_%s at Loc(%.2f, %.2f, %.2f)"),
+           *StateSuffix, LeftHandLocation.X, LeftHandLocation.Y,
+           LeftHandLocation.Z);
+    SavedCount++;
+
+    // 保存右手位置和旋转到 Right_Hand_{StateSuffix} 记录器
+    FString RightHandRecorderName = TEXT("Right_Hand_") + StateSuffix;
+    FBeatBloomRecorderTransform RightHandRecT;
+    RightHandRecT.Location = RightHandLocation;
+    RightHandRecT.Rotation = RightHandRotation;
+    BeatBloomActor->RecorderTransforms.Add(RightHandRecorderName,
+                                           RightHandRecT);
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Saved Right_Hand_%s at Loc(%.2f, %.2f, %.2f)"),
+           *StateSuffix, RightHandLocation.X, RightHandLocation.Y,
+           RightHandLocation.Z);
+    SavedCount++;
+
     // Middle_Hand = (H_L + H_R) / 2
     FVector MiddleHandLocation = (LeftHandLocation + RightHandLocation) / 2.0f;
-    
+
     // 保存到 Middle_Hand_{StateSuffix} 记录器
     FString MiddleHandRecorderName = TEXT("Middle_Hand_") + StateSuffix;
     FBeatBloomRecorderTransform MiddleHandRecT;
     MiddleHandRecT.Location = MiddleHandLocation;
     MiddleHandRecT.Rotation = FQuat::Identity;
-    BeatBloomActor->RecorderTransforms.Add(MiddleHandRecorderName, MiddleHandRecT);
-    
+    BeatBloomActor->RecorderTransforms.Add(MiddleHandRecorderName,
+                                           MiddleHandRecT);
+
     UE_LOG(LogTemp, Warning,
            TEXT("BeatBloom: Saved Middle_Hand_%s at Loc(%.2f, %.2f, %.2f)"),
-           *StateSuffix,
-           MiddleHandLocation.X, MiddleHandLocation.Y, MiddleHandLocation.Z);
+           *StateSuffix, MiddleHandLocation.X, MiddleHandLocation.Y,
+           MiddleHandLocation.Z);
     SavedCount++;
 
     // ========== 2. 读取 Head_Control 位置 ==========
     FVector HeadControlLocation;
+    FQuat DummyRotation;
     if (ReadControllerTransform(BeatBloomActor, TEXT("Head_Control"),
-                                 HeadControlLocation, DummyRotation)) {
+                                HeadControlLocation, DummyRotation)) {
         FString HeadControlRecorderName = TEXT("Head_Control_") + StateSuffix;
         FBeatBloomRecorderTransform HeadControlRecT;
         HeadControlRecT.Location = HeadControlLocation;
         HeadControlRecT.Rotation = FQuat::Identity;
-        BeatBloomActor->RecorderTransforms.Add(HeadControlRecorderName, HeadControlRecT);
-        
-        UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Saved Head_Control_%s at Loc(%.2f, %.2f, %.2f)"),
-               *StateSuffix,
-               HeadControlLocation.X, HeadControlLocation.Y, HeadControlLocation.Z);
+        BeatBloomActor->RecorderTransforms.Add(HeadControlRecorderName,
+                                               HeadControlRecT);
+
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("BeatBloom: Saved Head_Control_%s at Loc(%.2f, %.2f, %.2f)"),
+            *StateSuffix, HeadControlLocation.X, HeadControlLocation.Y,
+            HeadControlLocation.Z);
         SavedCount++;
     } else {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: Failed to read Head_Control position"));
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: Failed to read Head_Control position"));
     }
 
     // Look_At 不需要保存(通过父子关系跟随 Middle_Hand)
 
     UE_LOG(LogTemp, Warning,
-           TEXT("BeatBloom: SaveBilinearHelperState(%s) completed - Saved: %d"), 
+           TEXT("BeatBloom: SaveBilinearHelperState(%s) completed - Saved: %d"),
            *StateSuffix, SavedCount);
 }
 
 void UBeatBloomControlRigProcessor::LoadBilinearHelperState(
-    ABeatBloomUnreal* BeatBloomActor) {
-    
+    ABeatBloomUnreal* BeatBloomActor, const FString& StateSuffix) {
     if (!BeatBloomActor) {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor for LoadBilinearHelperState"));
-        return;
-    }
-
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
-    if (!ControlRig) {
         UE_LOG(LogTemp, Error,
-               TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
+               TEXT("BeatBloom: No actor for LoadBilinearHelperState"));
         return;
     }
 
-    // ========== 1. 读取当前 Middle_Hand 的实际位置 ==========
-    FVector CurrentMiddleHandLocation;
-    FQuat DummyRotation;
-    
-    if (!ReadControllerTransform(BeatBloomActor, TEXT("Middle_Hand"),
-                                  CurrentMiddleHandLocation, DummyRotation)) {
-        UE_LOG(LogTemp, Warning, 
-               TEXT("BeatBloom: Cannot read current Middle_Hand position"));
+    if (StateSuffix.IsEmpty() ||
+        (StateSuffix != TEXT("A") && StateSuffix != TEXT("B") &&
+         StateSuffix != TEXT("C") && StateSuffix != TEXT("D"))) {
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: Invalid state suffix '%s'. Must be A/B/C/D"),
+               *StateSuffix);
         return;
     }
 
-    // ========== 2. 遍历四个已保存的状态，查找匹配项 ==========
-    TArray<FString> StateSuffixes = {TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D")};
-    const float PositionThreshold = 0.1f;  // 位置匹配阈值(单位:cm)
-    
-    FString MatchedState;
-    FVector MatchedHeadControlLocation;
-    bool bFoundMatch = false;
-
-    for (const FString& StateSuffix : StateSuffixes) {
-        // 读取已保存的 Middle_Hand_{StateSuffix} 位置
-        FString SavedMiddleHandRecorderName = TEXT("Middle_Hand_") + StateSuffix;
-        const FBeatBloomRecorderTransform* SavedMiddleHandData = 
-            BeatBloomActor->RecorderTransforms.Find(SavedMiddleHandRecorderName);
-        
-        if (!SavedMiddleHandData) {
-            continue;  // 该状态未保存，跳过
-        }
-
-        // 检查当前位置是否与已保存位置匹配
-        float Distance = FVector::Dist(CurrentMiddleHandLocation, 
-                                        SavedMiddleHandData->Location);
-        
-        if (Distance <= PositionThreshold) {
-            // 找到匹配的状态
-            MatchedState = StateSuffix;
-            
-            // 读取对应的 Head_Control_{StateSuffix} 位置
-            FString SavedHeadControlRecorderName = TEXT("Head_Control_") + StateSuffix;
-            const FBeatBloomRecorderTransform* SavedHeadControlData = 
-                BeatBloomActor->RecorderTransforms.Find(SavedHeadControlRecorderName);
-            
-            if (SavedHeadControlData) {
-                MatchedHeadControlLocation = SavedHeadControlData->Location;
-                bFoundMatch = true;
-            }
-            
-            break;  // 找到第一个匹配项即停止
-        }
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    if (!ControlRig) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
+        return;
     }
 
-    // ========== 3. 如果找到匹配，应用 Head_Control 位置 ==========
-    if (bFoundMatch) {
-        FRigElementKey HeadControlKey(TEXT("Head_Control"), ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(HeadControlKey)) {
-            UE_LOG(LogTemp, Error, TEXT("BeatBloom: Head_Control controller not found"));
-            return;
-        }
-
-        FRigControlElement* HeadControlElem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(HeadControlKey);
-        if (!HeadControlElem) {
-            return;
-        }
-
-        // 只应用 location，不应用 rotation
-        FTransform NewT;
-        NewT.SetLocation(MatchedHeadControlLocation);
-
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, HeadControlElem->Settings.ControlType,
-                                HeadControlElem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            HeadControlElem, NewVal, ERigControlValueType::Current);
-
+    // ========== 1. 还原左手控制器（H_L）==========
+    FString LeftHandRecorderName = TEXT("Left_Hand_") + StateSuffix;
+    const FBeatBloomRecorderTransform* LeftHandData =
+        BeatBloomActor->RecorderTransforms.Find(LeftHandRecorderName);
+    if (LeftHandData) {
+        WriteControllerTransform(BeatBloomActor, TEXT("H_L"),
+                                 LeftHandData->Location,
+                                 LeftHandData->Rotation);
         UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Loaded Head_Control from matched state '%s' "
-                    "(distance: %.2f cm)"),
-               *MatchedState, 
-               FVector::Dist(CurrentMiddleHandLocation, 
-                            BeatBloomActor->RecorderTransforms[
-                                TEXT("Middle_Hand_") + MatchedState].Location));
+               TEXT("BeatBloom: Loaded H_L from state '%s' at Loc(%.2f, %.2f, %.2f)"),
+               *StateSuffix, LeftHandData->Location.X,
+               LeftHandData->Location.Y, LeftHandData->Location.Z);
     } else {
         UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Current Middle_Hand position does not match any "
-                    "saved state (A/B/C/D). No action taken.\n"
-                    "Current: (%.2f, %.2f, %.2f)\n"
-                    "Saved A: (%.2f, %.2f, %.2f)\n"
-                    "Saved B: (%.2f, %.2f, %.2f)\n"
-                    "Saved C: (%.2f, %.2f, %.2f)\n"
-                    "Saved D: (%.2f, %.2f, %.2f)"),
-               CurrentMiddleHandLocation.X, CurrentMiddleHandLocation.Y, CurrentMiddleHandLocation.Z,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_A")).Location.X,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_A")).Location.Y,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_A")).Location.Z,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_B")).Location.X,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_B")).Location.Y,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_B")).Location.Z,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_C")).Location.X,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_C")).Location.Y,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_C")).Location.Z,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_D")).Location.X,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_D")).Location.Y,
-               BeatBloomActor->RecorderTransforms.FindRef(TEXT("Middle_Hand_D")).Location.Z);
+               TEXT("BeatBloom: Left_Hand_%s not found in RecorderTransforms"),
+               *StateSuffix);
     }
+
+    // ========== 2. 还原右手控制器（H_R）==========
+    FString RightHandRecorderName = TEXT("Right_Hand_") + StateSuffix;
+    const FBeatBloomRecorderTransform* RightHandData =
+        BeatBloomActor->RecorderTransforms.Find(RightHandRecorderName);
+    if (RightHandData) {
+        WriteControllerTransform(BeatBloomActor, TEXT("H_R"),
+                                 RightHandData->Location,
+                                 RightHandData->Rotation);
+        UE_LOG(LogTemp, Warning,
+               TEXT("BeatBloom: Loaded H_R from state '%s' at Loc(%.2f, %.2f, %.2f)"),
+               *StateSuffix, RightHandData->Location.X,
+               RightHandData->Location.Y, RightHandData->Location.Z);
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("BeatBloom: Right_Hand_%s not found in RecorderTransforms"),
+               *StateSuffix);
+    }
+
+    // ========== 3. 还原 Head_Control 控制器 ==========
+    FString HeadControlRecorderName = TEXT("Head_Control_") + StateSuffix;
+    const FBeatBloomRecorderTransform* HeadControlData =
+        BeatBloomActor->RecorderTransforms.Find(HeadControlRecorderName);
+    if (HeadControlData) {
+        FRigElementKey HeadControlKey(TEXT("Head_Control"),
+                                      ERigElementType::Control);
+        if (ControlRig->GetHierarchy()->Contains(HeadControlKey)) {
+            FRigControlElement* HeadControlElem =
+                ControlRig->GetHierarchy()->Find<FRigControlElement>(HeadControlKey);
+            if (HeadControlElem) {
+                FTransform NewT;
+                NewT.SetLocation(HeadControlData->Location);
+                FRigControlValue NewVal;
+                NewVal.SetFromTransform(NewT,
+                                        HeadControlElem->Settings.ControlType,
+                                        HeadControlElem->Settings.PrimaryAxis);
+                ControlRig->GetHierarchy()->SetControlValue(
+                    HeadControlElem, NewVal, ERigControlValueType::Current);
+                UE_LOG(LogTemp, Warning,
+                       TEXT("BeatBloom: Loaded Head_Control from state '%s' at Loc(%.2f, %.2f, %.2f)"),
+                       *StateSuffix, HeadControlData->Location.X,
+                       HeadControlData->Location.Y, HeadControlData->Location.Z);
+            }
+        } else {
+            UE_LOG(LogTemp, Error,
+                   TEXT("BeatBloom: Head_Control controller not found in rig"));
+        }
+    } else {
+        UE_LOG(LogTemp, Warning,
+               TEXT("BeatBloom: Head_Control_%s not found in RecorderTransforms"),
+               *StateSuffix);
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: LoadBilinearHelperState(%s) completed"),
+           *StateSuffix);
 }
 
 void UBeatBloomControlRigProcessor::SaveHeadControlState(
@@ -390,14 +405,17 @@ void UBeatBloomControlRigProcessor::SaveHeadControlState(
     // 参考 Blender 版 transfer_state 中第四步的 Head_Control 处理
 
     if (!BeatBloomActor) {
-        UE_LOG(LogTemp, Error, TEXT("BeatBloom: No actor for SaveHeadControlState"));
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: No actor for SaveHeadControlState"));
         return;
     }
 
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
-        UE_LOG(LogTemp, Error,
-               TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("BeatBloom: Failed to get ControlRig instance for Performer"));
         return;
     }
 
@@ -405,7 +423,7 @@ void UBeatBloomControlRigProcessor::SaveHeadControlState(
     FVector HeadControlLocation;
     FQuat DummyRotation;
     if (!ReadControllerTransform(BeatBloomActor, TEXT("Head_Control"),
-                                  HeadControlLocation, DummyRotation)) {
+                                 HeadControlLocation, DummyRotation)) {
         UE_LOG(LogTemp, Warning,
                TEXT("BeatBloom: Cannot read Head_Control position"));
         return;
@@ -419,18 +437,22 @@ void UBeatBloomControlRigProcessor::SaveHeadControlState(
     if (BeatBloomActor->CurrentLeftHandDrumKit == TEXT("Rest")) {
         HCRecorderNames.Add(TEXT("Head_Control_Rest"));
     } else if (!BeatBloomActor->CurrentLeftHandDrumKit.IsEmpty()) {
-        FString RecorderName = BeatBloomActor->CurrentLeftHandDrumKit + TEXT("_") +
-            ABeatBloomUnreal::GetStateString(BeatBloomActor->CurrentLeftHandState) +
-            TEXT("_Head_Control");
+        FString RecorderName = BeatBloomActor->CurrentLeftHandDrumKit +
+                               TEXT("_") +
+                               ABeatBloomUnreal::GetStateString(
+                                   BeatBloomActor->CurrentLeftHandState) +
+                               TEXT("_Head_Control");
         HCRecorderNames.Add(RecorderName);
     }
 
     if (BeatBloomActor->CurrentRightHandDrumKit == TEXT("Rest")) {
         HCRecorderNames.Add(TEXT("Head_Control_Rest"));
     } else if (!BeatBloomActor->CurrentRightHandDrumKit.IsEmpty()) {
-        FString RecorderName = BeatBloomActor->CurrentRightHandDrumKit + TEXT("_") +
-            ABeatBloomUnreal::GetStateString(BeatBloomActor->CurrentRightHandState) +
-            TEXT("_Head_Control");
+        FString RecorderName = BeatBloomActor->CurrentRightHandDrumKit +
+                               TEXT("_") +
+                               ABeatBloomUnreal::GetStateString(
+                                   BeatBloomActor->CurrentRightHandState) +
+                               TEXT("_Head_Control");
         HCRecorderNames.Add(RecorderName);
     }
 
@@ -439,12 +461,15 @@ void UBeatBloomControlRigProcessor::SaveHeadControlState(
         FBeatBloomRecorderTransform RecorderTransform;
         RecorderTransform.Location = HeadControlLocation;
         RecorderTransform.Rotation = FQuat::Identity;
-        BeatBloomActor->RecorderTransforms.Add(HCRecorderName, RecorderTransform);
+        BeatBloomActor->RecorderTransforms.Add(HCRecorderName,
+                                               RecorderTransform);
 
-        UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Saved Head_Control -> %s at Loc(%.2f, %.2f, %.2f)"),
-               *HCRecorderName,
-               HeadControlLocation.X, HeadControlLocation.Y, HeadControlLocation.Z);
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT(
+                "BeatBloom: Saved Head_Control -> %s at Loc(%.2f, %.2f, %.2f)"),
+            *HCRecorderName, HeadControlLocation.X, HeadControlLocation.Y,
+            HeadControlLocation.Z);
         SavedCount++;
     }
 
@@ -484,7 +509,8 @@ void UBeatBloomControlRigProcessor::LoadState(
     }
 
     // 验证是否能获取到 ControlRig 实例
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
         UE_LOG(
             LogTemp, Error,
@@ -562,15 +588,15 @@ void UBeatBloomControlRigProcessor::LoadState(
         }
     }
 
-// 重新评估 Control Rig 以传播变更（约束、IK 等）
-// 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-// 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-if (ControlRig) {
-    ControlRig->Evaluate_AnyThread();
-}
+    // 重新评估 Control Rig 以传播变更（约束、IK 等）
+    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
+    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
+    if (ControlRig) {
+        ControlRig->Evaluate_AnyThread();
+    }
 
-UE_LOG(LogTemp, Warning,
-       TEXT("BeatBloom: LoadState completed - Loaded: %d, Failed: %d"),
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: LoadState completed - Loaded: %d, Failed: %d"),
            LoadedCount, FailedCount);
 }
 
@@ -589,9 +615,12 @@ bool UBeatBloomControlRigProcessor::ReadControllerTransform(
     // 使用 UInstrumentControlRigUtility 从 ControlRig 实例读取
     if (!BeatBloomActor) return false;
 
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
-        UE_LOG(LogTemp, Error, TEXT("ReadControllerTransform: Failed to get ControlRig instance for Performer"));
+        UE_LOG(LogTemp, Error,
+               TEXT("ReadControllerTransform: Failed to get ControlRig "
+                    "instance for Performer"));
         return false;
     }
 
@@ -623,9 +652,12 @@ bool UBeatBloomControlRigProcessor::WriteControllerTransform(
     // 使用 UInstrumentControlRigUtility 写入 ControlRig 实例
     if (!BeatBloomActor) return false;
 
-    UControlRig* ControlRig = BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+    UControlRig* ControlRig =
+        BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
     if (!ControlRig) {
-        UE_LOG(LogTemp, Error, TEXT("WriteControllerTransform: Failed to get ControlRig instance for Performer"));
+        UE_LOG(LogTemp, Error,
+               TEXT("WriteControllerTransform: Failed to get ControlRig "
+                    "instance for Performer"));
         return false;
     }
 
@@ -724,10 +756,10 @@ int32 UBeatBloomControlRigProcessor::SetupControllers(
     }
 
     // 4. 创建手指控制器和极向量控制器
-    // 手指前缀：I_(index), M_(middle), R_(ring), P_(pinky)
+    // 手指前缀：T_(thumb),I_(index), M_(middle), R_(ring), P_(pinky)
     // 极向量后缀：_pole
-    TArray<FString> FingerPrefixes = {TEXT("I"), TEXT("M"), TEXT("R"),
-                                      TEXT("P")};
+    TArray<FString> FingerPrefixes = {TEXT("T"), TEXT("I"), TEXT("M"),
+                                      TEXT("R"), TEXT("P")};
     TArray<FString> HandSuffixes = {TEXT("_L"), TEXT("_R")};
 
     for (const FString& FingerPrefix : FingerPrefixes) {
@@ -785,20 +817,21 @@ int32 UBeatBloomControlRigProcessor::SetupControllers(
         CreatedCount++;
         UE_LOG(LogTemp, Warning, TEXT("Created controller: Middle_Hand"));
     }
-    
+
     if (!ControlExists(RigHierarchy, TEXT("Head_Control"))) {
         FControlRigCreationUtility::CreateControl(
             ControlRigBlueprint, TEXT("Head_Control"), TEXT("controller_root"));
         CreatedCount++;
         UE_LOG(LogTemp, Warning, TEXT("Created controller: Head_Control"));
     }
-    
+
     // Look_At 挂在 Middle_Hand 下
     if (!ControlExists(RigHierarchy, TEXT("Look_At"))) {
         FControlRigCreationUtility::CreateControl(
             ControlRigBlueprint, TEXT("Look_At"), TEXT("Middle_Hand"));
         CreatedCount++;
-        UE_LOG(LogTemp, Warning, TEXT("Created controller: Look_At (parent: Middle_Hand)"));
+        UE_LOG(LogTemp, Warning,
+               TEXT("Created controller: Look_At (parent: Middle_Hand)"));
     }
 
     // 注意: 双线性映射辅助记录器(Middle_Hand_A/B/C/D, Head_Control_A/B/C/D)
@@ -835,18 +868,20 @@ void UBeatBloomControlRigProcessor::CheckObjectsStatus(
     TSet<FString> ExpectedControllers;
     ExpectedControllers.Add(TEXT("base_root"));
     ExpectedControllers.Add(TEXT("controller_root"));
-    
+
     // 手部控制器 (6个)
     ExpectedControllers.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-                                TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R")});
-    
+                                TEXT("H_R"), TEXT("HP_R"),
+                                TEXT("H_rotation_R")});
+
     // 脚部控制器 (4个)
-    ExpectedControllers.Append({TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_R"),
-                                TEXT("F_rotation_R")});
-    
+    ExpectedControllers.Append(
+        {TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_R"), TEXT("F_rotation_R")});
+
     // 目标控制器（新的三控制器系统）
-    ExpectedControllers.Append({TEXT("Middle_Hand"), TEXT("Look_At"), TEXT("Head_Control")});
-    
+    ExpectedControllers.Append(
+        {TEXT("Middle_Hand"), TEXT("Look_At"), TEXT("Head_Control")});
+
     // 注意: 双线性映射辅助记录器(Middle_Hand_A/B/C/D, Head_Control_A/B/C/D)
     // 不需要创建 Control Rig 控制器,只在 RecorderTransforms 中作为数据存储
 
@@ -891,8 +926,9 @@ void UBeatBloomControlRigProcessor::CheckObjectsStatus(
 void UBeatBloomControlRigProcessor::SetupAllObjects(
     ABeatBloomUnreal* BeatBloomActor) {
     if (!BeatBloomActor) {
-        UE_LOG(LogTemp, Error,
-               TEXT("BeatBloom: No actor selected for setup drummer control rig"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("BeatBloom: No actor selected for setup drummer control rig"));
         return;
     }
 

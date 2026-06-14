@@ -25,6 +25,7 @@ protected:
 private:
     TWeakObjectPtr<AZhengDriftUnreal> ZhengDriftActor;
 
+    void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
     FReply OnCheckObjectsStatus();
     FReply OnSetupAllObjects();
     FReply OnExportRecorderInfo();

@@ -65,6 +65,14 @@ void ABeatBloomUnreal::InitializeControllersAndRecorders() {
     BilinearHelpers.Add(TEXT("head_control_b"), TEXT("Head_Control_B"));
     BilinearHelpers.Add(TEXT("head_control_c"), TEXT("Head_Control_C"));
     BilinearHelpers.Add(TEXT("head_control_d"), TEXT("Head_Control_D"));
+    BilinearHelpers.Add(TEXT("left_hand_a"),  TEXT("Left_Hand_A"));
+    BilinearHelpers.Add(TEXT("left_hand_b"),  TEXT("Left_Hand_B"));
+    BilinearHelpers.Add(TEXT("left_hand_c"),  TEXT("Left_Hand_C"));
+    BilinearHelpers.Add(TEXT("left_hand_d"),  TEXT("Left_Hand_D"));
+    BilinearHelpers.Add(TEXT("right_hand_a"), TEXT("Right_Hand_A"));
+    BilinearHelpers.Add(TEXT("right_hand_b"), TEXT("Right_Hand_B"));
+    BilinearHelpers.Add(TEXT("right_hand_c"), TEXT("Right_Hand_C"));
+    BilinearHelpers.Add(TEXT("right_hand_d"), TEXT("Right_Hand_D"));
     
     UE_LOG(LogTemp, Log, TEXT("BeatBloomUnreal: Controllers initialized"));
 }
@@ -87,6 +95,9 @@ bool ABeatBloomUnreal::LoadDrumKitConfig(const FString& FilePath) {
         return false;
     }
     
+    // 清空旧数据，防止多次加载时叠加
+    DrumKitConfig = FBeatBloomDrumKitConfig();
+
     // 解析基本字段
     DrumKitConfig.Name = JsonObject->GetStringField(TEXT("name"));
     
@@ -338,14 +349,24 @@ void ABeatBloomUnreal::ExportRecorderInfo(const FString& FilePath) {
         }
         
         TSharedPtr<FJsonObject> HelperObject = MakeShareable(new FJsonObject);
-        
-        // 双线性辅助记录器只保存 location
+
         TArray<TSharedPtr<FJsonValue>> LocationArray;
         LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.X)));
         LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.Y)));
         LocationArray.Add(MakeShareable(new FJsonValueNumber(Data->Location.Z)));
         HelperObject->SetArrayField(TEXT("location"), LocationArray);
-        
+
+        // Left_Hand_* / Right_Hand_* 还需要保存旋转
+        if (ControllerName.StartsWith(TEXT("Left_Hand_")) ||
+            ControllerName.StartsWith(TEXT("Right_Hand_"))) {
+            TArray<TSharedPtr<FJsonValue>> RotationArray;
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data->Rotation.W)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data->Rotation.X)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data->Rotation.Y)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Data->Rotation.Z)));
+            HelperObject->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+        }
+
         MappingHelpersObject->SetObjectField(ControllerName, HelperObject);
     }
     
@@ -456,18 +477,30 @@ const TMap<FString, TSharedPtr<FJsonValue>>& RecorderFields = RecorderInfoObj->V
         TSharedPtr<FJsonObject> HelperObj = Field.Value->AsObject();
         
         FBeatBloomRecorderTransform Data;
-        
-        // 双线性辅助记录器只解析 location
+        Data.Rotation = FQuat::Identity;
+
         const TArray<TSharedPtr<FJsonValue>>* LocationArrayPtr;
-        if (HelperObj->TryGetArrayField(TEXT("location"), LocationArrayPtr) && 
+        if (HelperObj->TryGetArrayField(TEXT("location"), LocationArrayPtr) &&
             LocationArrayPtr->Num() == 3) {
-            float X = (*LocationArrayPtr)[0]->AsNumber();
-            float Y = (*LocationArrayPtr)[1]->AsNumber();
-            float Z = (*LocationArrayPtr)[2]->AsNumber();
-            Data.Location = FVector(X, Y, Z);
-            Data.Rotation = FQuat::Identity;  // 辅助记录器不保存旋转
+            Data.Location = FVector(
+                (*LocationArrayPtr)[0]->AsNumber(),
+                (*LocationArrayPtr)[1]->AsNumber(),
+                (*LocationArrayPtr)[2]->AsNumber());
         }
-        
+
+        // Left_Hand_* / Right_Hand_* 还需要读取旋转
+        const TArray<TSharedPtr<FJsonValue>>* RotationArrayPtr;
+        if ((HelperName.StartsWith(TEXT("Left_Hand_")) ||
+             HelperName.StartsWith(TEXT("Right_Hand_"))) &&
+            HelperObj->TryGetArrayField(TEXT("rotation_quaternion"), RotationArrayPtr) &&
+            RotationArrayPtr->Num() == 4) {
+            Data.Rotation = FQuat(
+                (*RotationArrayPtr)[1]->AsNumber(),
+                (*RotationArrayPtr)[2]->AsNumber(),
+                (*RotationArrayPtr)[3]->AsNumber(),
+                (*RotationArrayPtr)[0]->AsNumber());
+        }
+
         RecorderTransforms.Add(HelperName, Data);
         ImportedHelperCount++;
     }

@@ -3,6 +3,7 @@
 ## 概述
 
 此功能允许用户在 Sequencer 中调整 Control 位置后，一键将当前变换写入 ControlRigBlueprint 的初始值（Initial Transform），无需手动打开 ControlRig Blueprint 进行操作。
+此功能有两个按键，一个是将transform写入初始值，一个是将transform写入offset值，任何情况下都可以使用前者。只有在不需要读取control数据进行计算时，才可以使用后者(比如说一些pole target 控件的位置初始化)。
 
 ## 使用方法
 
@@ -33,11 +34,12 @@
 
 ```cpp
 static bool ApplySelectedControlsTransformToInitial(
-    int32& OutAppliedCount, 
+    int32& OutAppliedCount,
     int32& OutSkippedCount);
 ```
 
 **工作流程：**
+
 1. 通过 `UInstrumentAnimationUtility::GetCurrentLevelSequence()` 获取当前 Sequence
 2. 通过 `UControlRigSequencerEditorLibrary::GetControlRigs()` 获取所有 ControlRig 绑定
 3. 遍历每个 ControlRig：
@@ -59,11 +61,12 @@ static bool ApplySelectedControlsTransformToInitial(
       [SNew(SButton)
            .Text(LOCTEXT("ApplySelectedControlsInitButton", "Apply Selected To Init"))
            .OnClicked(this, &SBoneControlMappingEditPanel::OnApplySelectedControlsInitTransformClicked)
-           .ToolTipText(LOCTEXT("ApplySelectedControlsInitTooltip", 
+           .ToolTipText(LOCTEXT("ApplySelectedControlsInitTooltip",
                "将当前Sequence中选中的Control的变换写入ControlRigBlueprint的初始值"))]
 ```
 
 **按钮处理函数：**
+
 ```cpp
 FReply OnApplySelectedControlsInitTransformClicked();
 ```
@@ -88,9 +91,11 @@ FReply OnApplySelectedControlsInitTransformClicked();
 ## 相关文件
 
 ### 新增文件
+
 - `Plugins\MusicDoll\Source\MusicDollCommon\Public\ControlInitTransformUtility.h`
 - `Plugins\MusicDoll\Source\MusicDollCommon\Private\ControlInitTransformUtility.cpp`
 
 ### 修改文件
+
 - `Plugins\MusicDoll\Source\MusicDollCommon\Public\UI\SBoneControlMappingEditPanel.h`
 - `Plugins\MusicDoll\Source\MusicDollCommon\Private\UI\SBoneControlMappingEditPanel.cpp`

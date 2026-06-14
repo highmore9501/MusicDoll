@@ -2,6 +2,8 @@
 
 本指南面向使用者，介绍 MusicDoll 插件中新烘焙系统的使用方法与常见操作。该系统支持在多个 Actor（例如 StringFlow、KeyRipple 等）之间提交待烘焙的 Control，一次集中执行并写入到当前打开的 Level Sequence 中。
 
+**Bake系统已经弃用！但暂时还保留了界面和功能，实际需要烘焙更建议直接使用sequence自带的烘焙功能，后续会考虑移除这个系统。**
+
 ---
 
 ## 快速概览
@@ -18,20 +20,22 @@
 ### 1. 模块 Bake 面板（例如 StringFlow / KeyRipple 的 Bake Tab）
 
 功能：
+
 - 扫描当前 Actor 相关的 Control Rig，展示可烘焙的 Control 列表。
 - 从下拉菜单选择 Control，然后点击 "Add Selected" 将任务提交到全局队列。
 - 在面板下方显示「My Submitted Tasks」，仅列出当前 Actor（你所在面板的 Actor）提交的任务，并可逐条移除或一次性移除所有由该 Actor 提交的任务。
 
 注意点：
+
 - 这些面板仅负责选择与提交，不直接执行烘焙。
 - 只能删除自己（当前 Actor）提交的任务，无法删除其他 Actor 的任务。
-
 
 ### 2. 全局烘焙队列（Bake Queue）面板
 
 位置：主面板底部，始终可见（当队列为空时可折叠隐藏）。
 
 功能：
+
 - 显示当前队列中所有待烘焙任务（按提交顺序或分组显示）。
 - 编辑共享烘焙设置：Start / End / Step / Overwrite（是否覆盖已存在关键帧）。
 - 操作按钮：
@@ -42,6 +46,7 @@
 - 显示烘焙进度与状态信息。
 
 行为说明：
+
 - 一旦点击 `Bake All` 并完成烘焙，队列会被自动清空，所有面板的「My Submitted Tasks」也会刷新为无任务状态。
 - `Clear Tracks` 会根据队列中任务定位到对应 Control Rig 的轨道并清理通道，请谨慎使用。
 
@@ -79,6 +84,7 @@ A：不会。任务提交到全局队列后与面板实例无关，切换 Actor 
 Q：为什么有些 Control 提交后无法烘焙？
 
 A：可能原因包括：
+
 - 对应 Actor 或 ControlRig 在烘焙前已被销毁或未绑定到 Sequence（系统会在执行前尝试清理失效任务）；
 - 用户输入了无效的帧范围或步长；
 - 该 Control 并非 Transform/EulerTransform 类型（某些自定义通道不参与本次烘焙）。
@@ -86,6 +92,7 @@ A：可能原因包括：
 Q：烘焙后我看不到关键帧，怎么办？
 
 A：请检查：
+
 - 当前编辑的 Level Sequence 是否为你在面板中选择的 Sequence；
 - 烘焙设置（Start/End/Step）是否正确；
 - 是否启用了 `Overwrite existing keyframes` 导致意外覆盖（可以先关闭测试）；

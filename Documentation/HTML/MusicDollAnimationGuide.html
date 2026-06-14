@@ -1,151 +1,264 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MusicDoll 动画生成原理 - MusicDoll 文档</title>
-    <link rel="stylesheet" href="css/musicdoll-docs.css">
-</head>
-<body>
+    <link rel="stylesheet" href="css/musicdoll-docs.css" />
+  </head>
+  <body>
     <div class="doc-container">
-        <!-- Sidebar Navigation -->
-        <aside class="doc-sidebar">
-            <div class="doc-nav-header">
-                <h2>📚 MusicDoll 文档</h2>
-            </div>
-            <ul class="doc-nav">
-                <li class="doc-nav-item">
-                    <a href="index.html" class="doc-nav-link">🏠 首页</a>
-                </li>
-                <li class="doc-nav-item expanded">
-                    <a href="#musicdoll-animation-guide" class="doc-nav-link active">🎬 动画生成原理</a>
-                    <ul class="doc-nav-sub">
-                        <li><a href="#overview" class="doc-nav-link">概述</a></li>
-                        <li><a href="#performer-animation" class="doc-nav-link">人物演奏动画</a></li>
-                        <li><a href="#instrument-morph" class="doc-nav-link">乐器 Morph Target</a></li>
-                        <li><a href="#instrument-material" class="doc-nav-link">乐器材质动画</a></li>
-                        <li><a href="#animation-sync" class="doc-nav-link">三类动画的同步</a></li>
-                        <li><a href="#faq" class="doc-nav-link">常见问题</a></li>
-                    </ul>
-                </li>
-                <li class="doc-nav-item">
-                    <a href="BakeUserGuide.html" class="doc-nav-link">🔥 烘焙系统用户指南</a>
-                </li>
-                <li class="doc-nav-item">
-                    <a href="StringFlowRealtimeSyncSystem.html" class="doc-nav-link">🎻 实时同步系统</a>
-                </li>
-                <li class="doc-nav-item">
-                    <a href="ControlRigCacheSubsystemGuide.html" class="doc-nav-link">💾 ControlRig 缓存子系统</a>
-                </li>
+      <!-- Sidebar Navigation -->
+      <aside class="doc-sidebar">
+        <div class="doc-nav-header">
+          <h2>📚 MusicDoll 文档</h2>
+        </div>
+        <ul class="doc-nav">
+          <li class="doc-nav-item">
+            <a href="index.html" class="doc-nav-link">🏠 首页</a>
+          </li>
+          <li class="doc-nav-item expanded">
+            <a href="#musicdoll-animation-guide" class="doc-nav-link active">
+              🎬 动画生成原理
+            </a>
+            <ul class="doc-nav-sub">
+              <li><a href="#overview" class="doc-nav-link">概述</a></li>
+              <li>
+                <a href="#performer-animation" class="doc-nav-link">
+                  人物演奏动画
+                </a>
+              </li>
+              <li>
+                <a href="#instrument-morph" class="doc-nav-link">
+                  乐器 Morph Target
+                </a>
+              </li>
+              <li>
+                <a href="#instrument-material" class="doc-nav-link">
+                  乐器材质动画
+                </a>
+              </li>
+              <li>
+                <a href="#animation-sync" class="doc-nav-link">
+                  三类动画的同步
+                </a>
+              </li>
+              <li><a href="#faq" class="doc-nav-link">常见问题</a></li>
             </ul>
-        </aside>
+          </li>
+          <li class="doc-nav-item">
+            <a href="ControlRigCacheSubsystemGuide.html" class="doc-nav-link">
+              💾 ControlRig 缓存子系统
+            </a>
+          </li>
+        </ul>
+      </aside>
 
-        <!-- Main Content -->
-        <main class="doc-main">
-            <div class="doc-content">
-                <h1 id="musicdoll-animation-guide">MusicDoll 动画生成原理文档</h1>
+      <!-- Main Content -->
+      <main class="doc-main">
+        <div class="doc-content">
+          <h1 id="musicdoll-animation-guide">MusicDoll 动画生成原理文档</h1>
 
-                <section id="overview">
-                    <h2>概述</h2>
-                    <p>MusicDoll 是一个专为音乐表演动画生成而设计的虚幻引擎插件系统。它包含三个核心动画类型，分别用于生成和驱动:</p>
-                    <ol>
-                        <li><strong>人物演奏动画</strong> - 通过 Level Sequencer 驱动演奏者的身体动作</li>
-                        <li><strong>乐器 Morph Target 动画</strong> - 通过乐器 Control Rig 驱动 Morph Target 变形</li>
-                        <li><strong>乐器材质动画</strong> - 通过 Level Sequencer 的材质参数轨道驱动材质参数</li>
-                    </ol>
-                </section>
+          <section id="overview">
+            <h2>概述</h2>
+            <p>
+              MusicDoll
+              是一个专为音乐表演动画生成而设计的虚幻引擎插件系统。它包含三个核心动画类型，分别用于生成和驱动:
+            </p>
+            <ol>
+              <li>
+                <strong>人物演奏动画</strong>
+                - 通过 Level Sequencer 驱动演奏者的身体动作
+              </li>
+              <li>
+                <strong>乐器 Morph Target 动画</strong>
+                - 通过乐器 Control Rig 驱动 Morph Target 变形
+              </li>
+              <li>
+                <strong>乐器材质动画</strong>
+                - 通过 Level Sequencer 的材质参数轨道驱动材质参数
+              </li>
+            </ol>
+          </section>
 
-                <section id="performer-animation">
-                    <h2>一、人物演奏动画</h2>
+          <section id="performer-animation">
+            <h2>一、人物演奏动画</h2>
 
-                    <h3>1.1 概念</h3>
-                    <p>人物演奏动画表示演奏者（如钢琴家、小提琴手）的身体动作。这些数据来自 Music Doll 系列软件（如 KeyRipple、StringFlow、BeatBloom、FretDance）的导出，记录了演奏过程中各个身体部位的位置和旋转。</p>
+            <h3>1.1 概念</h3>
+            <p>
+              人物演奏动画表示演奏者（如钢琴家、小提琴手）的身体动作。这些数据来自
+              Music Doll 系列软件（如
+              KeyRipple、StringFlow、BeatBloom、FretDance）的导出，记录了演奏过程中各个身体部位的位置和旋转。
+            </p>
 
-                    <h3>1.2 在 Unreal 中的呈现逻辑</h3>
-                    <div class="flow-diagram">JSON 动画数据
-    ↓
-解析关键帧（位置、旋转）
-    ↓
-写入 Level Sequencer 的 Control Rig 轨道
-    ↓
-每个 Control 对应一个动画通道
-    ├─ 位置（X、Y、Z 三个轨道）
-    └─ 旋转（Pitch、Yaw、Roll 三个轨道）
-    ↓
-Sequencer 播放时驱动对应的 Control 运动</div>
+            <h3>1.2 在 Unreal 中的呈现逻辑</h3>
+            <div class="flow-diagram">
+              JSON 动画数据 ↓ 解析关键帧（位置、旋转） ↓ 写入 Level Sequencer 的
+              Control Rig 轨道 ↓ 每个 Control 对应一个动画通道 ├─ 位置（X、Y、Z
+              三个轨道） └─ 旋转（Pitch、Yaw、Roll 三个轨道） ↓ Sequencer
+              播放时驱动对应的 Control 运动
+            </div>
 
-                    <h3>1.3 Control 列表</h3>
-                    <p>演奏者 Control Rig 中的主要控制器:</p>
+            <h3>1.3 Control 列表</h3>
+            <p>演奏者 Control Rig 中的主要控制器:</p>
 
-                    <details>
-                        <summary>左手控制器</summary>
-                        <div class="details-content">
-                            <ul>
-                                <li><code>H_L</code> - 左手手掌</li>
-                                <li><code>H_rotation_L</code> - 左手手掌旋转 (Unreal 中弃用)</li>
-                                <li><code>HP_L</code> - 左手手臂极向量</li>
-                                <li><code>T_L</code> - 左手拇指</li>
-                                <li><code>TP_L</code> - 左手拇指极向量</li>
-                                <li><code>1_L</code>、<code>2_L</code>、<code>3_L</code>、<code>4_L</code> - 一般左手四个手指</li>
-                                <li><code>0_L</code>、<code>1_L</code>、<code>2_L</code>、<code>3_L</code>、<code>4_L</code> - 钢琴左手五个手指，0 表示小拇指</li>
-                            </ul>
-                        </div>
-                    </details>
+            <details>
+              <summary>左手控制器</summary>
+              <div class="details-content">
+                <ul>
+                  <li>
+                    <code>H_L</code>
+                    - 左手手掌
+                  </li>
+                  <li>
+                    <code>H_rotation_L</code>
+                    - 左手手掌旋转 (Unreal 中弃用)
+                  </li>
+                  <li>
+                    <code>HP_L</code>
+                    - 左手手臂极向量
+                  </li>
+                  <li>
+                    <code>T_L</code>
+                    - 左手拇指
+                  </li>
+                  <li>
+                    <code>TP_L</code>
+                    - 左手拇指极向量
+                  </li>
+                  <li>
+                    <code>1_L</code>
+                    、
+                    <code>2_L</code>
+                    、
+                    <code>3_L</code>
+                    、
+                    <code>4_L</code>
+                    - 一般左手四个手指
+                  </li>
+                  <li>
+                    <code>0_L</code>
+                    、
+                    <code>1_L</code>
+                    、
+                    <code>2_L</code>
+                    、
+                    <code>3_L</code>
+                    、
+                    <code>4_L</code>
+                    - 钢琴左手五个手指，0 表示小拇指
+                  </li>
+                </ul>
+              </div>
+            </details>
 
-                    <details>
-                        <summary>右手控制器</summary>
-                        <div class="details-content">
-                            <ul>
-                                <li><code>H_R</code> - 右手手掌</li>
-                                <li><code>H_rotation_R</code> - 右手手掌旋转 (Unreal 中弃用)</li>
-                                <li><code>HP_R</code> - 右手手臂极向量</li>
-                                <li><code>T_R</code> - 右手拇指</li>
-                                <li><code>TP_R</code> - 右手拇指极向量</li>
-                                <li><code>1_R</code>、<code>2_R</code>、<code>3_R</code>、<code>4_R</code> - 一般右手四个手指</li>
-                                <li><code>5_R</code>、<code>6_R</code>、<code>7_R</code>、<code>8_R</code>、<code>9_R</code> - 钢琴右手五个手指，5 表示大拇指</li>
-                            </ul>
-                        </div>
-                    </details>
+            <details>
+              <summary>右手控制器</summary>
+              <div class="details-content">
+                <ul>
+                  <li>
+                    <code>H_R</code>
+                    - 右手手掌
+                  </li>
+                  <li>
+                    <code>H_rotation_R</code>
+                    - 右手手掌旋转 (Unreal 中弃用)
+                  </li>
+                  <li>
+                    <code>HP_R</code>
+                    - 右手手臂极向量
+                  </li>
+                  <li>
+                    <code>T_R</code>
+                    - 右手拇指
+                  </li>
+                  <li>
+                    <code>TP_R</code>
+                    - 右手拇指极向量
+                  </li>
+                  <li>
+                    <code>1_R</code>
+                    、
+                    <code>2_R</code>
+                    、
+                    <code>3_R</code>
+                    、
+                    <code>4_R</code>
+                    - 一般右手四个手指
+                  </li>
+                  <li>
+                    <code>5_R</code>
+                    、
+                    <code>6_R</code>
+                    、
+                    <code>7_R</code>
+                    、
+                    <code>8_R</code>
+                    、
+                    <code>9_R</code>
+                    - 钢琴右手五个手指，5 表示大拇指
+                  </li>
+                </ul>
+              </div>
+            </details>
 
-                    <details>
-                        <summary>其他控制器</summary>
-                        <div class="details-content">
-                            <ul>
-                                <li><code>String_Touch_Point</code> - 触弦点</li>
-                                <li><code>Bow_Controller</code> - 琴弓控制器</li>
-                                <li><code>Tar_</code> - 一系列用于控制人物朝向的点</li>
-                            </ul>
-                        </div>
-                    </details>
+            <details>
+              <summary>其他控制器</summary>
+              <div class="details-content">
+                <ul>
+                  <li>
+                    <code>String_Touch_Point</code>
+                    - 触弦点
+                  </li>
+                  <li>
+                    <code>Bow_Controller</code>
+                    - 琴弓控制器
+                  </li>
+                  <li>
+                    <code>Tar_</code>
+                    - 一系列用于控制人物朝向的点
+                  </li>
+                </ul>
+              </div>
+            </details>
 
-                    <h3>1.4 生成流程</h3>
-                    
-                    <div class="ui-panel">
-                        <div class="ui-panel-header">操作步骤</div>
-                        <div class="ui-panel-body">
-                            <div class="property-row">
-                                <div class="property-label">步骤 1: 导出动画数据</div>
-                                <div class="property-value">
-                                    <span>在 KeyRipple、StringFlow 等 Music Doll 工具中分析乐曲，导出 JSON 格式的动画数据（left_hand.json、right_hand.json）</span>
-                                </div>
-                            </div>
-                            <div class="property-row">
-                                <div class="property-label">步骤 2: 导入 Unreal</div>
-                                <div class="property-value">
-                                    <span>在场景中放入对应的 Actor，设置参数，创建 Control Rig，调用动画处理器</span>
-                                </div>
-                            </div>
-                            <div class="property-row">
-                                <div class="property-label">步骤 3: 预览</div>
-                                <div class="property-value">
-                                    <span>在 Sequencer 中按播放按钮，演奏者角色按照动画数据运动</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <h3>1.4 生成流程</h3>
 
-                    <h3>1.5 数据格式示例</h3>
-                    <pre><code>[
+            <div class="ui-panel">
+              <div class="ui-panel-header">操作步骤</div>
+              <div class="ui-panel-body">
+                <div class="property-row">
+                  <div class="property-label">步骤 1: 导出动画数据</div>
+                  <div class="property-value">
+                    <span>
+                      在 KeyRipple、StringFlow 等 Music Doll
+                      工具中分析乐曲，导出 JSON
+                      格式的动画数据（left_hand.json、right_hand.json）
+                    </span>
+                  </div>
+                </div>
+                <div class="property-row">
+                  <div class="property-label">步骤 2: 导入 Unreal</div>
+                  <div class="property-value">
+                    <span>
+                      在场景中放入对应的 Actor，设置参数，创建 Control
+                      Rig，调用动画处理器
+                    </span>
+                  </div>
+                </div>
+                <div class="property-row">
+                  <div class="property-label">步骤 3: 预览</div>
+                  <div class="property-value">
+                    <span>
+                      在 Sequencer 中按播放按钮，演奏者角色按照动画数据运动
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <h3>1.5 数据格式示例</h3>
+            <pre><code>[
   {
     "<span class="kw">"frame"</span>: <span class="num">0</span>,
     "<span class="kw">"hand_infos"</span>: {
@@ -161,104 +274,122 @@ Sequencer 播放时驱动对应的 Control 运动</div>
     "<span class="kw">"hand_infos"</span>: { ... }
   }
 ]</code></pre>
-                </section>
+          </section>
 
-                <section id="instrument-morph">
-                    <h2>二、乐器 Morph Target 动画</h2>
+          <section id="instrument-morph">
+            <h2>二、乐器 Morph Target 动画</h2>
 
-                    <h3>2.1 概念</h3>
-                    <p>乐器 Morph Target 动画驱动乐器的几何变形，表现乐器本身的机械运动。例如:</p>
-                    <ul>
-                        <li><strong>钢琴</strong> - 琴键的按下和抬起</li>
-                        <li><strong>小提琴</strong> - 弦的振动和形状变化</li>
-                    </ul>
+            <h3>2.1 概念</h3>
+            <p>
+              乐器 Morph Target
+              动画驱动乐器的几何变形，表现乐器本身的机械运动。例如:
+            </p>
+            <ul>
+              <li>
+                <strong>钢琴</strong>
+                - 琴键的按下和抬起
+              </li>
+              <li>
+                <strong>小提琴</strong>
+                - 弦的振动和形状变化
+              </li>
+            </ul>
 
-                    <div class="callout callout-important">
-                        <div class="callout-title">⚠️ 重要提示</div>
-                        <div class="callout-content">
-                            这是一个<strong>两步骤的过程</strong>：第一步由代码自动完成，第二步需要用户在蓝图中手动实现！
-                        </div>
-                    </div>
+            <div class="callout callout-important">
+              <div class="callout-title">⚠️ 重要提示</div>
+              <div class="callout-content">
+                这是一个
+                <strong>两步骤的过程</strong>
+                ：第一步由代码自动完成，第二步需要用户在蓝图中手动实现！
+              </div>
+            </div>
 
-                    <h3>2.2 在 Unreal 中的呈现逻辑</h3>
+            <h3>2.2 在 Unreal 中的呈现逻辑</h3>
 
-                    <h4>步骤 1：动画轨道的设置（代码自动完成）</h4>
-                    <div class="flow-diagram">乐器 JSON 动画数据
-    ↓
-提取 Morph Target 名称列表
-    ↓
-获取或创建乐器 Control Rig
-    ↓
-在 Root Control 下创建 Float Animation Channels
-（每个通道与一个 Morph Target 同名）
-    ↓
-解析 JSON 关键帧数据
-    ↓
-写入 Level Sequencer 中 Control Rig 的对应通道</div>
+            <h4>步骤 1：动画轨道的设置（代码自动完成）</h4>
+            <div class="flow-diagram">
+              乐器 JSON 动画数据 ↓ 提取 Morph Target 名称列表 ↓ 获取或创建乐器
+              Control Rig ↓ 在 Root Control 下创建 Float Animation Channels
+              （每个通道与一个 Morph Target 同名） ↓ 解析 JSON 关键帧数据 ↓ 写入
+              Level Sequencer 中 Control Rig 的对应通道
+            </div>
 
-                    <p>此时 Sequencer 中的 Control Rig 轨道结构如下:</p>
+            <p>此时 Sequencer 中的 Control Rig 轨道结构如下:</p>
 
-                    <div class="ui-panel">
-                        <div class="ui-panel-header">Control Rig: Violin</div>
-                        <div class="ui-panel-body">
-                            <pre>├─ Root Control (violin_root)
+            <div class="ui-panel">
+              <div class="ui-panel-header">Control Rig: Violin</div>
+              <div class="ui-panel-body">
+                <pre>
+├─ Root Control (violin_root)
 │  ├─ s0fret0 (Float Channel) → 关键帧数据
 │  ├─ s0fret1 (Float Channel) → 关键帧数据
 │  ├─ s0fret2 (Float Channel) → 关键帧数据
-│  └─ ...</pre>
-                        </div>
-                    </div>
+│  └─ ...</pre
+                >
+              </div>
+            </div>
 
-                    <p>对于钢琴:</p>
+            <p>对于钢琴:</p>
 
-                    <div class="ui-panel">
-                        <div class="ui-panel-header">Control Rig: Piano</div>
-                        <div class="ui-panel-body">
-                            <pre>├─ Root Control (piano_key_root)
+            <div class="ui-panel">
+              <div class="ui-panel-header">Control Rig: Piano</div>
+              <div class="ui-panel-body">
+                <pre>
+├─ Root Control (piano_key_root)
 │  ├─ key_0_pressed (Float Channel) → 关键帧数据
 │  ├─ key_1_pressed (Float Channel) → 关键帧数据
 │  ├─ key_2_pressed (Float Channel) → 关键帧数据
-│  └─ ...（88 个琴键）</pre>
-                        </div>
-                    </div>
+│  └─ ...（88 个琴键）</pre
+                >
+              </div>
+            </div>
 
-                    <h4>步骤 2：同步浮点值到 Morph Target（用户在蓝图中实现）</h4>
+            <h4>步骤 2：同步浮点值到 Morph Target（用户在蓝图中实现）</h4>
 
-                    <div class="callout callout-warning">
-                        <div class="callout-title">⚠️ 重点</div>
-                        <div class="callout-content">
-                            这一步需要使用者在蓝图中手动实现！Control Rig 中的 Float Channel 只是数据容器，并不直接驱动 Morph Target。
-                        </div>
-                    </div>
+            <div class="callout callout-warning">
+              <div class="callout-title">⚠️ 重点</div>
+              <div class="callout-content">
+                这一步需要使用者在蓝图中手动实现！Control Rig 中的 Float Channel
+                只是数据容器，并不直接驱动 Morph Target。
+              </div>
+            </div>
 
-                    <p><strong>蓝图实现步骤:</strong></p>
+            <p><strong>蓝图实现步骤:</strong></p>
 
-                    <ol>
-                        <li><strong>在 EventTick 或其他事件中执行</strong>
-                            <pre><code>获取乐器的 SkeletalMeshComponent
+            <ol>
+              <li>
+                <strong>在 EventTick 或其他事件中执行</strong>
+                <pre><code>获取乐器的 SkeletalMeshComponent
 获取 Control Rig 实例</code></pre>
-                        </li>
-                        <li><strong>逐个同步 Morph Target</strong>
-                            <div class="flow-diagram">对于每个 Morph Target（如 "key_51_pressed"）:
-  ├─ 从 Control Rig 的 Float Channel 读取当前值
-  │   （使用 "Get Control Value" 或类似节点）
-  ├─ 使用 "Set Morph Target" 节点
-  └─ 输入参数:
-      ├─ Skeletal Mesh Component
-      ├─ Morph Target Name: "key_51_pressed"
-      └─ Value: （从 Control Rig 读取的浮点值）</div>
-                        </li>
-                        <li><strong>关键节点</strong>
-                            <ul>
-                                <li><code>Get Control Value</code> - 从 Control Rig 读取浮点值</li>
-                                <li><code>Set Morph Target</code> - 设置 Morph Target 权重</li>
-                                <li>在 Tick 事件中调用，确保每帧都同步</li>
-                            </ul>
-                        </li>
-                    </ol>
+              </li>
+              <li>
+                <strong>逐个同步 Morph Target</strong>
+                <div class="flow-diagram">
+                  对于每个 Morph Target（如 "key_51_pressed"）: ├─ 从 Control
+                  Rig 的 Float Channel 读取当前值 │ （使用 "Get Control Value"
+                  或类似节点） ├─ 使用 "Set Morph Target" 节点 └─ 输入参数: ├─
+                  Skeletal Mesh Component ├─ Morph Target Name: "key_51_pressed"
+                  └─ Value: （从 Control Rig 读取的浮点值）
+                </div>
+              </li>
+              <li>
+                <strong>关键节点</strong>
+                <ul>
+                  <li>
+                    <code>Get Control Value</code>
+                    - 从 Control Rig 读取浮点值
+                  </li>
+                  <li>
+                    <code>Set Morph Target</code>
+                    - 设置 Morph Target 权重
+                  </li>
+                  <li>在 Tick 事件中调用，确保每帧都同步</li>
+                </ul>
+              </li>
+            </ol>
 
-                    <h3>2.3 数据格式</h3>
-                    <pre><code>{
+            <h3>2.3 数据格式</h3>
+            <pre><code>{
   "<span class="kw">"keys"</span>": [
     {
       "<span class="kw">"shape_key_name"</span>": "<span class="str">"key_0_pressed"</span>",
@@ -275,67 +406,78 @@ Sequencer 播放时驱动对应的 Control 运动</div>
   ]
 }</code></pre>
 
-                    <h3>2.4 使用者的工作</h3>
-                    <div class="tabs-container">
-                        <div class="tabs">
-                            <button class="tab-button active" data-tab="auto-gen">自动生成</button>
-                            <button class="tab-button" data-tab="manual">手动实现</button>
-                        </div>
-                    </div>
+            <h3>2.4 使用者的工作</h3>
+            <div class="tabs-container">
+              <div class="tabs">
+                <button class="tab-button active" data-tab="auto-gen">
+                  自动生成
+                </button>
+                <button class="tab-button" data-tab="manual">手动实现</button>
+              </div>
+            </div>
 
-                    <div id="auto-gen" class="tab-content active">
-                        <ul>
-                            <li>调用 <code>GenerateInstrumentAnimation()</code> 函数</li>
-                            <li>系统自动创建 Control Rig 的 Float Channels</li>
-                            <li>系统自动在 Sequencer 中写入关键帧</li>
-                        </ul>
-                    </div>
+            <div id="auto-gen" class="tab-content active">
+              <ul>
+                <li>
+                  调用
+                  <code>GenerateInstrumentAnimation()</code>
+                  函数
+                </li>
+                <li>系统自动创建 Control Rig 的 Float Channels</li>
+                <li>系统自动在 Sequencer 中写入关键帧</li>
+              </ul>
+            </div>
 
-                    <div id="manual" class="tab-content">
-                        <ul>
-                            <li>创建一个 Function 或 Blueprint 事件</li>
-                            <li>每帧读取 Control Rig 的浮点值</li>
-                            <li>使用 <code>Set Curve</code> 节点应用到对应的 Morph Target</li>
-                        </ul>
-                    </div>
-                </section>
+            <div id="manual" class="tab-content">
+              <ul>
+                <li>创建一个 Function 或 Blueprint 事件</li>
+                <li>每帧读取 Control Rig 的浮点值</li>
+                <li>
+                  使用
+                  <code>Set Curve</code>
+                  节点应用到对应的 Morph Target
+                </li>
+              </ul>
+            </div>
+          </section>
 
-                <section id="instrument-material">
-                    <h2>三、乐器材质动画</h2>
+          <section id="instrument-material">
+            <h2>三、乐器材质动画</h2>
 
-                    <h3>3.1 概念</h3>
-                    <p>乐器材质动画驱动材质参数的变化，为乐器提供视觉反馈。例如:</p>
-                    <ul>
-                        <li><strong>钢琴键按压指示</strong> - 按下时改变颜色或发光</li>
-                        <li><strong>弦张力可视化</strong> - 显示弦的振动状态</li>
-                    </ul>
+            <h3>3.1 概念</h3>
+            <p>乐器材质动画驱动材质参数的变化，为乐器提供视觉反馈。例如:</p>
+            <ul>
+              <li>
+                <strong>钢琴键按压指示</strong>
+                - 按下时改变颜色或发光
+              </li>
+              <li>
+                <strong>弦张力可视化</strong>
+                - 显示弦的振动状态
+              </li>
+            </ul>
 
-                    <h3>3.2 在 Unreal 中的呈现逻辑</h3>
-                    <div class="flow-diagram">乐器 Morph Target 动画数据
-    ↓
-识别每个数据对应的乐器部件（如琴键号）
-    ↓
-在 Level Sequencer 中创建或查找对应的材质轨道
-    ↓
-将 Morph Target 数据同步到材质的标量参数
-    │
-    ├─ 参数名通常为：<span class="str">"Pressed"</span>（对于钢琴）
-    │              或 <span class="str">"Vibration"</span>（对于弦乐器）
-    │
-    └─ 为每个部件的材质实例创建独立的参数轨道
-    ↓
-Sequencer 播放时同时驱动两个轨道:
-├─ Morph Target 曲线 (key_51_pressed)
-└─ 材质参数曲线 (Mat_Key_51.Pressed)
-    ↓
-最终效果：琴键既变形又改变视觉表现</div>
+            <h3>3.2 在 Unreal 中的呈现逻辑</h3>
+            <div class="flow-diagram">
+              乐器 Morph Target 动画数据 ↓
+              识别每个数据对应的乐器部件（如琴键号） ↓ 在 Level Sequencer
+              中创建或查找对应的材质轨道 ↓ 将 Morph Target
+              数据同步到材质的标量参数 │ ├─ 参数名通常为：
+              <span class="str">"Pressed"</span>
+              （对于钢琴） │ 或
+              <span class="str">"Vibration"</span>
+              （对于弦乐器） │ └─ 为每个部件的材质实例创建独立的参数轨道 ↓
+              Sequencer 播放时同时驱动两个轨道: ├─ Morph Target 曲线
+              (key_51_pressed) └─ 材质参数曲线 (Mat_Key_51.Pressed) ↓
+              最终效果：琴键既变形又改变视觉表现
+            </div>
 
-                    <h3>3.3 具体例子（钢琴）</h3>
+            <h3>3.3 具体例子（钢琴）</h3>
 
-                    <h4>场景：钢琴键 51 被按下</h4>
+            <h4>场景：钢琴键 51 被按下</h4>
 
-                    <p><strong>数据来源:</strong></p>
-                    <pre><code>{
+            <p><strong>数据来源:</strong></p>
+            <pre><code>{
   "<span class="kw">"shape_key_name"</span>": "<span class="str">"key_51_pressed"</span>",
   "<span class="kw">"keyframes"</span>": [
     {<span class="kw">"frame"</span>: <span class="num">0</span>, <span class="kw">"shape_key_value"</span>: <span class="num">0.0</span>},
@@ -344,275 +486,298 @@ Sequencer 播放时同时驱动两个轨道:
   ]
 }</code></pre>
 
-                    <p><strong>在 Unreal 中的结果:</strong></p>
+            <p><strong>在 Unreal 中的结果:</strong></p>
 
-                    <ol>
-                        <li><strong>Control Rig 轨道（自动创建）</strong>
-                            <div class="ui-panel">
-                                <div class="ui-panel-header">Control Rig: Piano</div>
-                                <div class="ui-panel-body">
-                                    <pre>└─ piano_key_root
+            <ol>
+              <li>
+                <strong>Control Rig 轨道（自动创建）</strong>
+                <div class="ui-panel">
+                  <div class="ui-panel-header">Control Rig: Piano</div>
+                  <div class="ui-panel-body">
+                    <pre>
+└─ piano_key_root
    └─ key_51_pressed (Float Channel)
       ├─ Frame 0: Value = 0.0
       ├─ Frame 5: Value = 1.0
-      └─ Frame 10: Value = 0.0</pre>
-                                </div>
-                            </div>
-                        </li>
-                        <li><strong>蓝图同步（用户实现）</strong>
-                            <ul>
-                                <li>每帧读取 <code>key_51_pressed</code> 的值</li>
-                                <li>调用 <code>Set Morph Target(Piano, "key_51_pressed", Value)</code></li>
-                                <li>琴键网格发生几何变形</li>
-                            </ul>
-                        </li>
-                        <li><strong>材质参数轨道（代码自动创建）</strong>
-                            <div class="ui-panel">
-                                <div class="ui-panel-header">Material Track: Mat_Key_51</div>
-                                <div class="ui-panel-body">
-                                    <pre>└─ Parameter: "Pressed"
+      └─ Frame 10: Value = 0.0</pre
+                    >
+                  </div>
+                </div>
+              </li>
+              <li>
+                <strong>蓝图同步（用户实现）</strong>
+                <ul>
+                  <li>
+                    每帧读取
+                    <code>key_51_pressed</code>
+                    的值
+                  </li>
+                  <li>
+                    调用
+                    <code>
+                      Set Morph Target(Piano, "key_51_pressed", Value)
+                    </code>
+                  </li>
+                  <li>琴键网格发生几何变形</li>
+                </ul>
+              </li>
+              <li>
+                <strong>材质参数轨道（代码自动创建）</strong>
+                <div class="ui-panel">
+                  <div class="ui-panel-header">Material Track: Mat_Key_51</div>
+                  <div class="ui-panel-body">
+                    <pre>
+└─ Parameter: "Pressed"
    ├─ Frame 0: Value = 0.0
    ├─ Frame 5: Value = 1.0
-   └─ Frame 10: Value = 0.0</pre>
-                                </div>
-                            </div>
-                        </li>
-                        <li><strong>最终效果</strong>
-                            <ul>
-                                <li>琴键按下时：Morph Target 使键盘向下，材质参数使按键发光或变色</li>
-                                <li>琴键抬起时：Morph Target 恢复原位，材质参数恢复默认表现</li>
-                            </ul>
-                        </li>
-                    </ol>
+   └─ Frame 10: Value = 0.0</pre
+                    >
+                  </div>
+                </div>
+              </li>
+              <li>
+                <strong>最终效果</strong>
+                <ul>
+                  <li>
+                    琴键按下时：Morph Target
+                    使键盘向下，材质参数使按键发光或变色
+                  </li>
+                  <li>
+                    琴键抬起时：Morph Target 恢复原位，材质参数恢复默认表现
+                  </li>
+                </ul>
+              </li>
+            </ol>
 
-                    <h3>3.4 材质设置</h3>
-                    <p>为了实现材质动画效果，材质需要包含可驱动的参数:</p>
+            <h3>3.4 材质设置</h3>
+            <p>为了实现材质动画效果，材质需要包含可驱动的参数:</p>
 
-                    <div class="ui-panel">
-                        <div class="ui-panel-header">在材质编辑器中</div>
-                        <div class="ui-panel-body">
-                            <div class="property-row">
-                                <div class="property-label">添加标量参数</div>
-                                <div class="property-value">
-                                    <span>参数名称：Pressed | 类型：Float | 默认值：0.0 | 范围：0.0 到 1.0</span>
-                                </div>
-                            </div>
-                            <div class="property-row">
-                                <div class="property-label">在材质网络中使用</div>
-                                <div class="property-value">
-                                    <pre><code>Base Color = Lerp(WhiteColor, GreyColor, Pressed)
+            <div class="ui-panel">
+              <div class="ui-panel-header">在材质编辑器中</div>
+              <div class="ui-panel-body">
+                <div class="property-row">
+                  <div class="property-label">添加标量参数</div>
+                  <div class="property-value">
+                    <span>
+                      参数名称：Pressed | 类型：Float | 默认值：0.0 | 范围：0.0
+                      到 1.0
+                    </span>
+                  </div>
+                </div>
+                <div class="property-row">
+                  <div class="property-label">在材质网络中使用</div>
+                  <div class="property-value">
+                    <pre><code>Base Color = Lerp(WhiteColor, GreyColor, Pressed)
 Emissive = Pressed * IntensityValue</code></pre>
-                                </div>
-                            </div>
-                            <div class="property-row">
-                                <div class="property-label">创建材质实例</div>
-                                <div class="property-value">
-                                    <span>基于包含 Pressed 参数的材质创建实例，为每个琴键创建独立的材质实例</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <h3>3.5 工作流总结</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>阶段</th>
-                                <th>谁负责</th>
-                                <th>具体工作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>1. 数据导出</td>
-                                <td>用户</td>
-                                <td>在分析工具中导出 JSON 动画数据</td>
-                            </tr>
-                            <tr>
-                                <td>2. 动画生成</td>
-                                <td>MusicDoll 代码</td>
-                                <td>创建 Control Rig Channels、写入 Sequencer</td>
-                            </tr>
-                            <tr>
-                                <td>3. Morph Target 同步</td>
-                                <td>用户蓝图</td>
-                                <td>实现每帧从 Control Rig 读值、应用到 Morph Target</td>
-                            </tr>
-                            <tr>
-                                <td>4. 材质参数轨道</td>
-                                <td>MusicDoll 代码</td>
-                                <td>自动创建和写入材质参数曲线</td>
-                            </tr>
-                            <tr>
-                                <td>5. 预览</td>
-                                <td>用户</td>
-                                <td>在 Sequencer 中播放，观看最终效果</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </section>
-
-                <section id="animation-sync">
-                    <h2>四、三类动画的同步</h2>
-
-                    <h3>4.1 同步原理</h3>
-                    <p>三类动画在同一个 Level Sequencer 中完成同步:</p>
-
-                    <div class="flow-diagram">Timeline
-   ↓
-Frame 0
-├─ 人物演奏动画 → Control Rig 轨道（演奏者位置/旋转）
-├─ Morph Target 动画 → Control Rig 轨道（乐器 Float Channels）
-│                    ↓（蓝图驱动）
-│                    Set Morph Target（乐器变形）
-└─ 材质动画 → 材质参数轨道（材质参数值）
-   ↓
-Frame 1
-├─ 人物演奏动画
-├─ Morph Target 动画
-└─ 材质动画
-   ↓
-...依次类推...</div>
-
-                    <h3>4.2 关键要点</h3>
-                    <ol>
-                        <li><strong>所有动画都使用相同的 TickResolution</strong>
-                            <ul>
-                                <li>确保不同轨道的帧数正确对齐</li>
-                                <li>自动由 Sequencer 处理</li>
-                            </ul>
-                        </li>
-                        <li><strong>Morph Target 同步需要用户参与</strong>
-                            <ul>
-                                <li>Control Rig 的 Float Channel 只是数据</li>
-                                <li>蓝图必须每帧读取这些数据并应用到实际的 Morph Target</li>
-                                <li>这是架构设计中的必要步骤，提供了灵活性</li>
-                            </ul>
-                        </li>
-                        <li><strong>材质动画由代码自动驱动</strong>
-                            <ul>
-                                <li>不需要用户干预</li>
-                                <li>与 Morph Target 数据同步</li>
-                            </ul>
-                        </li>
-                    </ol>
-                </section>
-
-                <section id="faq">
-                    <h2>五、常见问题</h2>
-
-                    <details>
-                        <summary>Q1: Morph Target 没有变形</summary>
-                        <div class="details-content">
-                            <p><strong>可能原因:</strong></p>
-                            <ul>
-                                <li>蓝图中的同步函数没有实现或没有运行</li>
-                                <li>没有在 EventTick 中调用同步逻辑</li>
-                            </ul>
-                            <p><strong>解决方案:</strong></p>
-                            <ul>
-                                <li>检查蓝图中是否有 "Set Curve" 节点</li>
-                                <li>确保函数在 EventTick 中被调用</li>
-                                <li>验证从 Control Rig 读取的值是否正确</li>
-                            </ul>
-                        </div>
-                    </details>
-
-                    <details>
-                        <summary>Q2: 材质参数没有更新</summary>
-                        <div class="details-content">
-                            <p><strong>可能原因:</strong></p>
-                            <ul>
-                                <li>材质没有 "Pressed" 等参数定义</li>
-                                <li>材质实例没有正确应用到骨骼网格</li>
-                                <li>参数轨道没有关键帧</li>
-                            </ul>
-                            <p><strong>解决方案:</strong></p>
-                            <ul>
-                                <li>检查材质编辑器，确保存在相应的标量参数</li>
-                                <li>检查骨骼网格的材质槽位设置</li>
-                                <li>在 Sequencer 中查看材质参数轨道是否有关键帧</li>
-                            </ul>
-                        </div>
-                    </details>
-
-                    <details>
-                        <summary>Q3: 演奏动画和乐器动画不同步</summary>
-                        <div class="details-content">
-                            <p><strong>可能原因:</strong></p>
-                            <ul>
-                                <li>使用了不同的 Level Sequence</li>
-                                <li>帧率设置不一致</li>
-                            </ul>
-                            <p><strong>解决方案:</strong></p>
-                            <ul>
-                                <li>确保所有动画数据都写入同一个 LevelSequence</li>
-                                <li>检查 MovieScene 的 TickResolution 是否一致</li>
-                            </ul>
-                        </div>
-                    </details>
-                </section>
-
-                <section id="summary">
-                    <h2>六、总结</h2>
-
-                    <h3>三类动画的角色</h3>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>动画类型</th>
-                                <th>驱动对象</th>
-                                <th>实现方式</th>
-                                <th>用户工作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td><strong>人物演奏动画</strong></td>
-                                <td>演奏者的骨骼/Control</td>
-                                <td>Sequencer 的 Control Rig 轨道</td>
-                                <td>无（自动处理）</td>
-                            </tr>
-                            <tr>
-                                <td><strong>乐器 Morph Target</strong></td>
-                                <td>乐器的网格变形</td>
-                                <td>Control Rig Float Channels + 蓝图</td>
-                                <td>实现同步蓝图</td>
-                            </tr>
-                            <tr>
-                                <td><strong>乐器材质动画</strong></td>
-                                <td>乐器的材质参数</td>
-                                <td>Sequencer 的材质参数轨道</td>
-                                <td>无（自动处理）</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <h3>工作流概览</h3>
-                    <div class="flow-diagram">1. 导出动画数据（JSON）
-          ↓
-2. 导入 Unreal，调用生成函数
-          ↓
-3. 系统自动创建 Sequencer 轨道
-          ↓
-4. 用户在蓝图中实现 Morph Target 同步（关键一步！）
-          ↓
-5. 在 Sequencer 中播放预览
-          ↓
-6. 三类动画同时运行，完整呈现音乐表演</div>
-                </section>
-
-                <hr style="margin: 40px 0; border-color: var(--border-color);">
-                
-                <p style="color: var(--text-muted); font-size: 13px;">
-                    <strong>文档版本：2.0</strong><br>
-                    <strong>最后更新：2026/02/06</strong><br>
-                    <strong>声明：以上内容是 AI 写的，有不明白还是直接问作者更准确</strong>
-                </p>
+                  </div>
+                </div>
+                <div class="property-row">
+                  <div class="property-label">创建材质实例</div>
+                  <div class="property-value">
+                    <span>
+                      基于包含 Pressed
+                      参数的材质创建实例，为每个琴键创建独立的材质实例
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
-        </main>
+
+            <h3>3.5 工作流总结</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>阶段</th>
+                  <th>谁负责</th>
+                  <th>具体工作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1. 数据导出</td>
+                  <td>用户</td>
+                  <td>在分析工具中导出 JSON 动画数据</td>
+                </tr>
+                <tr>
+                  <td>2. 动画生成</td>
+                  <td>MusicDoll 代码</td>
+                  <td>创建 Control Rig Channels、写入 Sequencer</td>
+                </tr>
+                <tr>
+                  <td>3. Morph Target 同步</td>
+                  <td>用户蓝图</td>
+                  <td>实现每帧从 Control Rig 读值、应用到 Morph Target</td>
+                </tr>
+                <tr>
+                  <td>4. 材质参数轨道</td>
+                  <td>MusicDoll 代码</td>
+                  <td>自动创建和写入材质参数曲线</td>
+                </tr>
+                <tr>
+                  <td>5. 预览</td>
+                  <td>用户</td>
+                  <td>在 Sequencer 中播放，观看最终效果</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="animation-sync">
+            <h2>四、三类动画的同步</h2>
+
+            <h3>4.1 同步原理</h3>
+            <p>三类动画在同一个 Level Sequencer 中完成同步:</p>
+
+            <div class="flow-diagram">
+              Timeline ↓ Frame 0 ├─ 人物演奏动画 → Control Rig
+              轨道（演奏者位置/旋转） ├─ Morph Target 动画 → Control Rig
+              轨道（乐器 Float Channels） │ ↓（蓝图驱动） │ Set Morph
+              Target（乐器变形） └─ 材质动画 → 材质参数轨道（材质参数值） ↓
+              Frame 1 ├─ 人物演奏动画 ├─ Morph Target 动画 └─ 材质动画 ↓
+              ...依次类推...
+            </div>
+
+            <h3>4.2 关键要点</h3>
+            <ol>
+              <li>
+                <strong>所有动画都使用相同的 TickResolution</strong>
+                <ul>
+                  <li>确保不同轨道的帧数正确对齐</li>
+                  <li>自动由 Sequencer 处理</li>
+                </ul>
+              </li>
+              <li>
+                <strong>Morph Target 同步需要用户参与</strong>
+                <ul>
+                  <li>Control Rig 的 Float Channel 只是数据</li>
+                  <li>蓝图必须每帧读取这些数据并应用到实际的 Morph Target</li>
+                  <li>这是架构设计中的必要步骤，提供了灵活性</li>
+                </ul>
+              </li>
+              <li>
+                <strong>材质动画由代码自动驱动</strong>
+                <ul>
+                  <li>不需要用户干预</li>
+                  <li>与 Morph Target 数据同步</li>
+                </ul>
+              </li>
+            </ol>
+          </section>
+
+          <section id="faq">
+            <h2>五、常见问题</h2>
+
+            <details>
+              <summary>Q1: Morph Target 没有变形</summary>
+              <div class="details-content">
+                <p><strong>可能原因:</strong></p>
+                <ul>
+                  <li>蓝图中的同步函数没有实现或没有运行</li>
+                  <li>没有在 EventTick 中调用同步逻辑</li>
+                </ul>
+                <p><strong>解决方案:</strong></p>
+                <ul>
+                  <li>检查蓝图中是否有 "Set Curve" 节点</li>
+                  <li>确保函数在 EventTick 中被调用</li>
+                  <li>验证从 Control Rig 读取的值是否正确</li>
+                </ul>
+              </div>
+            </details>
+
+            <details>
+              <summary>Q2: 材质参数没有更新</summary>
+              <div class="details-content">
+                <p><strong>可能原因:</strong></p>
+                <ul>
+                  <li>材质没有 "Pressed" 等参数定义</li>
+                  <li>材质实例没有正确应用到骨骼网格</li>
+                  <li>参数轨道没有关键帧</li>
+                </ul>
+                <p><strong>解决方案:</strong></p>
+                <ul>
+                  <li>检查材质编辑器，确保存在相应的标量参数</li>
+                  <li>检查骨骼网格的材质槽位设置</li>
+                  <li>在 Sequencer 中查看材质参数轨道是否有关键帧</li>
+                </ul>
+              </div>
+            </details>
+
+            <details>
+              <summary>Q3: 演奏动画和乐器动画不同步</summary>
+              <div class="details-content">
+                <p><strong>可能原因:</strong></p>
+                <ul>
+                  <li>使用了不同的 Level Sequence</li>
+                  <li>帧率设置不一致</li>
+                </ul>
+                <p><strong>解决方案:</strong></p>
+                <ul>
+                  <li>确保所有动画数据都写入同一个 LevelSequence</li>
+                  <li>检查 MovieScene 的 TickResolution 是否一致</li>
+                </ul>
+              </div>
+            </details>
+          </section>
+
+          <section id="summary">
+            <h2>六、总结</h2>
+
+            <h3>三类动画的角色</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>动画类型</th>
+                  <th>驱动对象</th>
+                  <th>实现方式</th>
+                  <th>用户工作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>人物演奏动画</strong></td>
+                  <td>演奏者的骨骼/Control</td>
+                  <td>Sequencer 的 Control Rig 轨道</td>
+                  <td>无（自动处理）</td>
+                </tr>
+                <tr>
+                  <td><strong>乐器 Morph Target</strong></td>
+                  <td>乐器的网格变形</td>
+                  <td>Control Rig Float Channels + 蓝图</td>
+                  <td>实现同步蓝图</td>
+                </tr>
+                <tr>
+                  <td><strong>乐器材质动画</strong></td>
+                  <td>乐器的材质参数</td>
+                  <td>Sequencer 的材质参数轨道</td>
+                  <td>无（自动处理）</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3>工作流概览</h3>
+            <div class="flow-diagram">
+              1. 导出动画数据（JSON） ↓ 2. 导入 Unreal，调用生成函数 ↓ 3.
+              系统自动创建 Sequencer 轨道 ↓ 4. 用户在蓝图中实现 Morph Target
+              同步（关键一步！） ↓ 5. 在 Sequencer 中播放预览 ↓ 6.
+              三类动画同时运行，完整呈现音乐表演
+            </div>
+          </section>
+
+          <hr style="margin: 40px 0; border-color: var(--border-color)" />
+
+          <p style="color: var(--text-muted); font-size: 13px">
+            <strong>文档版本：2.0</strong>
+            <br />
+            <strong>最后更新：2026/02/06</strong>
+            <br />
+            <strong>
+              声明：以上内容是 AI 写的，有不明白还是直接问作者更准确
+            </strong>
+          </p>
+        </div>
+      </main>
     </div>
 
     <script src="js/musicdoll-docs.js"></script>
-</body>
+  </body>
 </html>

@@ -74,6 +74,16 @@ class MUSICDOLLCOMMON_API FControlRigCreationUtility {
     static TArray<FName> GetAvailableShapeNames(
         const UControlRig* InControlRig);
 
+    /**
+     * 线性分布 Control Rig 中的控制器位置
+     * 从当前选中的两个控制器出发，自动识别名称模式（公共后缀 + 数字前缀），
+     * 将范围内的所有同类控制器按序号线性插值其位置。
+     *
+     * @param ControlRig 运行时 Control Rig 对象（需已在 Sequencer 中激活）
+     * @return 成功分布的控制器数量，失败返回 -1
+     */
+    static int32 LinearDistributeControls(UControlRig* ControlRig);
+
    private:
     /**
      * 检查 Control 是否严格存在（包括完整性检查）
@@ -113,4 +123,10 @@ class MUSICDOLLCOMMON_API FControlRigCreationUtility {
         URigHierarchyController* HierarchyController,
         URigHierarchy* RigHierarchy, const FString& ControlName,
         const FRigElementKey& ParentKey, const FString& ShapeName);
+
+    /** 获取两个字符串的公共后缀 */
+    static FString GetCommonSuffix(const FString& NameA, const FString& NameB);
+
+    /** 解析 s{N}{Suffix} 格式，返回数字部分，失败返回 -1 */
+    static int32 ParseControlIndex(const FString& Name, const FString& Suffix);
 };
