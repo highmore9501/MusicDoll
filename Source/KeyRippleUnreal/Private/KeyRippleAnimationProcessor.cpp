@@ -97,8 +97,8 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimation(
         TSharedPtr<ISequencer> Sequencer = nullptr;
         if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
                 LevelSequence, Sequencer)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+            UE_LOG(LogTemp, Warning, TEXT("Writing active curve from: %s"),
+                   *ActivityCurvePath);
             UInstrumentAnimationUtility::WriteActiveCurveFromFile(
                 KeyRippleActor->SkeletalMeshActor, ActivityCurvePath,
                 LevelSequence);
@@ -215,15 +215,85 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
 
     for (int32 FrameIndex = 0; FrameIndex < JsonArray.Num(); ++FrameIndex) {
         TSharedPtr<FJsonObject> FrameObject = JsonArray[FrameIndex]->AsObject();
+        if (!FrameObject.IsValid()) {
+            FailedFrames++;
+            continue;
+        }
+
+        if (!FrameObject->HasField(TEXT("frame"))) {
+            FailedFrames++;
+            continue;
+        }
         int32 FrameNumber = FrameObject->GetIntegerField(TEXT("frame"));
+
+        if (!FrameObject->HasField(TEXT("hand_infos"))) {
+            FailedFrames++;
+            continue;
+        }
         TSharedPtr<FJsonObject> ControlsContainer =
             FrameObject->GetObjectField(TEXT("hand_infos"));
 
-        // 使用通用方法处理控件容器
-        UInstrumentAnimationUtility::ProcessControlsContainer(
-            ControlsContainer, FrameNumber, ControlKeyframeData,
-            KeyRippleAnimationHelper::GetValidKeyRippleControllerNames(),
-            KeyframesAdded);
+        // KeyRipple 控件数据格式：每个控制器值为直接数组
+        //   - 3 元素 = 位置 [x, y, z]
+        //   - 4 元素 = 四元数旋转 [w, x, y, z]
+        for (const auto& Pair : ControlsContainer->Values) {
+            FString RawControlName = Pair.Key;
+
+            FString ControlName =
+                UInstrumentAnimationUtility::ValidateControllerName(
+                    RawControlName,
+                    KeyRippleAnimationHelper::
+                        GetValidKeyRippleControllerNames(),
+                    TEXT("KeyRipple"));
+
+            if (ControlName.IsEmpty()) {
+                continue;
+            }
+
+            TSharedPtr<FJsonValue> ControlDataValue = Pair.Value;
+            if (!ControlDataValue.IsValid()) {
+                continue;
+            }
+
+            const TArray<TSharedPtr<FJsonValue>>* DataArrayPtr = nullptr;
+            if (!ControlDataValue->TryGetArray(DataArrayPtr) || !DataArrayPtr) {
+                continue;
+            }
+
+            const TArray<TSharedPtr<FJsonValue>>& DataArray = *DataArrayPtr;
+
+            FAnimationKeyframe Keyframe;
+            Keyframe.FrameNumber = FrameNumber;
+
+            if (DataArray.Num() == 3) {
+                // 位置数据 [x, y, z] → 写入原控制器
+                FVector Location;
+                Location.X = DataArray[0]->AsNumber();
+                Location.Y = DataArray[1]->AsNumber();
+                Location.Z = DataArray[2]->AsNumber();
+                Keyframe.Translation = Location;
+                Keyframe.bHasLocation = true;
+                ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
+                KeyframesAdded++;
+            } else if (DataArray.Num() == 4) {
+                // 四元数旋转 [w, x, y, z] → 写入去掉 _rotation 的控制器
+                FQuat Rotation;
+                Rotation.W = DataArray[0]->AsNumber();
+                Rotation.X = DataArray[1]->AsNumber();
+                Rotation.Y = DataArray[2]->AsNumber();
+                Rotation.Z = DataArray[3]->AsNumber();
+                Rotation.Normalize();
+                Keyframe.Rotation = Rotation;
+                Keyframe.bHasRotation = true;
+                // H_rotation_L → H_L, H_rotation_R → H_R
+                FString TargetName =
+                    ControlName.Replace(TEXT("_rotation"), TEXT(""));
+                ControlKeyframeData.FindOrAdd(TargetName).Add(Keyframe);
+                KeyframesAdded++;
+            } else {
+                continue;
+            }
+        }
 
         ProcessedFrames++;
     }
@@ -252,8 +322,8 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
 }
 
 bool UKeyRippleAnimationProcessor::ParseKeyRippleFile(
-AKeyRippleUnreal* KeyRippleActor, FString& OutAnimationPath,
-FString& OutKeyAnimationPath, FString& OutActivityCurvePath) {
+    AKeyRippleUnreal* KeyRippleActor, FString& OutAnimationPath,
+    FString& OutKeyAnimationPath, FString& OutActivityCurvePath) {
     if (!KeyRippleActor) {
         UE_LOG(LogTemp, Error,
                TEXT("ParseKeyRippleFile: KeyRippleActor is null"));
@@ -391,8 +461,8 @@ void UKeyRippleAnimationProcessor::GenerateAllAnimation(
         TSharedPtr<ISequencer> Sequencer = nullptr;
         if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
                 LevelSequence, Sequencer)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+            UE_LOG(LogTemp, Warning, TEXT("Writing active curve from: %s"),
+                   *ActivityCurvePath);
             UInstrumentAnimationUtility::WriteActiveCurveFromFile(
                 KeyRippleActor->SkeletalMeshActor, ActivityCurvePath,
                 LevelSequence);

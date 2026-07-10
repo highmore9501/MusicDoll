@@ -1,7 +1,7 @@
 ﻿#include "UI/ZhengDriftModuleMainPanel.h"
 
 #include "UI/SBoneControlMappingEditPanel.h"
-#include "UI/ZhengDriftBakeOperationsPanel.h"
+#include "UI/SLipSyncPanel.h"
 #include "UI/ZhengDriftModuleOperationsPanel.h"
 #include "UI/ZhengDriftModulePropertiesPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -16,14 +16,14 @@ void SZhengDriftModuleMainPanel::Construct(const FArguments& InArgs) {
     PropertiesPanel = SNew(SZhengDriftModulePropertiesPanel);
     OperationsPanel = SNew(SZhengDriftModuleOperationsPanel);
     BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
-    BakeOperationsPanel = SNew(SZhengDriftBakeOperationsPanel);
+    LipSyncPanel = SNew(SLipSyncPanel);
 
     // 注册 Tab（顺序决定 Tab 位置）
     RegisterPanel(PropertiesPanel, LOCTEXT("PropertiesTabLabel", "Properties"));
     RegisterPanel(OperationsPanel, LOCTEXT("OperationsTabLabel", "Operations"));
     RegisterPanel(BoneControlMappingPanel,
                   LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
-    RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
+    RegisterPanel(LipSyncPanel, LOCTEXT("LipSyncTabLabel", "Lip Sync"));
 
     ShowFirstPanel();
 }
@@ -35,7 +35,7 @@ void SZhengDriftModuleMainPanel::SetActor(AActor* InActor) {
     if (OperationsPanel.IsValid()) OperationsPanel->SetActor(InActor);
     if (BoneControlMappingPanel.IsValid())
         BoneControlMappingPanel->SetActor(InActor);
-    if (BakeOperationsPanel.IsValid()) BakeOperationsPanel->SetActor(InActor);
+    if (LipSyncPanel.IsValid()) LipSyncPanel->SetActor(InActor);
 
     RefreshPanel();
 }

@@ -1,7 +1,7 @@
 ﻿#pragma once
 
-#include "CoreMinimal.h"
 #include "Channels/MovieSceneFloatChannel.h"
+#include "CoreMinimal.h"
 #include "FretDanceUnreal.h"
 #include "FretDanceMusicInstrumentProcessor.generated.h"
 
@@ -91,12 +91,17 @@ class FRETDANCEUNREAL_API UFretDanceMusicInstrumentProcessor : public UObject {
     /**
      * 生成乐器动画
      * 使用新的 Morph Target 生成方法替代旧的弦振动动画方法
+     * 弦振动与摇把 shape key 合并写入同一个 Control Rig，避免互相覆盖
      * @param FretDanceActor FretDanceUnreal 实例
-     * @param StringVibrationDataPath 弦振动数据 JSON 文件路径（从配置文件解析得到）
+     * @param StringVibrationDataPath 弦振动数据 JSON
+     * 文件路径（从配置文件解析得到）
+     * @param VibratoShapeKeyDataPath 摇把 shape key 数据 JSON 文件路径
      */
     UFUNCTION(BlueprintCallable, Category = "FretDance Music Processor")
-    static void GenerateInstrumentAnimation(AFretDanceUnreal* FretDanceActor,
-                                            const FString& StringVibrationDataPath);
+    static void GenerateInstrumentAnimation(
+        AFretDanceUnreal* FretDanceActor,
+        const FString& StringVibrationDataPath,
+        const FString& VibratoShapeKeyDataPath);
 
     /**
      * 从 JSON 加载弦振动数据并生成动画

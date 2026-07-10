@@ -628,7 +628,9 @@ void UZhengDriftMusicInstrumentProcessor::CleanupExistingZhengAnimations(
 
     if (ZhengDriftActor->SkeletalMeshActor) {
         UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-            ZhengDriftActor->SkeletalMeshActor);
+            ZhengDriftActor->SkeletalMeshActor,
+            TArray<FString>{TEXT("F_L"), TEXT("F_R"), TEXT("F_L_pole"),
+                            TEXT("F_R_pole")});
     }
 
     if (ZhengDriftActor->Zheng) {

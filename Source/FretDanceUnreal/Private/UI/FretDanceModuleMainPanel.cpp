@@ -1,8 +1,8 @@
 ﻿#include "UI/FretDanceModuleMainPanel.h"
 
-#include "UI/FretDanceBakeOperationsPanel.h"
 #include "UI/FretDanceModuleOperationsPanel.h"
 #include "UI/FretDanceModulePropertiesPanel.h"
+#include "UI/SLipSyncPanel.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -16,14 +16,14 @@ void SFretDanceModuleMainPanel::Construct(const FArguments& InArgs) {
     PropertiesPanel = SNew(SFretDanceModulePropertiesPanel);
     OperationsPanel = SNew(SFretDanceModuleOperationsPanel);
     BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
-    BakeOperationsPanel = SNew(SFretDanceBakeOperationsPanel);
+    LipSyncPanel = SNew(SLipSyncPanel);
 
     // Register tabs (order matters for tab positions)
     RegisterPanel(PropertiesPanel, LOCTEXT("PropertiesTabLabel", "Properties"));
     RegisterPanel(OperationsPanel, LOCTEXT("OperationsTabLabel", "Operations"));
     RegisterPanel(BoneControlMappingPanel,
                   LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
-    RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
+    RegisterPanel(LipSyncPanel, LOCTEXT("LipSyncTabLabel", "Lip Sync"));
 
     // Show first panel after all panels are registered
     ShowFirstPanel();
@@ -45,8 +45,8 @@ void SFretDanceModuleMainPanel::SetActor(AActor* InActor) {
         BoneControlMappingPanel->SetActor(InActor);
     }
 
-    if (BakeOperationsPanel.IsValid()) {
-        BakeOperationsPanel->SetActor(InActor);
+    if (LipSyncPanel.IsValid()) {
+        LipSyncPanel->SetActor(InActor);
     }
 
     RefreshPanel();

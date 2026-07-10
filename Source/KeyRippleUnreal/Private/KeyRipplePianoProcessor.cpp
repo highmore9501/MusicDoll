@@ -178,9 +178,11 @@ void UKeyRipplePianoProcessor::GenerateInstrumentAnimation(
            TEXT("========== GenerateInstrumentAnimation Started =========="));
 
 #if WITH_EDITOR
-    // 使用Common模块的通用清理方法
+    // 使用Common模块的通用清理方法，保留钢琴相关的控制器（脚部控件）
     UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-        KeyRippleActor->Piano);
+        KeyRippleActor->Piano,
+        TArray<FString>{TEXT("F_L"), TEXT("F_R"), TEXT("FP_L"),
+                        TEXT("FP_R")});
     // ========== Piano特定的JSON读取逻辑 ==========
     FString JsonContent;
     if (!FFileHelper::LoadFileToString(JsonContent, *PianoKeyAnimationPath)) {
@@ -902,9 +904,11 @@ void UKeyRipplePianoProcessor::CleanupExistingPianoAnimations(
         return;
     }
 
-    // 使用Common模块的通用清理方法
+    // 使用Common模块的通用清理方法，保留钢琴相关的控制器（脚部控件）
     UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-        KeyRippleActor->Piano);
+        KeyRippleActor->Piano,
+        TArray<FString>{TEXT("F_L"), TEXT("F_R"), TEXT("FP_L"),
+                        TEXT("FP_R")});
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -4,10 +4,10 @@
 #include "FretDanceUnreal.h"
 #include "UI/ModuleMainPanelBase.h"
 #include "UI/SBoneControlMappingEditPanel.h"
-#include "UI/FretDanceBakeOperationsPanel.h"
 
 class SFretDanceModulePropertiesPanel;
 class SFretDanceModuleOperationsPanel;
+class SLipSyncPanel;
 
 /**
  * Main panel for FretDance module
@@ -24,9 +24,7 @@ class FRETDANCEUNREAL_API SFretDanceModuleMainPanel
     // SModuleMainPanelBase interface
     virtual void SetActor(AActor* InActor) override;
     virtual bool CanHandleActor(const AActor* InActor) const override;
-    virtual FString GetModuleName() const override {
-        return TEXT("FretDance");
-    }
+    virtual FString GetModuleName() const override { return TEXT("FretDance"); }
     virtual void RefreshPanel() override;
 
    private:
@@ -37,5 +35,5 @@ class FRETDANCEUNREAL_API SFretDanceModuleMainPanel
     TSharedPtr<SFretDanceModulePropertiesPanel> PropertiesPanel;
     TSharedPtr<SFretDanceModuleOperationsPanel> OperationsPanel;
     TSharedPtr<SBoneControlMappingEditPanel> BoneControlMappingPanel;
-    TSharedPtr<SFretDanceBakeOperationsPanel> BakeOperationsPanel;
+    TSharedPtr<SLipSyncPanel> LipSyncPanel;
 };

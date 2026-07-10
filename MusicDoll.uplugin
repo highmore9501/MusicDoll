@@ -80,6 +80,12 @@
       "Type": "Runtime",
       "LoadingPhase": "Default",
       "BlacklistFolders": [ ".vshistory" ]
+    },
+    {
+      "Name": "SingerUnreal",
+      "Type": "Runtime",
+      "LoadingPhase": "Default",
+      "BlacklistFolders": [ ".vshistory" ]
     }
   ]
 }

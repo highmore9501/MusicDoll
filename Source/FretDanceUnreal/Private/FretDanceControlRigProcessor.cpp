@@ -98,9 +98,9 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
 
     // 3. 创建左手控制器（改为挂在 controller_root_offset 下）
     TArray<FString> LeftControllers = {
-        TEXT("H_L"),  TEXT("HP_L"), TEXT("T_L"),
-        TEXT("TP_L"), TEXT("I_L"),  TEXT("M_L"),
-        TEXT("R_L"),  TEXT("P_L"),  TEXT("H_rotation_L")};
+        TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("TP_L"),
+        TEXT("I_L"), TEXT("M_L"),  TEXT("R_L"), TEXT("P_L"),
+    };
 
     for (const FString& ControllerName : LeftControllers) {
         FString ParentName = TEXT("controller_root_offset");
@@ -114,8 +114,10 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
     }
 
     // 4. 创建右手控制器（改为挂在 controller_root_offset 下）
-    TArray<FString> RightControllers = {TEXT("H_R"), TEXT("HP_R"),
-                                        TEXT("H_rotation_R")};
+    TArray<FString> RightControllers = {
+        TEXT("H_R"),
+        TEXT("HP_R"),
+    };
 
     FString ControllerRootName = TEXT("controller_root_offset");
 
@@ -138,7 +140,7 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         // 只创建非空的控制器名称
         // 排除已经在 RightControllers 中创建的控制器
         if (!FingerName.IsEmpty() && FingerName != TEXT("H_R") &&
-            FingerName != TEXT("HP_R") && FingerName != TEXT("H_rotation_R")) {
+            FingerName != TEXT("HP_R")) {
             if (CreateController(ControlRigBlueprint, FingerName, ParentName)) {
                 CreatedCount++;
             }
@@ -234,7 +236,10 @@ bool UFretDanceControlRigProcessor::SetupAllObjects(
         return false;
     }
 
-    // 步骤 2: 验证控制器状态
+    // 步骤 2: 更新记录器键名（与当前命名逻辑对齐，只增删不丢数据）
+    FretDanceActor->UpdateRecorderKeys();
+
+    // 步骤 3: 验证控制器状态
     bool bValidationPassed = CheckObjectsStatus(FretDanceActor);
 
     if (bValidationPassed) {
@@ -264,11 +269,46 @@ bool UFretDanceControlRigProcessor::SaveState(
     UE_LOG(LogTemp, Warning, TEXT("Current Right Hand: State=%s"),
            *UEnum::GetValueAsString(FretDanceActor->CurrentRightHandState));
 
-    // 清空 RecorderTransforms
+    // 先重新初始化所有记录器键名（确保新增加的键名也被加入）
+    // 这样即使旧实例没有保存过某些状态，RecorderTransforms 中也存在默认值
     FretDanceActor->RecorderTransforms.Empty();
-    UE_LOG(LogTemp, Warning, TEXT("Cleared RecorderTransforms"));
 
-    // 分别保存左右手状态到 RecorderTransforms
+    // 初始化左手记录器
+    for (const auto& Pair : FretDanceActor->LeftHandPositionRecorders) {
+        for (int32 i = 0; i < Pair.Value.Num(); ++i) {
+            FString KeyName = Pair.Value[i];
+            if (!FretDanceActor->RecorderTransforms.Contains(KeyName)) {
+                FretDanceActor->RecorderTransforms.Add(
+                    KeyName, FFretDanceRecorderTransform());
+            }
+        }
+    }
+
+    // 初始化右手记录器
+    for (const auto& Pair : FretDanceActor->RightHandPositionRecorders) {
+        for (int32 i = 0; i < Pair.Value.Num(); ++i) {
+            FString KeyName = Pair.Value[i];
+            if (!FretDanceActor->RecorderTransforms.Contains(KeyName)) {
+                FretDanceActor->RecorderTransforms.Add(
+                    KeyName, FFretDanceRecorderTransform());
+            }
+        }
+    }
+
+    // 初始化指板位置记录器
+    for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
+        const FString& RecorderName = FretPair.Value;
+        if (!FretDanceActor->RecorderTransforms.Contains(RecorderName)) {
+            FretDanceActor->RecorderTransforms.Add(
+                RecorderName, FFretDanceRecorderTransform());
+        }
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("Initialized RecorderTransforms with %d default entries"),
+           FretDanceActor->RecorderTransforms.Num());
+
+    // 分别保存左右手状态到 RecorderTransforms（覆盖当前状态的真实数据）
     bool bLeftSaved = SaveLeftHandState(FretDanceActor);
     bool bRightSaved = SaveRightHandState(FretDanceActor);
 
@@ -367,8 +407,10 @@ bool UFretDanceControlRigProcessor::SaveLeftHandState(
                 // 保存到 RecorderTransforms
                 FFretDanceRecorderTransform RecorderTransform;
                 RecorderTransform.FromTransform(CurrentTransform);
-                FretDanceActor->RecorderTransforms.Add(RecorderName,
-                                                       RecorderTransform);
+
+                // 使用 FindOrAdd 而不是 Add，确保覆盖默认值
+                FretDanceActor->RecorderTransforms.FindOrAdd(RecorderName) =
+                    RecorderTransform;
 
                 SavedCount++;
                 UE_LOG(
@@ -470,19 +512,16 @@ bool UFretDanceControlRigProcessor::SaveRightHandState(
                 FFretDanceRecorderTransform RecorderTransform;
                 RecorderTransform.FromTransform(CurrentTransform);
 
-                // ✅ 使用统一的键名映射函数
-                FString FinalRecorderName =
-                    AFretDanceUnreal::MapRightHandPositionKeyName(RecorderName);
-
-                FretDanceActor->RecorderTransforms.Add(FinalRecorderName,
-                                                       RecorderTransform);
+                // 保存到 RecorderTransforms（JSON 键名与内部键名已统一）
+                FretDanceActor->RecorderTransforms.FindOrAdd(RecorderName) =
+                    RecorderTransform;
 
                 SavedCount++;
                 UE_LOG(
                     LogTemp, Warning,
                     TEXT("  ✅ SAVED: %s -> %s | Loc(%.2f,%.2f,%.2f) "
                          "Rot(%.4f,%.4f,%.4f,%.4f)"),
-                    *ControllerName, *FinalRecorderName,
+                    *ControllerName, *RecorderName,
                     RecorderTransform.Location.X, RecorderTransform.Location.Y,
                     RecorderTransform.Location.Z, RecorderTransform.Rotation.X,
                     RecorderTransform.Rotation.Y, RecorderTransform.Rotation.Z,
@@ -577,13 +616,9 @@ bool UFretDanceControlRigProcessor::LoadState(
         const FString& RecorderName = Pair.Key;
         const FString& ControllerName = Pair.Value;
 
-        // ✅ 使用统一的键名映射函数（左手不需要映射，保持原样）
-        FString ActualRecorderName =
-            AFretDanceUnreal::MapRightHandPositionKeyName(RecorderName);
-
-        // 从 RecorderTransforms 查找数据（使用映射后的名称）
+        // JSON 键名与内部键名已统一，直接查找
         const FFretDanceRecorderTransform* FoundTransform =
-            FretDanceActor->RecorderTransforms.Find(ActualRecorderName);
+            FretDanceActor->RecorderTransforms.Find(RecorderName);
 
         if (FoundTransform) {
             FRigElementKey ElementKey(*ControllerName,
@@ -609,9 +644,9 @@ bool UFretDanceControlRigProcessor::LoadState(
                     LoadedCount++;
                     UE_LOG(
                         LogTemp, Warning,
-                        TEXT("  ✅ LOADED: %s <- %s (Mapped: %s) | "
+                        TEXT("  ✅ LOADED: %s <- %s | "
                              "Loc(%.2f,%.2f,%.2f) Rot(%.4f,%.4f,%.4f,%.4f)"),
-                        *ControllerName, *RecorderName, *ActualRecorderName,
+                        *ControllerName, *RecorderName,
                         FoundTransform->Location.X, FoundTransform->Location.Y,
                         FoundTransform->Location.Z, FoundTransform->Rotation.X,
                         FoundTransform->Rotation.Y, FoundTransform->Rotation.Z,
@@ -652,16 +687,12 @@ bool UFretDanceControlRigProcessor::LoadState(
 
     // 遍历反向映射，从 RecorderTransforms 加载到 Controller
     for (const auto& Pair : RightReverseMapping) {
-        const FString& RecorderName = Pair.Key;  // 这是原始名称，如 "p3"
+        const FString& RecorderName = Pair.Key;
         const FString& ControllerName = Pair.Value;
 
-        // ✅ 使用统一的键名映射函数
-        FString ActualRecorderName =
-            AFretDanceUnreal::MapRightHandPositionKeyName(RecorderName);
-
-        // 从 RecorderTransforms 查找数据（使用映射后的名称）
+        // JSON 键名与内部键名已统一，直接查找
         const FFretDanceRecorderTransform* FoundTransform =
-            FretDanceActor->RecorderTransforms.Find(ActualRecorderName);
+            FretDanceActor->RecorderTransforms.Find(RecorderName);
 
         if (FoundTransform) {
             FRigElementKey ElementKey(*ControllerName,
@@ -687,9 +718,9 @@ bool UFretDanceControlRigProcessor::LoadState(
                     LoadedCount++;
                     UE_LOG(
                         LogTemp, Warning,
-                        TEXT("  ✅ LOADED: %s <- %s (Mapped: %s) | "
+                        TEXT("  ✅ LOADED: %s <- %s | "
                              "Loc(%.2f,%.2f,%.2f) Rot(%.4f,%.4f,%.4f,%.4f)"),
-                        *ControllerName, *RecorderName, *ActualRecorderName,
+                        *ControllerName, *RecorderName,
                         FoundTransform->Location.X, FoundTransform->Location.Y,
                         FoundTransform->Location.Z, FoundTransform->Rotation.X,
                         FoundTransform->Rotation.Y, FoundTransform->Rotation.Z,
@@ -788,8 +819,10 @@ bool UFretDanceControlRigProcessor::SaveFretPositionsState(
                 // 保存到 RecorderTransforms
                 FFretDanceRecorderTransform RecorderTransform;
                 RecorderTransform.FromTransform(CurrentTransform);
-                FretDanceActor->RecorderTransforms.Add(RecorderName,
-                                                       RecorderTransform);
+
+                // 使用 FindOrAdd 而不是 Add，确保覆盖默认值
+                FretDanceActor->RecorderTransforms.FindOrAdd(RecorderName) =
+                    RecorderTransform;
 
                 SavedCount++;
                 UE_LOG(
@@ -997,12 +1030,10 @@ TArray<FString> UFretDanceControlRigProcessor::GetExpectedControllerNames(
     ExpectedControllers.Add(TEXT("M_L"));
     ExpectedControllers.Add(TEXT("R_L"));
     ExpectedControllers.Add(TEXT("P_L"));
-    ExpectedControllers.Add(TEXT("H_rotation_L"));
 
     // 右手控制器
     ExpectedControllers.Add(TEXT("H_R"));
     ExpectedControllers.Add(TEXT("HP_R"));
-    ExpectedControllers.Add(TEXT("H_rotation_R"));
 
     FString ControllerRootName = TEXT("controller_root");
 
@@ -1014,7 +1045,7 @@ TArray<FString> UFretDanceControlRigProcessor::GetExpectedControllerNames(
         const FString& FingerName = FingerPair.Key;
         // 排除已包含的基础控制器
         if (!FingerName.IsEmpty() && FingerName != TEXT("H_R") &&
-            FingerName != TEXT("HP_R") && FingerName != TEXT("H_rotation_R")) {
+            FingerName != TEXT("HP_R")) {
             ExpectedControllers.Add(FingerName);
         }
     }

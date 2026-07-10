@@ -1,13 +1,13 @@
 ﻿#pragma once
 
-#include "CoreMinimal.h"
 #include "BeatBloomUnreal.h"
+#include "CoreMinimal.h"
 #include "UI/ModuleMainPanelBase.h"
 
 class SBeatBloomModulePropertiesPanel;
 class SBeatBloomModuleOperationsPanel;
-class SBeatBloomBakeOperationsPanel;
 class SBoneControlMappingEditPanel;
+class SLipSyncPanel;
 
 /**
  * BeatBloom 主面板
@@ -18,7 +18,7 @@ class SBoneControlMappingEditPanel;
  */
 class BEATBLOOMUNREAL_API SBeatBloomModuleMainPanel
     : public SModuleMainPanelBase {
-public:
+   public:
     SLATE_BEGIN_ARGS(SBeatBloomModuleMainPanel) {}
     SLATE_END_ARGS()
 
@@ -27,17 +27,15 @@ public:
     // SModuleMainPanelBase interface
     virtual void SetActor(AActor* InActor) override;
     virtual bool CanHandleActor(const AActor* InActor) const override;
-    virtual FString GetModuleName() const override {
-        return TEXT("BeatBloom");
-    }
+    virtual FString GetModuleName() const override { return TEXT("BeatBloom"); }
     virtual void RefreshPanel() override;
 
-private:
+   private:
     TWeakObjectPtr<ABeatBloomUnreal> BeatBloomActor;
 
     // 子面板
     TSharedPtr<SBeatBloomModulePropertiesPanel> PropertiesPanel;
     TSharedPtr<SBeatBloomModuleOperationsPanel> OperationsPanel;
     TSharedPtr<SBoneControlMappingEditPanel> BoneControlMappingPanel;
-    TSharedPtr<SBeatBloomBakeOperationsPanel> BakeOperationsPanel;
+    TSharedPtr<SLipSyncPanel> LipSyncPanel;
 };

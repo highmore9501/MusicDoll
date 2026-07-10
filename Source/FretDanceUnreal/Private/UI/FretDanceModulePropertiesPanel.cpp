@@ -4,6 +4,7 @@
 #include "FretDanceUnreal.h"
 #include "UI/CommonPanelUtility.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -136,6 +137,43 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
                       return FText::FromString(InfoStr);
                   })
                   .ColorAndOpacity(FLinearColor::Green)];
+
+    // Vibrato Bar checkbox (仅电吉他可用)
+    Container->AddSlot().AutoHeight().Padding(5.0f, 5.0f, 5.0f, 5.0f)
+        [SNew(SHorizontalBox) +
+         SHorizontalBox::Slot().AutoWidth().Padding(5.0f)
+             [SNew(SCheckBox)
+                  .IsChecked_Lambda([FretDance]() {
+                      return FretDance->bUseVibratoBar
+                                 ? ECheckBoxState::Checked
+                                 : ECheckBoxState::Unchecked;
+                  })
+                  .OnCheckStateChanged_Lambda([this](ECheckBoxState NewState) {
+                      if (FretDanceActor.IsValid()) {
+                          FretDanceActor->Modify();
+                          FretDanceActor->bUseVibratoBar =
+                              (NewState == ECheckBoxState::Checked);
+                          UE_LOG(LogTemp, Warning,
+                                 TEXT("FretDance: use_vibrato_bar = "
+                                      "%s"),
+                                 FretDanceActor->bUseVibratoBar
+                                     ? TEXT("true")
+                                     : TEXT("false"));
+                      }
+                  })
+                  .IsEnabled_Lambda([FretDance]() {
+                      return FretDance->InstrumentType ==
+                             EFretDanceInstrumentType::ELECTRIC_GUITAR;
+                  })] +
+         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f)
+             [SNew(STextBlock)
+                  .Text(FText::FromString(TEXT("Use Vibrato Bar (颤音摇杆)")))
+                  .ColorAndOpacity_Lambda([FretDance]() {
+                      return FretDance->InstrumentType ==
+                                     EFretDanceInstrumentType::ELECTRIC_GUITAR
+                                 ? FLinearColor::White
+                                 : FLinearColor::Gray;
+                  })]];
 
     // File Paths
     Container->AddSlot().AutoHeight().Padding(
@@ -286,22 +324,23 @@ FReply SFretDanceModulePropertiesPanel::OnSetupAllObjects() {
 }
 
 FReply SFretDanceModulePropertiesPanel::OnExportRecorderInfo() {
-if (!FretDanceActor.IsValid()) {
-    UE_LOG(LogTemp, Error,
-           TEXT("FretDance: No actor selected for export player info"))
-    return FReply::Handled();
-}
+    if (!FretDanceActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FretDance: No actor selected for export player info"))
+        return FReply::Handled();
+    }
 
-if (FretDanceActor->IOFilePath.IsEmpty()) {
-    UE_LOG(LogTemp, Error, TEXT("FretDance: IO file path is empty"));
-    return FReply::Handled();
-}
+    if (FretDanceActor->IOFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error, TEXT("FretDance: IO file path is empty"));
+        return FReply::Handled();
+    }
 
-if (!FCommonPanelUtility::ConfirmExportOverwrite(FretDanceActor->IOFilePath)) {
-    return FReply::Handled();
-}
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(
+            FretDanceActor->IOFilePath)) {
+        return FReply::Handled();
+    }
 
-FretDanceActor->ExportRecorderInfo(FretDanceActor->IOFilePath);
+    FretDanceActor->ExportRecorderInfo(FretDanceActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("FretDance: Export Player Info operation triggered"));
     return FReply::Handled();

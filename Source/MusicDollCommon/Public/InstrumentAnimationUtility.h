@@ -66,21 +66,6 @@ struct MUSICDOLLCOMMON_API FAnimationKeyframe {
 /**
  * 旋转数据容器（带有效标记）
  */
-USTRUCT(BlueprintType)
-struct MUSICDOLLCOMMON_API FRotationData {
-    GENERATED_BODY()
-
-    UPROPERTY()
-    FQuat Rotation;
-
-    UPROPERTY()
-    bool bIsValid;
-
-    FRotationData() : Rotation(FQuat::Identity), bIsValid(false) {}
-
-    FRotationData(const FQuat& InRotation, bool bInValid = true)
-        : Rotation(InRotation), bIsValid(bInValid) {}
-};
 
 /**
  * 批量插入关键帧时，特殊控制器的轴向插入模式
@@ -348,6 +333,7 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
      * 这是一个通用方法，适用于所有乐器类型。
      *
      * @param SkeletalMeshActor 要清理的SkeletalMeshActor
+     * @param ControlSectionNamesToKeep 需要保留的Control Rig Section名称列表
      * @return 是否成功清理（如果没有打开LevelSequence会返回false但不报错）
      *
      * @note 此方法会：
@@ -358,7 +344,8 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
      * @note 需要当前打开LevelSequence才能执行清理操作
      */
     static bool CleanupInstrumentAnimationTracks(
-        ASkeletalMeshActor* SkeletalMeshActor);
+        ASkeletalMeshActor* SkeletalMeshActor,
+        const TArray<FString>& ControlSectionNamesToKeep = TArray<FString>());
 
     // ===== Float Channel 操作 =====
 
@@ -421,36 +408,7 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
         const FString& ControlName, const TSet<FString>& ValidNames,
         const FString& ErrorLogPrefix = TEXT(""));
 
-    // ===== JSON 控件容器处理（真正通用的方法）=====
-
     /**
-     * 处理控件数据容器中的所有控件（通用方法）
-     * 此方法不假设 JSON 的路径结构，直接处理控件数据容器
-     *
-     * @param ControlsContainer 控件数据容器的 JSON 对象（如 hand_infos,
-     * instrument_data 等）
-     * @param FrameNumber 当前帧编号
-     * @param ControlKeyframeData 输出：关键帧数据Map
-     * @param ValidControllerNames 有效控制器名称集合
-     * @param OutKeyframesAdded 输出：添加的关键帧数
-     *
-     * @note 各乐器模块需要自己从 FrameObject 中提取控件容器，然后传入此方法
-     */
-    static void ProcessControlsContainer(
-        TSharedPtr<FJsonObject> ControlsContainer, int32 FrameNumber,
-        TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
-        const TSet<FString>& ValidControllerNames, int32& OutKeyframesAdded);
-
-    /**
-     * 提前提取旋转数据（通用方法）
-     * 从控件容器中提取 H_rotation_L 和 H_rotation_R
-     *
-     * @param ControlsContainer 控件数据容器
-     * @param OutRotations 输出：旋转数据Map（"H_L" -> FRotationData）
-     */
-    static void ExtractRotationData(TSharedPtr<FJsonObject> ControlsContainer,
-                                    TMap<FString, FRotationData>& OutRotations);
-
     /**
      * 检查当前是否处于渲染场景中
      * 用于区分编辑器环境和Movie Render Queue渲染环境
@@ -462,7 +420,8 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
     // ===== Active Curve 写入 =====
 
     /**
-     * 从 activity curve JSON 文件读取关键帧并写入演奏者 Control Rig 的 active_curve 通道
+     * 从 activity curve JSON 文件读取关键帧并写入演奏者 Control Rig 的
+     * active_curve 通道
      *
      * activity curve JSON 格式（数组）：
      * [{"frame": 0.0, "value": 0.0}, {"frame": 65.0, "value": 1.0}, ...]
@@ -474,10 +433,9 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
      * @param LevelSequence Level Sequence
      * @return 是否成功写入至少一个关键帧
      */
-    static bool WriteActiveCurveFromFile(
-        ASkeletalMeshActor* PerformerActor,
-        const FString& ActivityCurveFilePath,
-        ULevelSequence* LevelSequence);
+    static bool WriteActiveCurveFromFile(ASkeletalMeshActor* PerformerActor,
+                                         const FString& ActivityCurveFilePath,
+                                         ULevelSequence* LevelSequence);
 };
 
 // ========== 兼容性别名（向后兼容） ==========

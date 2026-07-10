@@ -576,34 +576,51 @@ void UKeyRippleControlRigProcessor::SetupControllers(
             // 确定父控制器并创建控制器
             FString ParentControllerName = TEXT("controller_root");
 
-            // 检查是否为 pole 控制器
-            if (ControllerName.StartsWith(TEXT("pole_"))) {
-                // 这是一个 pole
-                // 控制器，需要找到对应的手指控制器作为参考，然后找到对应的手掌
-                FString PoleFingerNumber =
-                    ControllerName.Mid(5);  // 去掉 "pole_" 前缀
+            if (ControllerName.Equals(TEXT("Look_At"))) {
+                ParentControllerName = TEXT("Mid_Hand");
+                UE_LOG(LogTemp, Warning,
+                       TEXT("Setting parent %s for controller %s"),
+                       *ParentControllerName, *ControllerName);
+            } else {
+                // 检查是否为手指或 pole 控制器，都需要挂到对应手掌下
+                FString RelatedFingerControllerName;
 
-                // 查找对应的手指控制器
-                for (const auto& FingerPair :
-                     KeyRippleActor->FingerControllers) {
-                    if (FingerPair.Key == PoleFingerNumber) {
-                        FString FingerControllerName =
-                            FingerPair.Value;  // 例如 "0_L" 或 "5_R"
-                        // 根据手指控制器的后缀（_L或_R）确定对应的手掌
-                        FString HandSuffix =
-                            FingerControllerName.EndsWith(TEXT("_L"))
-                                ? TEXT("_L")
-                                : TEXT("_R");
-                        ParentControllerName = FString::Printf(
-                            TEXT("H%s"), *HandSuffix);  // 例如 "H_L" 或 "H_R"
+                if (ControllerName.StartsWith(TEXT("pole_"))) {
+                    // pole 控制器：通过 pole_ 后缀数字找到对应手指控制器
+                    FString PoleFingerNumber =
+                        ControllerName.Mid(5);  // 去掉 "pole_" 前缀
 
-                        UE_LOG(LogTemp, Warning,
-                               TEXT("Found finger controller %s, setting hand "
-                                    "controller %s as parent for pole %s"),
-                               *FingerControllerName, *ParentControllerName,
-                               *ControllerName);
-                        break;
+                    for (const auto& FingerPair :
+                         KeyRippleActor->FingerControllers) {
+                        if (FingerPair.Key == PoleFingerNumber) {
+                            RelatedFingerControllerName = FingerPair.Value;
+                            break;
+                        }
                     }
+                } else {
+                    // 手指控制器：直接匹配 FingerControllers 的值
+                    for (const auto& FingerPair :
+                         KeyRippleActor->FingerControllers) {
+                        if (FingerPair.Value == ControllerName) {
+                            RelatedFingerControllerName = ControllerName;
+                            break;
+                        }
+                    }
+                }
+
+                if (!RelatedFingerControllerName.IsEmpty()) {
+                    FString HandSuffix =
+                        RelatedFingerControllerName.EndsWith(TEXT("_L"))
+                            ? TEXT("_L")
+                            : TEXT("_R");
+                    ParentControllerName = FString::Printf(
+                        TEXT("H%s"), *HandSuffix);  // 例如 "H_L" 或 "H_R"
+
+                    UE_LOG(LogTemp, Warning,
+                           TEXT("Found related finger controller %s, setting "
+                                "hand controller %s as parent for %s"),
+                           *RelatedFingerControllerName, *ParentControllerName,
+                           *ControllerName);
                 }
             }
 

@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "InstrumentAnimationUtility.h"
 #include "UObject/Object.h"
 #include "ZhengDriftUnreal.h"
 #include "ZhengDriftAnimationProcessor.generated.h"
@@ -25,7 +26,7 @@ class ULevelSequence;
 UCLASS()
 class ZHENGDRIFTUNREAL_API UZhengDriftAnimationProcessor : public UObject {
     GENERATED_BODY()
-public:
+   public:
     /**
      * 生成演奏者手部动画（左右手控制器）
      * 从 .zhengdrift 中读取 performance_animation 路径
@@ -50,14 +51,13 @@ public:
      * 解析 .zhengdrift 配置文件，输出三个动画文件路径
      * @return 至少有一个路径有效时返回 true
      */
-    static bool ParseZhengDriftConfigFile(
-        AZhengDriftUnreal* ZhengDriftActor,
-        FString& OutPerformanceAnimationPath,
-        FString& OutTargetAnimationPath,
-        FString& OutStringAnimationPath,
-        FString& OutActivityCurvePath);
+    static bool ParseZhengDriftConfigFile(AZhengDriftUnreal* ZhengDriftActor,
+                                          FString& OutPerformanceAnimationPath,
+                                          FString& OutTargetAnimationPath,
+                                          FString& OutStringAnimationPath,
+                                          FString& OutActivityCurvePath);
 
-private:
+   private:
     /**
      * 从 performance JSON 生成左右手控制器关键帧
      *
@@ -76,15 +76,15 @@ private:
      *   "hand_pole_target": [x, y, z]       → HP_L / HP_R
      * }
      */
-    static void MakePerformerAnimation(
-        AZhengDriftUnreal* ZhengDriftActor,
-        const FString& AnimationFilePath,
-        ULevelSequence* LevelSequence);
+    static void MakePerformerAnimation(AZhengDriftUnreal* ZhengDriftActor,
+                                       const FString& AnimationFilePath,
+                                       ULevelSequence* LevelSequence);
 
     /**
      * 从 target JSON 生成 Head_Control 位置关键帧
      * Middle_Hand 由 Control Rig 内部自动计算（H_L + H_R 的中点）
-     * Look_At 通过父子关系跟随 Middle_Hand，Head_Control 朝向由 Track To 约束驱动
+     * Look_At 通过父子关系跟随 Middle_Hand，Head_Control 朝向由 Track To
+     * 约束驱动
      *
      * JSON 每帧格式：
      * {
@@ -94,8 +94,25 @@ private:
      *
      * 注意：只写入位置 XYZ，不写入旋转
      */
-    static void MakeTargetAnimation(
-        AZhengDriftUnreal* ZhengDriftActor,
+    static void MakeTargetAnimation(AZhengDriftUnreal* ZhengDriftActor,
+                                    const FString& TargetAnimationPath,
+                                    ULevelSequence* LevelSequence);
+
+    // ==================== 收集器（数据收集 + 写入分离） ====================
+
+    /**
+     * 从 performance JSON 收集关键帧数据到指定 map（不写入 Control Rig）
+     * 与 MakePerformerAnimation 功能相同，但不调用 BatchInsertControlRigKeys
+     */
+    static void CollectPerformerKeyframes(
+        const FString& AnimationFilePath,
+        TMap<FString, TArray<FAnimationKeyframe>>& OutControlKeyframeData);
+
+    /**
+     * 从 target JSON 收集 keyframe 数据到指定 map（不写入 Control Rig）
+     * 与 MakeTargetAnimation 功能相同，但不调用 BatchInsertControlRigKeys
+     */
+    static void CollectTargetKeyframes(
         const FString& TargetAnimationPath,
-        ULevelSequence* LevelSequence);
+        TMap<FString, TArray<FAnimationKeyframe>>& OutControlKeyframeData);
 };

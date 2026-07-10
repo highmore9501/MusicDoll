@@ -628,7 +628,8 @@ UMovieSceneSection* UInstrumentAnimationUtility::ResetTrackSections(
 }
 
 bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-    ASkeletalMeshActor* SkeletalMeshActor) {
+    ASkeletalMeshActor* SkeletalMeshActor,
+    const TArray<FString>& ControlSectionNamesToKeep) {
 #if WITH_EDITOR
     if (!SkeletalMeshActor) {
         UE_LOG(LogTemp, Error,
@@ -694,10 +695,17 @@ bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
             int32 RemovedCount = 0;
 
             for (UMovieSceneSection* Section : Sections) {
-                if (Section) {
-                    ControlRigTrack->RemoveSection(*Section);
-                    RemovedCount++;
+                if (!Section) {
+                    continue;
                 }
+
+                const FString SectionName = Section->GetName();
+                if (ControlSectionNamesToKeep.Contains(SectionName)) {
+                    continue;
+                }
+
+                ControlRigTrack->RemoveSection(*Section);
+                RemovedCount++;
             }
 
             TotalRemovedSections += RemovedCount;
@@ -710,15 +718,16 @@ bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
             // the track in a valid state. A ControlRig track with zero sections
             // causes crashes in Anim Outliner when Sequencer tries to read the
             // ChannelProxy (e.g. after save/reload).
-            if (RemovedCount > 0) {
+            if (RemovedCount > 0 && ControlRigTrack->GetAllSections().Num() == 0) {
                 UMovieSceneSection* NewSection =
                     ControlRigTrack->CreateNewSection();
                 if (NewSection) {
                     ControlRigTrack->AddSection(*NewSection);
-                    UE_LOG(LogTemp, Warning,
-                           TEXT("[InstrumentAnimationUtility] Created new empty "
-                                "section for Control Rig track to prevent "
-                                "invalid state"));
+                    UE_LOG(
+                        LogTemp, Warning,
+                        TEXT("[InstrumentAnimationUtility] Created new empty "
+                             "section for Control Rig track to prevent "
+                             "invalid state"));
                 }
             }
         }
@@ -1151,19 +1160,22 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                 case ESpecialAxisMode::X:
                     LocationX->AddKeys(LocationTimes, LocationXValues);
                     UE_LOG(LogTemp, Warning,
-                           TEXT("[COMMON] Special control '%s': Only X-axis keys added"),
+                           TEXT("[COMMON] Special control '%s': Only X-axis "
+                                "keys added"),
                            *ControlName);
                     break;
                 case ESpecialAxisMode::Y:
                     LocationY->AddKeys(LocationTimes, LocationYValues);
                     UE_LOG(LogTemp, Warning,
-                           TEXT("[COMMON] Special control '%s': Only Y-axis keys added"),
+                           TEXT("[COMMON] Special control '%s': Only Y-axis "
+                                "keys added"),
                            *ControlName);
                     break;
                 case ESpecialAxisMode::Z:
                     LocationZ->AddKeys(LocationTimes, LocationZValues);
                     UE_LOG(LogTemp, Warning,
-                           TEXT("[COMMON] Special control '%s': Only Z-axis keys added"),
+                           TEXT("[COMMON] Special control '%s': Only Z-axis "
+                                "keys added"),
                            *ControlName);
                     break;
             }
@@ -1185,13 +1197,16 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
     if (MinFrame != MAX_int32 && MaxFrame != MIN_int32 &&
         MinFrame <= MaxFrame) {
         // 将 FramePadding 从显示帧转换为内部帧空间
-        int32 PaddingInInternalFrames = Settings.FramePadding * 
-                                        TickResolution.Numerator * DisplayRate.Denominator /
-                                        (TickResolution.Denominator * DisplayRate.Numerator);
-        
-        Section->SetRange(
-            TRange<FFrameNumber>(MinFrame, MaxFrame + PaddingInInternalFrames));
-        UE_LOG(LogTemp, Warning, TEXT("[COMMON] Set section range to %d - %d (Padding: %d display frames -> %d internal frames)"),
+        int32 PaddingInInternalFrames =
+            Settings.FramePadding * TickResolution.Numerator *
+            DisplayRate.Denominator /
+            (TickResolution.Denominator * DisplayRate.Numerator);
+
+        Section->SetRange(TRange<FFrameNumber>(
+            FFrameNumber(0), MaxFrame + PaddingInInternalFrames));
+        UE_LOG(LogTemp, Warning,
+               TEXT("[COMMON] Set section range to %d - %d (Padding: %d "
+                    "display frames -> %d internal frames)"),
                MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value,
                Settings.FramePadding, PaddingInInternalFrames);
     } else {
@@ -1394,160 +1409,8 @@ FString UInstrumentAnimationUtility::ValidateControllerName(
     return FString();
 }
 
-// ========== JSON 控件容器处理 ==========
-
-void UInstrumentAnimationUtility::ExtractRotationData(
-    TSharedPtr<FJsonObject> ControlsContainer,
-    TMap<FString, FRotationData>& OutRotations) {
-    if (!ControlsContainer.IsValid()) {
-        return;
-    }
-
-    // 检查 H_rotation_L
-    if (ControlsContainer->HasField(TEXT("H_rotation_L"))) {
-        TSharedPtr<FJsonValue> RotationDataValue =
-            ControlsContainer->TryGetField(TEXT("H_rotation_L"));
-        if (RotationDataValue.IsValid()) {
-            TArray<TSharedPtr<FJsonValue>> DataArray =
-                RotationDataValue->AsArray();
-            if (DataArray.Num() == 4) {
-                FQuat Rotation;
-                Rotation.W = DataArray[0]->AsNumber();
-                Rotation.X = DataArray[1]->AsNumber();
-                Rotation.Y = DataArray[2]->AsNumber();
-                Rotation.Z = DataArray[3]->AsNumber();
-                Rotation.Normalize();
-                OutRotations.Add(TEXT("H_L"), FRotationData(Rotation, true));
-            }
-        }
-    }
-
-    // 检查 H_rotation_R
-    if (ControlsContainer->HasField(TEXT("H_rotation_R"))) {
-        TSharedPtr<FJsonValue> RotationDataValue =
-            ControlsContainer->TryGetField(TEXT("H_rotation_R"));
-        if (RotationDataValue.IsValid()) {
-            TArray<TSharedPtr<FJsonValue>> DataArray =
-                RotationDataValue->AsArray();
-            if (DataArray.Num() == 4) {
-                FQuat Rotation;
-                Rotation.W = DataArray[0]->AsNumber();
-                Rotation.X = DataArray[1]->AsNumber();
-                Rotation.Y = DataArray[2]->AsNumber();
-                Rotation.Z = DataArray[3]->AsNumber();
-                Rotation.Normalize();
-                OutRotations.Add(TEXT("H_R"), FRotationData(Rotation, true));
-            }
-        }
-    }
-}
-
-void UInstrumentAnimationUtility::ProcessControlsContainer(
-    TSharedPtr<FJsonObject> ControlsContainer, int32 FrameNumber,
-    TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
-    const TSet<FString>& ValidControllerNames, int32& OutKeyframesAdded) {
-    if (!ControlsContainer.IsValid()) {
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT("ProcessControlsContainer: Controls container is not valid"));
-        return;
-    }
-
-    // 第一步：提前提取旋转数据
-    TMap<FString, FRotationData> RotationDataMap;
-    ExtractRotationData(ControlsContainer, RotationDataMap);
-
-    // 第二步：遍历每个控制器的数据
-    for (const auto& Pair : ControlsContainer->Values) {
-        FString RawControlName = Pair.Key;
-
-        // 跳过旋转控制器（已在上面提取）
-        if (RawControlName == TEXT("H_rotation_L") ||
-            RawControlName == TEXT("H_rotation_R")) {
-            continue;
-        }
-
-        // 验证控制器名称
-        FString ControlName = ValidateControllerName(
-            RawControlName, ValidControllerNames, TEXT("Common"));
-
-        if (ControlName.IsEmpty()) {
-            continue;
-        }
-
-        TSharedPtr<FJsonValue> ControlDataValue = Pair.Value;
-
-        if (!ControlDataValue.IsValid()) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Frame %d control %s has invalid data"), FrameNumber,
-                   *ControlName);
-            continue;
-        }
-
-        TArray<TSharedPtr<FJsonValue>> DataArray = ControlDataValue->AsArray();
-
-        if (DataArray.Num() == 0) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Frame %d control %s has empty data array"),
-                   FrameNumber, *ControlName);
-            continue;
-        }
-
-        if (DataArray.Num() == 3) {
-            // 3 维数据 - 位置
-            FVector Location;
-            Location.X = DataArray[0]->AsNumber();
-            Location.Y = DataArray[1]->AsNumber();
-            Location.Z = DataArray[2]->AsNumber();
-
-            FAnimationKeyframe Keyframe;
-            Keyframe.FrameNumber = FrameNumber;
-            Keyframe.Translation = Location;
-            Keyframe.bHasLocation = true;  // ✅ 明确标记有位置数据
-
-            // 尝试使用提前提取的旋转数据
-            if (FRotationData* RotationData =
-                    RotationDataMap.Find(ControlName)) {
-                if (RotationData->bIsValid) {
-                    Keyframe.Rotation = RotationData->Rotation;
-                    Keyframe.bHasRotation = true;  // ✅ 明确标记有旋转数据
-                }
-                // 如果 bIsValid == false，不设置旋转，bHasRotation 保持 false
-            }
-            // 如果没有找到旋转数据，也不设置旋转，bHasRotation 保持 false
-
-            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
-        } else if (DataArray.Num() == 4) {
-            // 4 维数据 - 旋转
-            FQuat Rotation;
-            Rotation.W = DataArray[0]->AsNumber();
-            Rotation.X = DataArray[1]->AsNumber();
-            Rotation.Y = DataArray[2]->AsNumber();
-            Rotation.Z = DataArray[3]->AsNumber();
-            Rotation.Normalize();
-
-            FAnimationKeyframe Keyframe;
-            Keyframe.FrameNumber = FrameNumber;
-            Keyframe.Rotation = Rotation;
-            Keyframe.bHasRotation = true;  // ✅ 明确标记有旋转数据
-            // ✅ 不设置位置，bHasLocation 保持 false
-
-            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
-        } else {
-            UE_LOG(
-                LogTemp, Warning,
-                TEXT("Frame %d control %s has unexpected data dimension: %d"),
-                FrameNumber, *ControlName, DataArray.Num());
-            continue;
-        }
-
-        OutKeyframesAdded++;
-    }
-}
-
 bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
-    ASkeletalMeshActor* PerformerActor,
-    const FString& ActivityCurveFilePath,
+    ASkeletalMeshActor* PerformerActor, const FString& ActivityCurveFilePath,
     ULevelSequence* LevelSequence) {
     if (!PerformerActor) {
         UE_LOG(LogTemp, Error,
@@ -1579,7 +1442,8 @@ bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
     }
 
     TArray<TSharedPtr<FJsonValue>> JsonArray;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
+    TSharedRef<TJsonReader<>> Reader =
+        TJsonReaderFactory<>::Create(FileContent);
     if (!FJsonSerializer::Deserialize(Reader, JsonArray)) {
         UE_LOG(LogTemp, Error,
                TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
@@ -1639,22 +1503,26 @@ bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
         }
 
         // 确保 controller_root 存在
-        FRigElementKey RootKey(TEXT("controller_root"), ERigElementType::Control);
+        FRigElementKey RootKey(TEXT("controller_root"),
+                               ERigElementType::Control);
         if (!RigHierarchy->Contains(RootKey)) {
             UE_LOG(LogTemp, Warning,
-                   TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                   TEXT("[InstrumentAnimationUtility] "
+                        "WriteActiveCurveFromFile: "
                         "controller_root not found, attempting to create"));
             if (!FControlRigCreationUtility::CreateControl(
                     ControlRigBlueprint, TEXT("controller_root"), TEXT(""))) {
                 UE_LOG(LogTemp, Error,
-                       TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                       TEXT("[InstrumentAnimationUtility] "
+                            "WriteActiveCurveFromFile: "
                             "Failed to create controller_root"));
                 return false;
             }
         }
 
         // 确保 active_curve 动画通道存在
-        FRigElementKey ChannelKey(TEXT("active_curve"), ERigElementType::Control);
+        FRigElementKey ChannelKey(TEXT("active_curve"),
+                                  ERigElementType::Control);
         if (!RigHierarchy->Contains(ChannelKey)) {
             URigHierarchyController* HierarchyController =
                 RigHierarchy->GetController();
@@ -1663,16 +1531,21 @@ bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
                 ChannelSettings.ControlType = ERigControlType::Float;
                 ChannelSettings.DisplayName = TEXT("active_curve");
 
-                FRigElementKey NewKey = HierarchyController->AddAnimationChannel(
-                    TEXT("active_curve"), RootKey, ChannelSettings, true, false);
+                FRigElementKey NewKey =
+                    HierarchyController->AddAnimationChannel(
+                        TEXT("active_curve"), RootKey, ChannelSettings, true,
+                        false);
 
                 if (NewKey.IsValid()) {
                     UE_LOG(LogTemp, Warning,
-                           TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
-                                "Created active_curve channel under controller_root"));
+                           TEXT("[InstrumentAnimationUtility] "
+                                "WriteActiveCurveFromFile: "
+                                "Created active_curve channel under "
+                                "controller_root"));
                 } else {
                     UE_LOG(LogTemp, Error,
-                           TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
+                           TEXT("[InstrumentAnimationUtility] "
+                                "WriteActiveCurveFromFile: "
                                 "Failed to create active_curve channel"));
                     return false;
                 }

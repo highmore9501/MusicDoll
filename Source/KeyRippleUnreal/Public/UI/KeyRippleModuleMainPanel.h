@@ -2,12 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "KeyRippleUnreal.h"
-#include "UI/KeyRippleBakeOperationsPanel.h"
 #include "UI/ModuleMainPanelBase.h"
 #include "UI/SBoneControlMappingEditPanel.h"
 
 class SKeyRippleModulePropertiesPanel;
 class SKeyRippleModuleOperationsPanel;
+class SLipSyncPanel;
 
 /**
  * Main panel for KeyRipple module
@@ -35,5 +35,5 @@ class KEYRIPPLEUNREAL_API SKeyRippleModuleMainPanel
     TSharedPtr<SKeyRippleModulePropertiesPanel> PropertiesPanel;
     TSharedPtr<SKeyRippleModuleOperationsPanel> OperationsPanel;
     TSharedPtr<SBoneControlMappingEditPanel> BoneControlMappingPanel;
-    TSharedPtr<SKeyRippleBakeOperationsPanel> BakeOperationsPanel;
+    TSharedPtr<SLipSyncPanel> LipSyncPanel;
 };

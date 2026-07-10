@@ -36,17 +36,21 @@ enum class EControllerFilterType {
 static const TSet<FString> GetValidStringFlowControllerNames(
     EControllerFilterType FilterType = EControllerFilterType::All) {
     static const TSet<FString> LeftHandControllers = {
-        TEXT("H_L"), TEXT("H_rotation_L"), TEXT("HP_L"),
-        TEXT("T_L"),                      TEXT("1_L"),
-        TEXT("2_L"), TEXT("3_L"),          TEXT("4_L")};
+        TEXT("H_L"), TEXT("H_rotation_L"), TEXT("HP_L"), TEXT("T_L"),
+        TEXT("1_L"), TEXT("2_L"),          TEXT("3_L"),  TEXT("4_L")};
 
     static const TSet<FString> RightHandControllers = {
-        TEXT("H_R"),           TEXT("H_rotation_R"),
-        TEXT("HP_R"),          TEXT("T_R"),
-                                   TEXT("1_R"),
-        TEXT("2_R"),           TEXT("3_R"),
-        TEXT("4_R"),           TEXT("String_Touch_Point"),
-        TEXT("Bow_Controller"), TEXT("Right_Hand_Tar")};
+        TEXT("H_R"),
+        TEXT("H_rotation_R"),
+        TEXT("HP_R"),
+        TEXT("T_R"),
+        TEXT("1_R"),
+        TEXT("2_R"),
+        TEXT("3_R"),
+        TEXT("4_R"),
+        TEXT("String_Touch_Point"),
+        TEXT("Bow_Controller"),
+        TEXT("Right_Hand_Tar")};
 
     static const TSet<FString> AllControllers = []() {
         TSet<FString> Combined;
@@ -140,10 +144,65 @@ static void ProcessStringFlowAnimationFrame(
         return;
     }
 
-    // 调用通用方法处理控件容器
-    UInstrumentAnimationUtility::ProcessControlsContainer(
-        HandInfos, FrameNumber, ControlKeyframeData,
-        GetValidStringFlowControllerNames(), OutKeyframesAdded);
+    // StringFlow 控件数据格式：每个控制器值为直接数组
+    //   - 3 元素 = 位置 [x, y, z]
+    //   - 4 元素 = 四元数旋转 [w, x, y, z]
+    for (const auto& Pair : HandInfos->Values) {
+        FString RawControlName = Pair.Key;
+
+        FString ControlName =
+            UInstrumentAnimationUtility::ValidateControllerName(
+                RawControlName, GetValidStringFlowControllerNames(),
+                TEXT("StringFlow"));
+
+        if (ControlName.IsEmpty()) {
+            continue;
+        }
+
+        TSharedPtr<FJsonValue> ControlDataValue = Pair.Value;
+        if (!ControlDataValue.IsValid()) {
+            continue;
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>* DataArrayPtr = nullptr;
+        if (!ControlDataValue->TryGetArray(DataArrayPtr) || !DataArrayPtr) {
+            continue;
+        }
+
+        const TArray<TSharedPtr<FJsonValue>>& DataArray = *DataArrayPtr;
+
+        FAnimationKeyframe Keyframe;
+        Keyframe.FrameNumber = FrameNumber;
+
+        if (DataArray.Num() == 3) {
+            // 位置数据 [x, y, z] → 写入原控制器
+            FVector Location;
+            Location.X = DataArray[0]->AsNumber();
+            Location.Y = DataArray[1]->AsNumber();
+            Location.Z = DataArray[2]->AsNumber();
+            Keyframe.Translation = Location;
+            Keyframe.bHasLocation = true;
+            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
+            OutKeyframesAdded++;
+        } else if (DataArray.Num() == 4) {
+            // 四元数旋转 [w, x, y, z] → 写入去掉 _rotation 的控制器
+            FQuat Rotation;
+            Rotation.W = DataArray[0]->AsNumber();
+            Rotation.X = DataArray[1]->AsNumber();
+            Rotation.Y = DataArray[2]->AsNumber();
+            Rotation.Z = DataArray[3]->AsNumber();
+            Rotation.Normalize();
+            Keyframe.Rotation = Rotation;
+            Keyframe.bHasRotation = true;
+            // H_rotation_L → H_L, H_rotation_R → H_R
+            FString TargetName =
+                ControlName.Replace(TEXT("_rotation"), TEXT(""));
+            ControlKeyframeData.FindOrAdd(TargetName).Add(Keyframe);
+            OutKeyframesAdded++;
+        } else {
+            continue;
+        }
+    }
 }
 
 }  // namespace StringFlowAnimationHelper
@@ -177,8 +236,8 @@ void UStringFlowAnimationProcessor::GeneratePerformerAnimation(
 
     // 解析配置文件
     if (!ParseStringFlowConfigFile(StringFlowActor, LeftHandAnimationPath,
-                                   RightHandAnimationPath,
-                                   StringVibrationPath, ActivityCurvePath)) {
+                                   RightHandAnimationPath, StringVibrationPath,
+                                   ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse StringFlow config file in "
                     "GeneratePerformerAnimation"));
@@ -209,8 +268,8 @@ void UStringFlowAnimationProcessor::GeneratePerformerAnimation(
 
     // 写入 active curve
     if (!ActivityCurvePath.IsEmpty() && StringFlowActor->SkeletalMeshActor) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UE_LOG(LogTemp, Warning, TEXT("Writing active curve from: %s"),
+               *ActivityCurvePath);
         UInstrumentAnimationUtility::WriteActiveCurveFromFile(
             StringFlowActor->SkeletalMeshActor, ActivityCurvePath,
             LevelSequence);
@@ -245,8 +304,8 @@ void UStringFlowAnimationProcessor::GenerateAllAnimation(
 
     // 解析配置文件
     if (!ParseStringFlowConfigFile(StringFlowActor, LeftHandAnimationPath,
-                                   RightHandAnimationPath,
-                                   StringVibrationPath, ActivityCurvePath)) {
+                                   RightHandAnimationPath, StringVibrationPath,
+                                   ActivityCurvePath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse StringFlow config file in "
                     "GenerateAllAnimation"));
@@ -574,13 +633,13 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
 }
 
 bool UStringFlowAnimationProcessor::ParseStringFlowConfigFile(
-AStringFlowUnreal* StringFlowActor, FString& OutLeftHandAnimationPath,
-FString& OutRightHandAnimationPath, FString& OutStringVibrationPath,
-FString& OutActivityCurvePath) {
-OutLeftHandAnimationPath.Empty();
-OutRightHandAnimationPath.Empty();
-OutStringVibrationPath.Empty();
-OutActivityCurvePath.Empty();
+    AStringFlowUnreal* StringFlowActor, FString& OutLeftHandAnimationPath,
+    FString& OutRightHandAnimationPath, FString& OutStringVibrationPath,
+    FString& OutActivityCurvePath) {
+    OutLeftHandAnimationPath.Empty();
+    OutRightHandAnimationPath.Empty();
+    OutStringVibrationPath.Empty();
+    OutActivityCurvePath.Empty();
 
     if (!StringFlowActor) {
         UE_LOG(LogTemp, Error,

@@ -26,14 +26,12 @@ static const TSet<FString>& GetValidFretDanceControllerNames() {
         TSet<FString> ValidSet;
 
         // 左手控制器 (9 个)
-        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-                         TEXT("T_L"), TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"),
-                         TEXT("R_L"), TEXT("P_L")});
+        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("TP_L"),
+                         TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")});
 
         // 右手控制器 (2-7 个，取决于乐器类型)
         // 基础右手控制器 (所有类型都有)
-        ValidSet.Append(
-            {TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"), TEXT("T_R")});
+        ValidSet.Append({TEXT("H_R"), TEXT("HP_R"), TEXT("T_R")});
 
         // 指弹/Bass 特有的右手手指
         ValidSet.Append(
@@ -71,11 +69,6 @@ static void CollectFretDanceControllerNames(AFretDanceUnreal* FretDanceActor,
 
     // 收集右手手指控制器
     for (const auto& Pair : FretDanceActor->RightFingerControllers) {
-        OutControllerNames.Add(Pair.Value);
-    }
-
-    // 收集手掌旋转控制器
-    for (const auto& Pair : FretDanceActor->HandRotationControllers) {
         OutControllerNames.Add(Pair.Value);
     }
 }
@@ -125,10 +118,75 @@ static void ProcessFretDanceAnimationFrame(
         return;
     }
 
-    // 调用通用方法处理控件容器
-    UInstrumentAnimationUtility::ProcessControlsContainer(
-        FingerInfos, FrameNumber, ControlKeyframeData,
-        GetValidFretDanceControllerNames(), OutKeyframesAdded);
+    // FretDance 控件数据格式：{"controller_name": {"position": [x,y,z],
+    // "rotation": [w,x,y,z]}}
+    for (const auto& Pair : FingerInfos->Values) {
+        FString RawControlName = Pair.Key;
+
+        FString ControlName =
+            UInstrumentAnimationUtility::ValidateControllerName(
+                RawControlName, GetValidFretDanceControllerNames(),
+                TEXT("FretDance"));
+
+        if (ControlName.IsEmpty()) {
+            continue;
+        }
+
+        TSharedPtr<FJsonValue> ControlDataValue = Pair.Value;
+        if (!ControlDataValue.IsValid()) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Frame %d control %s has invalid data"), FrameNumber,
+                   *ControlName);
+            continue;
+        }
+
+        TSharedPtr<FJsonObject> ControlObj = ControlDataValue->AsObject();
+        if (!ControlObj.IsValid()) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Frame %d control %s is not a valid object"),
+                   FrameNumber, *ControlName);
+            continue;
+        }
+
+        FAnimationKeyframe Keyframe;
+        Keyframe.FrameNumber = FrameNumber;
+
+        // 读取位置数据
+        if (ControlObj->HasField(TEXT("position"))) {
+            TArray<TSharedPtr<FJsonValue>> PosArray =
+                ControlObj->GetArrayField(TEXT("position"));
+            if (PosArray.Num() == 3) {
+                FVector Location;
+                Location.X = PosArray[0]->AsNumber();
+                Location.Y = PosArray[1]->AsNumber();
+                Location.Z = PosArray[2]->AsNumber();
+                Keyframe.Translation = Location;
+                Keyframe.bHasLocation = true;
+            }
+        }
+
+        // 读取旋转数据
+        if (ControlObj->HasField(TEXT("rotation"))) {
+            TArray<TSharedPtr<FJsonValue>> RotArray =
+                ControlObj->GetArrayField(TEXT("rotation"));
+            if (RotArray.Num() == 4) {
+                FQuat Rotation;
+                Rotation.W = RotArray[0]->AsNumber();
+                Rotation.X = RotArray[1]->AsNumber();
+                Rotation.Y = RotArray[2]->AsNumber();
+                Rotation.Z = RotArray[3]->AsNumber();
+                Rotation.Normalize();
+                Keyframe.Rotation = Rotation;
+                Keyframe.bHasRotation = true;
+            }
+        }
+
+        // 至少有一项数据时才添加关键帧
+        if (Keyframe.bHasLocation || Keyframe.bHasRotation) {
+            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
+            OutKeyframesAdded++;
+        }
+    }
 }
 
 }  // namespace FretDanceAnimationHelper
@@ -160,11 +218,13 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
     FString StringRecorderPath;
     FString ControllerRootAnimationPath;
     FString ActivityCurvePath;
+    FString VibratoShapeKeyPath;
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
                                   RightHandAnimationPath, StringRecorderPath,
-                                  ControllerRootAnimationPath, ActivityCurvePath)) {
+                                  ControllerRootAnimationPath,
+                                  ActivityCurvePath, VibratoShapeKeyPath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GeneratePerformerAnimation"));
@@ -207,8 +267,8 @@ void UFretDanceAnimationProcessor::GeneratePerformerAnimation(
 
     // 写入 active curve
     if (!ActivityCurvePath.IsEmpty() && FretDanceActor->SkeletalMeshActor) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("Writing active curve from: %s"), *ActivityCurvePath);
+        UE_LOG(LogTemp, Warning, TEXT("Writing active curve from: %s"),
+               *ActivityCurvePath);
         UInstrumentAnimationUtility::WriteActiveCurveFromFile(
             FretDanceActor->SkeletalMeshActor, ActivityCurvePath,
             LevelSequence);
@@ -237,32 +297,34 @@ void UFretDanceAnimationProcessor::GenerateInstrumentAnimation(
     FString StringRecorderPath;
     FString ControllerRootAnimationPath;
     FString ActivityCurvePath;
+    FString VibratoShapeKeyPath;
 
     // 解析配置文件获取弦记录器路径
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
                                   RightHandAnimationPath, StringRecorderPath,
-                                  ControllerRootAnimationPath, ActivityCurvePath)) {
+                                  ControllerRootAnimationPath,
+                                  ActivityCurvePath, VibratoShapeKeyPath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GenerateInstrumentAnimation"));
         return;
     }
 
-    if (StringRecorderPath.IsEmpty()) {
+    if (StringRecorderPath.IsEmpty() && VibratoShapeKeyPath.IsEmpty()) {
         UE_LOG(LogTemp, Warning,
-               TEXT("String recorder path is empty, skipping instrument "
-                    "animation"));
+               TEXT("Both string recorder and vibrato paths are empty, "
+                    "skipping instrument animation"));
         return;
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("========== GenerateInstrumentAnimation Started =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Generating instrument animation from: %s"),
-           *StringRecorderPath);
+           TEXT("========== GenerateInstrumentAnimation Started =========="
+                "\nString: %s\nVibrato: %s"),
+           *StringRecorderPath, *VibratoShapeKeyPath);
 
-    // 调用 FretDanceMusicInstrumentProcessor 生成弦振动动画
+    // 调用 FretDanceMusicInstrumentProcessor 生成弦振动 + 摇把动画
     UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
-        FretDanceActor, StringRecorderPath);
+        FretDanceActor, StringRecorderPath, VibratoShapeKeyPath);
 
     FretDanceActor->TriggerControlRigReregistration(
         TEXT("Generate Instrument Animation"));
@@ -284,11 +346,13 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
     FString StringRecorderPath;
     FString ControllerRootAnimationPath;
     FString ActivityCurvePath;
+    FString VibratoShapeKeyPath;
 
     // 解析配置文件
     if (!ParseFretDanceConfigFile(FretDanceActor, LeftHandAnimationPath,
                                   RightHandAnimationPath, StringRecorderPath,
-                                  ControllerRootAnimationPath, ActivityCurvePath)) {
+                                  ControllerRootAnimationPath,
+                                  ActivityCurvePath, VibratoShapeKeyPath)) {
         UE_LOG(LogTemp, Error,
                TEXT("Failed to parse FretDance config file in "
                     "GenerateAllAnimation"));
@@ -319,14 +383,16 @@ void UFretDanceAnimationProcessor::GenerateAllAnimation(
 }
 
 bool UFretDanceAnimationProcessor::ParseFretDanceConfigFile(
-AFretDanceUnreal* FretDanceActor, FString& OutLeftHandAnimationPath,
-FString& OutRightHandAnimationPath, FString& OutStringRecorderPath,
-FString& OutControllerRootAnimationPath, FString& OutActivityCurvePath) {
-OutLeftHandAnimationPath.Empty();
-OutRightHandAnimationPath.Empty();
-OutStringRecorderPath.Empty();
-OutControllerRootAnimationPath.Empty();
-OutActivityCurvePath.Empty();
+    AFretDanceUnreal* FretDanceActor, FString& OutLeftHandAnimationPath,
+    FString& OutRightHandAnimationPath, FString& OutStringRecorderPath,
+    FString& OutControllerRootAnimationPath, FString& OutActivityCurvePath,
+    FString& OutVibratoShapeKeyPath) {
+    OutLeftHandAnimationPath.Empty();
+    OutRightHandAnimationPath.Empty();
+    OutStringRecorderPath.Empty();
+    OutControllerRootAnimationPath.Empty();
+    OutActivityCurvePath.Empty();
+    OutVibratoShapeKeyPath.Empty();
 
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
@@ -389,6 +455,12 @@ OutActivityCurvePath.Empty();
             JsonObject->GetStringField(TEXT("activity_curve_path"));
     }
 
+    // 解析摇把 shape key 路径
+    if (JsonObject->HasField(TEXT("vibrato_shape_key_file"))) {
+        OutVibratoShapeKeyPath =
+            JsonObject->GetStringField(TEXT("vibrato_shape_key_file"));
+    }
+
     return true;
 }
 
@@ -413,9 +485,10 @@ void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
         return;
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== MakeControllerRootAnimation Started: %s =========="),
-           *AnimationFilePath);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== MakeControllerRootAnimation Started: %s =========="),
+        *AnimationFilePath);
 
 #if WITH_EDITOR
     // 1. 读取动画文件
@@ -432,8 +505,7 @@ void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
         TJsonReaderFactory<>::Create(FileContent);
 
     if (!FJsonSerializer::Deserialize(Reader, JsonArray)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to parse JSON array from file: %s"),
+        UE_LOG(LogTemp, Error, TEXT("Failed to parse JSON array from file: %s"),
                *AnimationFilePath);
         return;
     }
@@ -463,8 +535,7 @@ void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
     int32 FailedFrames = 0;
 
     for (int32 FrameIndex = 0; FrameIndex < JsonArray.Num(); ++FrameIndex) {
-        TSharedPtr<FJsonObject> FrameObject =
-            JsonArray[FrameIndex]->AsObject();
+        TSharedPtr<FJsonObject> FrameObject = JsonArray[FrameIndex]->AsObject();
         if (!FrameObject.IsValid()) {
             FailedFrames++;
             continue;
@@ -488,37 +559,47 @@ void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
         FAnimationKeyframe Keyframe;
         Keyframe.FrameNumber = FrameNumber;
 
-        // 提取位置
+        // 提取 controller_root 对象（新的数据结构：{ position: [...], rotation:
+        // [...] }）
         if (FingerInfos->HasField(TEXT("controller_root"))) {
-            TArray<TSharedPtr<FJsonValue>> PosArr =
-                FingerInfos->GetArrayField(TEXT("controller_root"));
-            if (PosArr.Num() == 3) {
-                Keyframe.Translation = FVector(PosArr[0]->AsNumber(),
-                                               PosArr[1]->AsNumber(),
-                                               PosArr[2]->AsNumber());
-                Keyframe.bHasLocation = true;
-            }
-        }
+            TSharedPtr<FJsonObject> ControllerRootObj =
+                FingerInfos->GetObjectField(TEXT("controller_root"));
 
-        // 提取旋转
-        if (FingerInfos->HasField(TEXT("controller_root_rotation"))) {
-            TArray<TSharedPtr<FJsonValue>> RotArr =
-                FingerInfos->GetArrayField(TEXT("controller_root_rotation"));
-            if (RotArr.Num() == 4) {
-                FQuat Rotation;
-                Rotation.W = RotArr[0]->AsNumber();
-                Rotation.X = RotArr[1]->AsNumber();
-                Rotation.Y = RotArr[2]->AsNumber();
-                Rotation.Z = RotArr[3]->AsNumber();
-                Rotation.Normalize();
-                Keyframe.Rotation = Rotation;
-                Keyframe.bHasRotation = true;
+            if (ControllerRootObj.IsValid()) {
+                // 提取位置
+                if (ControllerRootObj->HasField(TEXT("position"))) {
+                    TArray<TSharedPtr<FJsonValue>> PosArr =
+                        ControllerRootObj->GetArrayField(TEXT("position"));
+                    if (PosArr.Num() == 3) {
+                        Keyframe.Translation = FVector(PosArr[0]->AsNumber(),
+                                                       PosArr[1]->AsNumber(),
+                                                       PosArr[2]->AsNumber());
+                        Keyframe.bHasLocation = true;
+                    }
+                }
+
+                // 提取旋转
+                if (ControllerRootObj->HasField(TEXT("rotation"))) {
+                    TArray<TSharedPtr<FJsonValue>> RotArr =
+                        ControllerRootObj->GetArrayField(TEXT("rotation"));
+                    if (RotArr.Num() == 4) {
+                        FQuat Rotation;
+                        Rotation.W = RotArr[0]->AsNumber();
+                        Rotation.X = RotArr[1]->AsNumber();
+                        Rotation.Y = RotArr[2]->AsNumber();
+                        Rotation.Z = RotArr[3]->AsNumber();
+                        Rotation.Normalize();
+                        Keyframe.Rotation = Rotation;
+                        Keyframe.bHasRotation = true;
+                    }
+                }
             }
         }
 
         if (Keyframe.bHasLocation || Keyframe.bHasRotation) {
             // 改为写入 controller_root_offset
-            ControlKeyframeData.FindOrAdd(TEXT("controller_root_offset")).Add(Keyframe);
+            ControlKeyframeData.FindOrAdd(TEXT("controller_root_offset"))
+                .Add(Keyframe);
         }
 
         ProcessedFrames++;
@@ -633,18 +714,18 @@ void UFretDanceAnimationProcessor::MakePerformerAnimation(
 
     if (bIsLeftHand) {
         // 只收集左手控制器
-        ControlNamesToClean.Append(
-            {TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"), TEXT("T_L"),
-             TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")});
+        ControlNamesToClean.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"),
+                                    TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"),
+                                    TEXT("R_L"), TEXT("P_L")});
         UE_LOG(LogTemp, Warning,
                TEXT("Detected LEFT HAND animation, will only clear %d left "
                     "hand controllers"),
                ControlNamesToClean.Num());
     } else if (bIsRightHand) {
         // 只收集右手控制器
-        ControlNamesToClean.Append(
-            {TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R"), TEXT("T_R"),
-             TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")});
+        ControlNamesToClean.Append({TEXT("H_R"), TEXT("HP_R"), TEXT("T_R"),
+                                    TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"),
+                                    TEXT("R_R"), TEXT("P_R")});
         UE_LOG(LogTemp, Warning,
                TEXT("Detected RIGHT HAND animation, will only clear %d right "
                     "hand controllers"),

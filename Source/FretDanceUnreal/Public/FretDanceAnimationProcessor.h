@@ -49,25 +49,23 @@ class ULevelSequence;
  * ============================================================
  *
  * 左手控制器：
- *   - H_L              左手手掌主控制器
- *   - HP_L             左手手掌轴点控制器
- *   - H_rotation_L     左手手掌旋转控制器
- *   - T_L              左手拇指控制器
- *   - TP_L             左手拇指轴点控制器
- *   - I_L              左手食指
- *   - M_L              左手中指
- *   - R_L              左手无名指
- *   - P_L              左手小指
+ *   - H_L              左手手掌主控制器（位置 + 旋转）
+ *   - HP_L             左手手掌轴点控制器（位置）
+ *   - T_L              左手拇指控制器（位置）
+ *   - TP_L             左手拇指轴点控制器（位置）
+ *   - I_L              左手食指（位置）
+ *   - M_L              左手中指（位置）
+ *   - R_L              左手无名指（位置）
+ *   - P_L              左手小指（位置）
  *
  * 右手控制器：
- *   - H_R              右手手掌主控制器
- *   - HP_R             右手手掌轴点控制器
- *   - H_rotation_R     右手手掌旋转控制器
- *   - T_R              右手拇指控制器
- *   - TP_R             右手拇指轴点控制器 (仅指弹/Bass)
- *   - I_R              右手食指 (仅指弹/Bass)
- *   - M_R              右手中指 (仅指弹/Bass)
- *   - R_R              右手无名指 (仅指弹/Bass)
+ *   - H_R              右手手掌主控制器（位置 + 旋转）
+ *   - HP_R             右手手掌轴点控制器（位置）
+ *   - T_R              右手拇指控制器（位置）
+ *   - TP_R             右手拇指轴点控制器 (仅指弹/Bass，位置)
+ *   - I_R              右手食指 (仅指弹/Bass，位置)
+ *   - M_R              右手中指 (仅指弹/Bass，位置)
+ *   - R_R              右手无名指 (仅指弹/Bass，位置)
  *   - P_R              右手小指 (仅指弹/Bass)
  *
  * ============================================================
@@ -144,16 +142,21 @@ class FRETDANCEUNREAL_API UFretDanceAnimationProcessor : public UObject {
      * @param OutLeftHandAnimationPath [out] 左手动画文件路径
      * @param OutRightHandAnimationPath [out] 右手动画文件路径
      * @param OutStringRecorderPath [out] 弦记录器文件路径
+     * @param OutControllerRootAnimationPath [out] Controller Root 动画文件路径
+     * @param OutActivityCurvePath [out] 活动曲线文件路径
+     * @param OutVibratoShapeKeyPath [out] 摇把 shape key 文件路径
      * @return 解析是否成功
      *
      * @note 如果某个路径不存在，对应的输出参数将为空字符串
      */
-    static bool ParseFretDanceConfigFile(AFretDanceUnreal* FretDanceActor,
-                                         FString& OutLeftHandAnimationPath,
-                                         FString& OutRightHandAnimationPath,
-                                         FString& OutStringRecorderPath,
-                                         FString& OutControllerRootAnimationPath,
-                                         FString& OutActivityCurvePath);
+    static bool ParseFretDanceConfigFile(
+        AFretDanceUnreal* FretDanceActor, FString& OutLeftHandAnimationPath,
+        FString& OutRightHandAnimationPath, FString& OutStringRecorderPath,
+        FString& OutControllerRootAnimationPath, FString& OutActivityCurvePath,
+        FString& OutVibratoShapeKeyPath);
+
+    /**
+     * 从 JSON 文件生成 controller_root 动画
 
     /**
      * 从 JSON 文件生成 controller_root 动画

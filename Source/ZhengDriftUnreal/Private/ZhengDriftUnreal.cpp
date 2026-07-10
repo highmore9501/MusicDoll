@@ -16,8 +16,8 @@
 // ============================================================
 
 struct FZhengDriftHelpers {
-    static bool ReadLocationFromArray(
-        const TArray<TSharedPtr<FJsonValue>>& Arr, FVector& Out) {
+    static bool ReadLocationFromArray(const TArray<TSharedPtr<FJsonValue>>& Arr,
+                                      FVector& Out) {
         if (Arr.Num() != 3) return false;
         Out.X = Arr[0]->AsNumber();
         Out.Y = Arr[1]->AsNumber();
@@ -26,8 +26,8 @@ struct FZhengDriftHelpers {
     }
 
     // JSON 四元数格式 [x,y,z,w]（Rust/Blender）→ UE FQuat [w,x,y,z]
-    static bool ReadRotationFromArray(
-        const TArray<TSharedPtr<FJsonValue>>& Arr, FQuat& Out) {
+    static bool ReadRotationFromArray(const TArray<TSharedPtr<FJsonValue>>& Arr,
+                                      FQuat& Out) {
         if (Arr.Num() != 4) return false;
         // 读取 WXYZ 顺序
         Out.W = Arr[0]->AsNumber();
@@ -69,17 +69,13 @@ AZhengDriftUnreal::AZhengDriftUnreal() {
     InitializeControllersAndRecorders();
 }
 
-void AZhengDriftUnreal::BeginPlay() {
-    Super::BeginPlay();
-}
+void AZhengDriftUnreal::BeginPlay() { Super::BeginPlay(); }
 
 // ============================================================
 // Tick
 // ============================================================
 
-void AZhengDriftUnreal::Tick(float DeltaTime) {
-    Super::Tick(DeltaTime);
-}
+void AZhengDriftUnreal::Tick(float DeltaTime) { Super::Tick(DeltaTime); }
 
 // ============================================================
 // InitializeControllersAndRecorders
@@ -88,46 +84,46 @@ void AZhengDriftUnreal::Tick(float DeltaTime) {
 void AZhengDriftUnreal::InitializeControllersAndRecorders() {
     // ========== 左手控制器（12 个） ==========
     LeftHandControllers.Empty();
-    LeftHandControllers.Add(TEXT("left_hand_controller"),     TEXT("H_L"));
-    LeftHandControllers.Add(TEXT("left_hand_ik_pivot"),        TEXT("HP_L"));
-    LeftHandControllers.Add(TEXT("left_thumb_controller"),     TEXT("T_L"));
-    LeftHandControllers.Add(TEXT("left_thumb_ik_pivot"),       TEXT("TP_L"));
-    LeftHandControllers.Add(TEXT("left_index_controller"),     TEXT("I_L"));
-    LeftHandControllers.Add(TEXT("left_middle_controller"),    TEXT("M_L"));
-    LeftHandControllers.Add(TEXT("left_ring_controller"),      TEXT("R_L"));
-    LeftHandControllers.Add(TEXT("left_little_controller"),    TEXT("P_L"));
-    LeftHandControllers.Add(TEXT("left_index_pole"),           TEXT("I_L_pole"));
-    LeftHandControllers.Add(TEXT("left_middle_pole"),          TEXT("M_L_pole"));
-    LeftHandControllers.Add(TEXT("left_ring_pole"),            TEXT("R_L_pole"));
-    LeftHandControllers.Add(TEXT("left_little_pole"),          TEXT("P_L_pole"));
+    LeftHandControllers.Add(TEXT("left_hand_controller"), TEXT("H_L"));
+    LeftHandControllers.Add(TEXT("left_hand_ik_pivot"), TEXT("HP_L"));
+    LeftHandControllers.Add(TEXT("left_thumb_controller"), TEXT("T_L"));
+    LeftHandControllers.Add(TEXT("left_thumb_ik_pivot"), TEXT("TP_L"));
+    LeftHandControllers.Add(TEXT("left_index_controller"), TEXT("I_L"));
+    LeftHandControllers.Add(TEXT("left_middle_controller"), TEXT("M_L"));
+    LeftHandControllers.Add(TEXT("left_ring_controller"), TEXT("R_L"));
+    LeftHandControllers.Add(TEXT("left_little_controller"), TEXT("P_L"));
+    LeftHandControllers.Add(TEXT("left_index_pole"), TEXT("I_L_pole"));
+    LeftHandControllers.Add(TEXT("left_middle_pole"), TEXT("M_L_pole"));
+    LeftHandControllers.Add(TEXT("left_ring_pole"), TEXT("R_L_pole"));
+    LeftHandControllers.Add(TEXT("left_little_pole"), TEXT("P_L_pole"));
 
     // ========== 右手控制器（12 个） ==========
     RightHandControllers.Empty();
-    RightHandControllers.Add(TEXT("right_hand_controller"),    TEXT("H_R"));
-    RightHandControllers.Add(TEXT("right_hand_ik_pivot"),      TEXT("HP_R"));
-    RightHandControllers.Add(TEXT("right_thumb_controller"),   TEXT("T_R"));
-    RightHandControllers.Add(TEXT("right_thumb_ik_pivot"),     TEXT("TP_R"));
-    RightHandControllers.Add(TEXT("right_index_controller"),   TEXT("I_R"));
-    RightHandControllers.Add(TEXT("right_middle_controller"),  TEXT("M_R"));
-    RightHandControllers.Add(TEXT("right_ring_controller"),    TEXT("R_R"));
-    RightHandControllers.Add(TEXT("right_little_controller"),  TEXT("P_R"));
-    RightHandControllers.Add(TEXT("right_index_pole"),         TEXT("I_R_pole"));
-    RightHandControllers.Add(TEXT("right_middle_pole"),        TEXT("M_R_pole"));
-    RightHandControllers.Add(TEXT("right_ring_pole"),          TEXT("R_R_pole"));
-    RightHandControllers.Add(TEXT("right_little_pole"),        TEXT("P_R_pole"));
+    RightHandControllers.Add(TEXT("right_hand_controller"), TEXT("H_R"));
+    RightHandControllers.Add(TEXT("right_hand_ik_pivot"), TEXT("HP_R"));
+    RightHandControllers.Add(TEXT("right_thumb_controller"), TEXT("T_R"));
+    RightHandControllers.Add(TEXT("right_thumb_ik_pivot"), TEXT("TP_R"));
+    RightHandControllers.Add(TEXT("right_index_controller"), TEXT("I_R"));
+    RightHandControllers.Add(TEXT("right_middle_controller"), TEXT("M_R"));
+    RightHandControllers.Add(TEXT("right_ring_controller"), TEXT("R_R"));
+    RightHandControllers.Add(TEXT("right_little_controller"), TEXT("P_R"));
+    RightHandControllers.Add(TEXT("right_index_pole"), TEXT("I_R_pole"));
+    RightHandControllers.Add(TEXT("right_middle_pole"), TEXT("M_R_pole"));
+    RightHandControllers.Add(TEXT("right_ring_pole"), TEXT("R_R_pole"));
+    RightHandControllers.Add(TEXT("right_little_pole"), TEXT("P_R_pole"));
 
     // ========== 脚部控制器（4 个） ==========
     FootControllers.Empty();
-    FootControllers.Add(TEXT("left_foot_controller"),  TEXT("F_L"));
-    FootControllers.Add(TEXT("left_foot_pole"),         TEXT("F_L_pole"));
+    FootControllers.Add(TEXT("left_foot_controller"), TEXT("F_L"));
+    FootControllers.Add(TEXT("left_foot_pole"), TEXT("F_L_pole"));
     FootControllers.Add(TEXT("right_foot_controller"), TEXT("F_R"));
-    FootControllers.Add(TEXT("right_foot_pole"),        TEXT("F_R_pole"));
+    FootControllers.Add(TEXT("right_foot_pole"), TEXT("F_R_pole"));
 
     // ========== Target 控制器（3 个特殊朝向控制器） ==========
     TargetControllers.Empty();
-    TargetControllers.Add(TEXT("middle_hand"),   TEXT("Middle_Hand"));
-    TargetControllers.Add(TEXT("look_at"),        TEXT("Look_At"));
-    TargetControllers.Add(TEXT("head_control"),   TEXT("Head_Control"));
+    TargetControllers.Add(TEXT("middle_hand"), TEXT("Middle_Hand"));
+    TargetControllers.Add(TEXT("look_at"), TEXT("Look_At"));
+    TargetControllers.Add(TEXT("head_control"), TEXT("Head_Control"));
 
     // ========== 双线性映射辅助控制器（8 个） ==========
     BilinearHelpers.Empty();
@@ -143,15 +139,12 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
     // ========== 弦位置记录器（63 个：21弦 × 3点） ==========
     StringPositionRecorders.Empty();
     for (int32 i = 0; i <= 20; ++i) {
-        StringPositionRecorders.Add(
-            FString::Printf(TEXT("s%d_head"), i),
-            FString::Printf(TEXT("s%dhead"), i));
-        StringPositionRecorders.Add(
-            FString::Printf(TEXT("s%d_end"), i),
-            FString::Printf(TEXT("s%dend"), i));
-        StringPositionRecorders.Add(
-            FString::Printf(TEXT("s%d_mid"), i),
-            FString::Printf(TEXT("s%dmid"), i));
+        StringPositionRecorders.Add(FString::Printf(TEXT("s%d_head"), i),
+                                    FString::Printf(TEXT("s%dhead"), i));
+        StringPositionRecorders.Add(FString::Printf(TEXT("s%d_end"), i),
+                                    FString::Printf(TEXT("s%dend"), i));
+        StringPositionRecorders.Add(FString::Printf(TEXT("s%d_mid"), i),
+                                    FString::Printf(TEXT("s%dmid"), i));
     }
 
     // ========== 手部记录器生成 ==========
@@ -171,16 +164,19 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
     //   left_little_controller  -> p
 
     // 非 pole 控制器的 {内部键名后缀, 手指简写} 映射
-    struct FFingerEntry { FString InternalSuffix; FString ShortName; };
+    struct FFingerEntry {
+        FString InternalSuffix;
+        FString ShortName;
+    };
 
     const TArray<FFingerEntry> FingerMap = {
-        {TEXT("hand_controller"),   TEXT("h")},
-        {TEXT("hand_ik_pivot"),     TEXT("hp")},
-        {TEXT("thumb_controller"),  TEXT("t")},
-        {TEXT("thumb_ik_pivot"),    TEXT("tp")},
-        {TEXT("index_controller"),  TEXT("i")},
+        {TEXT("hand_controller"), TEXT("h")},
+        {TEXT("hand_ik_pivot"), TEXT("hp")},
+        {TEXT("thumb_controller"), TEXT("t")},
+        {TEXT("thumb_ik_pivot"), TEXT("tp")},
+        {TEXT("index_controller"), TEXT("i")},
         {TEXT("middle_controller"), TEXT("m")},
-        {TEXT("ring_controller"),   TEXT("r")},
+        {TEXT("ring_controller"), TEXT("r")},
         {TEXT("little_controller"), TEXT("p")},
     };
 
@@ -207,8 +203,8 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
                 if (!pCtrlName) continue;
 
                 // 记录器键：{Action}_{Position}_{short}_l
-                FString RecKey = FString::Printf(
-                    TEXT("%s_%s_%s_l"), *ActStr, *PosStr, *F.ShortName);
+                FString RecKey = FString::Printf(TEXT("%s_%s_%s_l"), *ActStr,
+                                                 *PosStr, *F.ShortName);
 
                 // 记录器名：{ControllerName}_{Action}_{Position}
                 FString RecValue = FString::Printf(
@@ -234,8 +230,8 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
                 const FString* pCtrlName = RightHandControllers.Find(FullKey);
                 if (!pCtrlName) continue;
 
-                FString RecKey = FString::Printf(
-                    TEXT("%s_%s_%s_r"), *ActStr, *PosStr, *F.ShortName);
+                FString RecKey = FString::Printf(TEXT("%s_%s_%s_r"), *ActStr,
+                                                 *PosStr, *F.ShortName);
                 FString RecValue = FString::Printf(
                     TEXT("%s_%s_%s"), **pCtrlName, *ActStr, *PosStr);
 
@@ -243,8 +239,6 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
             }
         }
     }
-
-
 
     // --- 初始化 RecorderTransforms 默认条目 ---
     RecorderTransforms.Empty();
@@ -264,8 +258,7 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
            TEXT("ZhengDriftUnreal: InitializeControllersAndRecorders completed."
                 " L=%d R=%d StringPos=%d RecorderTransforms=%d"),
            LeftHandRecorders.Num(), RightHandRecorders.Num(),
-           StringPositionRecorders.Num(),
-           RecorderTransforms.Num());
+           StringPositionRecorders.Num(), RecorderTransforms.Num());
 }
 
 // ============================================================
@@ -275,28 +268,38 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
 FString AZhengDriftUnreal::GetHandPositionString(
     EZhengDriftHandPosition Position) {
     switch (Position) {
-        case EZhengDriftHandPosition::FAR:    return TEXT("far");
-        case EZhengDriftHandPosition::MIDDLE: return TEXT("middle");
-        case EZhengDriftHandPosition::NEAR:   return TEXT("near");
-        default: return TEXT("middle");
+        case EZhengDriftHandPosition::FAR:
+            return TEXT("far");
+        case EZhengDriftHandPosition::MIDDLE:
+            return TEXT("middle");
+        case EZhengDriftHandPosition::NEAR:
+            return TEXT("near");
+        default:
+            return TEXT("middle");
     }
 }
 
 FString AZhengDriftUnreal::GetLeftHandActionString(
     EZhengDriftLeftHandAction Action) {
     switch (Action) {
-        case EZhengDriftLeftHandAction::NORMAL: return TEXT("Normal");
-        case EZhengDriftLeftHandAction::PRESS:  return TEXT("Press");
-        default: return TEXT("Normal");
+        case EZhengDriftLeftHandAction::NORMAL:
+            return TEXT("Normal");
+        case EZhengDriftLeftHandAction::PRESS:
+            return TEXT("Press");
+        default:
+            return TEXT("Normal");
     }
 }
 
 FString AZhengDriftUnreal::GetRightHandActionString(
     EZhengDriftRightHandAction Action) {
     switch (Action) {
-        case EZhengDriftRightHandAction::NORMAL:   return TEXT("Normal");
-        case EZhengDriftRightHandAction::TREMOLO:  return TEXT("Tremolo");
-        default: return TEXT("Normal");
+        case EZhengDriftRightHandAction::NORMAL:
+            return TEXT("Normal");
+        case EZhengDriftRightHandAction::TREMOLO:
+            return TEXT("Tremolo");
+        default:
+            return TEXT("Normal");
     }
 }
 
@@ -306,7 +309,7 @@ FString AZhengDriftUnreal::GetRightHandActionString(
 
 ASkeletalMeshActor* AZhengDriftUnreal::GetSkeletalMeshActorByName(
     FName ComponentName) const {
-    if (ComponentName == TEXT("Zheng"))     return Zheng;
+    if (ComponentName == TEXT("Zheng")) return Zheng;
     if (ComponentName == TEXT("Performer")) return SkeletalMeshActor;
     return nullptr;
 }
@@ -315,9 +318,9 @@ ASkeletalMeshActor* AZhengDriftUnreal::GetSkeletalMeshActorByName(
 // 状态映射
 // ============================================================
 
-TMap<FString, FString> AZhengDriftUnreal::GetLeftHandControllerToRecorderMapping(
-    EZhengDriftHandPosition Position,
-    EZhengDriftLeftHandAction Action) const {
+TMap<FString, FString>
+AZhengDriftUnreal::GetLeftHandControllerToRecorderMapping(
+    EZhengDriftHandPosition Position, EZhengDriftLeftHandAction Action) const {
     TMap<FString, FString> Mapping;
 
     FString PosStr = GetHandPositionString(Position);
@@ -336,11 +339,11 @@ TMap<FString, FString> AZhengDriftUnreal::GetLeftHandControllerToRecorderMapping
     };
 
     for (int32 i = 0; i < ShortNames.Num(); ++i) {
-        const FString& ShortName   = ShortNames[i];
+        const FString& ShortName = ShortNames[i];
         const FString& ControllerName = CtrlOrder[i];
 
-        FString RecKey = FString::Printf(
-            TEXT("%s_%s_%s_l"), *ActStr, *PosStr, *ShortName);
+        FString RecKey =
+            FString::Printf(TEXT("%s_%s_%s_l"), *ActStr, *PosStr, *ShortName);
 
         const FString* RecValue = LeftHandRecorders.Find(RecKey);
         if (RecValue) {
@@ -351,9 +354,9 @@ TMap<FString, FString> AZhengDriftUnreal::GetLeftHandControllerToRecorderMapping
     return Mapping;
 }
 
-TMap<FString, FString> AZhengDriftUnreal::GetRightHandControllerToRecorderMapping(
-    EZhengDriftHandPosition Position,
-    EZhengDriftRightHandAction Action) const {
+TMap<FString, FString>
+AZhengDriftUnreal::GetRightHandControllerToRecorderMapping(
+    EZhengDriftHandPosition Position, EZhengDriftRightHandAction Action) const {
     TMap<FString, FString> Mapping;
 
     FString PosStr = GetHandPositionString(Position);
@@ -369,8 +372,8 @@ TMap<FString, FString> AZhengDriftUnreal::GetRightHandControllerToRecorderMappin
     };
 
     for (int32 i = 0; i < ShortNames.Num(); ++i) {
-        FString RecKey = FString::Printf(
-            TEXT("%s_%s_%s_r"), *ActStr, *PosStr, *ShortNames[i]);
+        FString RecKey = FString::Printf(TEXT("%s_%s_%s_r"), *ActStr, *PosStr,
+                                         *ShortNames[i]);
         const FString* RecValue = RightHandRecorders.Find(RecKey);
         if (RecValue) {
             Mapping.Add(CtrlOrder[i], *RecValue);
@@ -380,9 +383,9 @@ TMap<FString, FString> AZhengDriftUnreal::GetRightHandControllerToRecorderMappin
     return Mapping;
 }
 
-TMap<FString, FString> AZhengDriftUnreal::GetLeftHandRecorderToControllerMapping(
-    EZhengDriftHandPosition Position,
-    EZhengDriftLeftHandAction Action) const {
+TMap<FString, FString>
+AZhengDriftUnreal::GetLeftHandRecorderToControllerMapping(
+    EZhengDriftHandPosition Position, EZhengDriftLeftHandAction Action) const {
     TMap<FString, FString> Reverse;
     for (const auto& Pair :
          GetLeftHandControllerToRecorderMapping(Position, Action)) {
@@ -391,9 +394,9 @@ TMap<FString, FString> AZhengDriftUnreal::GetLeftHandRecorderToControllerMapping
     return Reverse;
 }
 
-TMap<FString, FString> AZhengDriftUnreal::GetRightHandRecorderToControllerMapping(
-    EZhengDriftHandPosition Position,
-    EZhengDriftRightHandAction Action) const {
+TMap<FString, FString>
+AZhengDriftUnreal::GetRightHandRecorderToControllerMapping(
+    EZhengDriftHandPosition Position, EZhengDriftRightHandAction Action) const {
     TMap<FString, FString> Reverse;
     for (const auto& Pair :
          GetRightHandControllerToRecorderMapping(Position, Action)) {
@@ -416,16 +419,18 @@ UControlRig* AZhengDriftUnreal::GetCachedControlRig(FName ComponentName) {
     UControlRigCacheSubsystem* CacheSubsystem =
         GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
     if (!CacheSubsystem) {
-        UE_LOG(LogTemp, Error,
-               TEXT("GetCachedControlRig [ZhengDrift]: CacheSubsystem not found"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("GetCachedControlRig [ZhengDrift]: CacheSubsystem not found"));
         return nullptr;
     }
 
     ASkeletalMeshActor* Actor = GetSkeletalMeshActorByName(ComponentName);
     if (!Actor) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("GetCachedControlRig [ZhengDrift]: Actor not found for '%s'"),
-               *ComponentName.ToString());
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("GetCachedControlRig [ZhengDrift]: Actor not found for '%s'"),
+            *ComponentName.ToString());
         return nullptr;
     }
 
@@ -440,16 +445,20 @@ UControlRig* AZhengDriftUnreal::GetCachedControlRig(FName ComponentName) {
     ULevelSequence* LevelSequence =
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("GetCachedControlRig [ZhengDrift]: No LevelSequence found"));
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("GetCachedControlRig [ZhengDrift]: No LevelSequence found"));
         return nullptr;
     }
 
-    UControlRig* ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
+    UControlRig* ControlRig =
+        CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
 
     if (!ControlRig) {
-        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence, RootControlName);
-        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
+        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence,
+                                                    RootControlName);
+        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence,
+                                                   RootControlName);
 
         if (!ControlRig) {
             UE_LOG(LogTemp, Error,
@@ -485,7 +494,8 @@ UControlRigBlueprint* AZhengDriftUnreal::GetCachedControlRigBlueprint(
         UInstrumentAnimationUtility::GetCurrentLevelSequence();
     if (!LevelSequence) return nullptr;
 
-    return CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence, RootControlName);
+    return CacheSubsystem->GetControlRigBlueprint(Actor, LevelSequence,
+                                                  RootControlName);
 }
 
 void AZhengDriftUnreal::RegisterAllControlRigs() {
@@ -503,24 +513,27 @@ void AZhengDriftUnreal::RegisterAllControlRigs() {
 
     if (SkeletalMeshActor) {
         CacheSubsystem->TriggerRegistrationIfNeeded(SkeletalMeshActor,
-                                                     LevelSequence);
+                                                    LevelSequence);
         RegisteredCount++;
         UE_LOG(LogTemp, Warning,
-               TEXT("ZhengDrift::RegisterAllControlRigs: Registered Performer '%s'"),
+               TEXT("ZhengDrift::RegisterAllControlRigs: Registered Performer "
+                    "'%s'"),
                *SkeletalMeshActor->GetName());
     }
 
     if (Zheng) {
         CacheSubsystem->TriggerRegistrationIfNeeded(Zheng, LevelSequence);
         RegisteredCount++;
-        UE_LOG(LogTemp, Warning,
-               TEXT("ZhengDrift::RegisterAllControlRigs: Registered Zheng '%s'"),
-               *Zheng->GetName());
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("ZhengDrift::RegisterAllControlRigs: Registered Zheng '%s'"),
+            *Zheng->GetName());
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("ZhengDrift::RegisterAllControlRigs: Registered %d ControlRigs"),
-           RegisteredCount);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("ZhengDrift::RegisterAllControlRigs: Registered %d ControlRigs"),
+        RegisteredCount);
 }
 
 void AZhengDriftUnreal::TriggerControlRigReregistration(
@@ -537,7 +550,8 @@ void AZhengDriftUnreal::TriggerControlRigReregistration(
 
 void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
     if (FilePath.IsEmpty()) {
-        UE_LOG(LogTemp, Error, TEXT("ZhengDrift::ExportRecorderInfo: FilePath is empty"));
+        UE_LOG(LogTemp, Error,
+               TEXT("ZhengDrift::ExportRecorderInfo: FilePath is empty"));
         return;
     }
 
@@ -553,10 +567,12 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
-                Entry->SetArrayField(TEXT("location"),
-                                     FZhengDriftHelpers::VecToJsonArray(T->Location));
-                Entry->SetArrayField(TEXT("rotation"),
-                                     FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FZhengDriftHelpers::VecToJsonArray(T->Location));
+                Entry->SetArrayField(
+                    TEXT("rotation"),
+                    FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -573,10 +589,12 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
-                Entry->SetArrayField(TEXT("location"),
-                                     FZhengDriftHelpers::VecToJsonArray(T->Location));
-                Entry->SetArrayField(TEXT("rotation"),
-                                     FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FZhengDriftHelpers::VecToJsonArray(T->Location));
+                Entry->SetArrayField(
+                    TEXT("rotation"),
+                    FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -585,8 +603,8 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
         }
     };
 
-    WriteCategory(TEXT("STRING_RECORDERS"),     StringPositionRecorders);
-    WriteCategory(TEXT("LEFT_HAND_RECORDERS"),  LeftHandRecorders);
+    WriteCategory(TEXT("STRING_RECORDERS"), StringPositionRecorders);
+    WriteCategory(TEXT("LEFT_HAND_RECORDERS"), LeftHandRecorders);
     WriteCategory(TEXT("RIGHT_HAND_RECORDERS"), RightHandRecorders);
     WriteFootControllers();
 
@@ -598,14 +616,22 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
-                Entry->SetArrayField(TEXT("location"),
-                                     FZhengDriftHelpers::VecToJsonArray(T->Location));
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FZhengDriftHelpers::VecToJsonArray(T->Location));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
         if (CatObj->Values.Num() > 0) {
             Root->SetObjectField(TEXT("BILINEAR_HELPERS"), CatObj);
         }
+    }
+
+    // OTHER_SETTINGS：源标记
+    {
+        TSharedPtr<FJsonObject> SettingsObj = MakeShareable(new FJsonObject);
+        SettingsObj->SetBoolField(TEXT("is_unreal"), true);
+        Root->SetObjectField(TEXT("OTHER_SETTINGS"), SettingsObj);
     }
 
     FString Output;
@@ -638,7 +664,8 @@ bool AZhengDriftUnreal::ImportRecorderInfo(const FString& FilePath) {
     }
 
     TSharedPtr<FJsonObject> Root;
-    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
+    TSharedRef<TJsonReader<>> Reader =
+        TJsonReaderFactory<>::Create(FileContent);
     if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid()) {
         UE_LOG(LogTemp, Error,
                TEXT("ZhengDrift::ImportRecorderInfo: JSON parse failed for %s"),
@@ -704,9 +731,10 @@ bool AZhengDriftUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("ZhengDrift::ImportRecorderInfo: Imported %d recorders from %s"),
-           ImportedCount, *FilePath);
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("ZhengDrift::ImportRecorderInfo: Imported %d recorders from %s"),
+        ImportedCount, *FilePath);
 
     if (ImportedCount > 0) {
         // 将 STRING_RECORDERS 中的弦位置数据回写到 Control Rig 控制器
@@ -715,9 +743,10 @@ bool AZhengDriftUnreal::ImportRecorderInfo(const FString& FilePath) {
             UZhengDriftControlRigProcessor::ApplyStringPositionToControlRig(
                 this, ControlRig);
         } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("ZhengDrift::ImportRecorderInfo: ControlRig not available,"
-                        " string positions stored in RecorderTransforms only"));
+            UE_LOG(
+                LogTemp, Warning,
+                TEXT("ZhengDrift::ImportRecorderInfo: ControlRig not available,"
+                     " string positions stored in RecorderTransforms only"));
         }
     }
 

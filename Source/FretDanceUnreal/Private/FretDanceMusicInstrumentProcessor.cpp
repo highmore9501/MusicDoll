@@ -200,7 +200,8 @@ void UFretDanceMusicInstrumentProcessor::
 }
 
 void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
-    AFretDanceUnreal* FretDanceActor, const FString& StringVibrationDataPath) {
+    AFretDanceUnreal* FretDanceActor, const FString& StringVibrationDataPath,
+    const FString& VibratoShapeKeyDataPath) {
     if (!FretDanceActor) {
         UE_LOG(LogTemp, Error,
                TEXT("GenerateInstrumentAnimation: FretDanceActor is null"));
@@ -213,35 +214,24 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
         return;
     }
 
-    if (StringVibrationDataPath.IsEmpty()) {
+    if (StringVibrationDataPath.IsEmpty() &&
+        VibratoShapeKeyDataPath.IsEmpty()) {
         UE_LOG(LogTemp, Error,
-               TEXT("StringVibrationDataPath is empty in "
-                    "GenerateInstrumentAnimation"));
+               TEXT("GenerateInstrumentAnimation: Both data paths are empty"));
         return;
     }
 
     UE_LOG(LogTemp, Warning,
-           TEXT("========== GenerateInstrumentAnimation Started =========="));
-    UE_LOG(LogTemp, Warning, TEXT("Generating from: %s"),
-           *StringVibrationDataPath);
+           TEXT("========== GenerateInstrumentAnimation Started =========="
+                "\nString:  %s\nVibrato: %s"),
+           *StringVibrationDataPath, *VibratoShapeKeyDataPath);
 
 #if WITH_EDITOR
     // 清理乐器动画轨道
     UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
         FretDanceActor->Guitar);
 
-    // 使用新的 Morph Target 生成方法
-    TMap<FString, TTuple<TArray<FFrameNumber>, TArray<FMovieSceneFloatValue>>>
-        VibrationKeyframeData;
-
-    if (!LoadAndGenerateStringVibrationAnimation(
-            FretDanceActor, StringVibrationDataPath, VibrationKeyframeData)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("Failed to load and generate string vibration animation"));
-        return;
-    }
-
-    // 获取 LevelSequence 和 Sequencer
+    // 获取 LevelSequence
     ULevelSequence* LevelSequence = nullptr;
     TSharedPtr<ISequencer> Sequencer = nullptr;
 
@@ -257,15 +247,189 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
         return;
     }
 
+    FFrameRate TickResolution = MovieScene->GetTickResolution();
+    FFrameRate DisplayRate = MovieScene->GetDisplayRate();
+
+    // 帧转换 lambda
+    auto ToFrameNumber = [&](double FrameDouble) -> FFrameNumber {
+        int32 Scaled = static_cast<int32>(
+            FMath::RoundToInt(FrameDouble * TickResolution.AsDecimal() /
+                              DisplayRate.AsDecimal()));
+        return FFrameNumber(Scaled);
+    };
+
+    // ============================================================
+    // 阶段 A：用 Map 聚合所有 Morph Target 关键帧
+    // （弦振动 + 摇把 shape key 共用同一个 Map，避免互相覆盖）
+    // ============================================================
+    TMap<FString, FMorphTargetKeyframeData> ChannelDataMap;
+
+    // ----- A1：收集弦振动数据 -----
+    if (!StringVibrationDataPath.IsEmpty()) {
+        FString JsonContent;
+        if (!FFileHelper::LoadFileToString(JsonContent,
+                                           *StringVibrationDataPath)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Failed to load string vibration JSON: %s"),
+                   *StringVibrationDataPath);
+        } else {
+            TArray<TSharedPtr<FJsonValue>> JsonArray;
+            TSharedRef<TJsonReader<>> Reader =
+                TJsonReaderFactory<>::Create(JsonContent);
+
+            if (FJsonSerializer::Deserialize(Reader, JsonArray)) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("Loaded %d string vibration entries"),
+                       JsonArray.Num());
+
+                for (const auto& Value : JsonArray) {
+                    TSharedPtr<FJsonObject> EntryObj = Value->AsObject();
+                    if (!EntryObj.IsValid()) continue;
+
+                    double FrameDouble =
+                        EntryObj->GetNumberField(TEXT("frame"));
+                    int32 FretNumber = static_cast<int32>(
+                        EntryObj->GetIntegerField(TEXT("fret")));
+                    float Influence = static_cast<float>(
+                        EntryObj->GetNumberField(TEXT("influence")));
+                    bool bIsUpDirection =
+                        EntryObj->GetBoolField(TEXT("isUpDirection"));
+                    int32 StringIndex = static_cast<int32>(
+                        EntryObj->GetIntegerField(TEXT("stringIndex")));
+
+                    FString DirectionStr =
+                        bIsUpDirection ? TEXT("up") : TEXT("down");
+                    FString MorphTargetName =
+                        FString::Printf(TEXT("s%dfret%d%s"), StringIndex,
+                                        FretNumber, *DirectionStr);
+
+                    FFrameNumber FrameNumber = ToFrameNumber(FrameDouble);
+
+                    FMorphTargetKeyframeData* ChannelData =
+                        ChannelDataMap.Find(MorphTargetName);
+                    if (!ChannelData) {
+                        ChannelData = &ChannelDataMap.Add(
+                            MorphTargetName,
+                            FMorphTargetKeyframeData(MorphTargetName));
+                    }
+                    ChannelData->FrameNumbers.Add(FrameNumber);
+                    ChannelData->Values.Add(Influence);
+                }
+            } else {
+                UE_LOG(LogTemp, Error,
+                       TEXT("Failed to parse string vibration JSON"));
+            }
+        }
+    }
+
+    // ----- A2：收集摇把 shape key 数据 -----
+    // Rust 端 VibratoShapeKeyFrame 输出格式：
+    //   { "frame": 63.346, "state": "release", "vibrato_up": 0.0,
+    //   "vibrato_down": 0.0 }
+    // Morph Target 名称直接使用字段名 "vibrato_up" 和 "vibrato_down"
+    if (!VibratoShapeKeyDataPath.IsEmpty()) {
+        FString JsonContent;
+        if (!FFileHelper::LoadFileToString(JsonContent,
+                                           *VibratoShapeKeyDataPath)) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("Failed to load vibrato shape key JSON: %s"),
+                   *VibratoShapeKeyDataPath);
+        } else {
+            TArray<TSharedPtr<FJsonValue>> JsonArray;
+            TSharedRef<TJsonReader<>> Reader =
+                TJsonReaderFactory<>::Create(JsonContent);
+
+            if (FJsonSerializer::Deserialize(Reader, JsonArray)) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("Loaded %d vibrato shape key entries"),
+                       JsonArray.Num());
+
+                for (const auto& Value : JsonArray) {
+                    TSharedPtr<FJsonObject> EntryObj = Value->AsObject();
+                    if (!EntryObj.IsValid()) continue;
+
+                    double FrameDouble =
+                        EntryObj->GetNumberField(TEXT("frame"));
+
+                    double VibratoUp = 0.0;
+                    EntryObj->TryGetNumberField(TEXT("vibrato_up"), VibratoUp);
+
+                    double VibratoDown = 0.0;
+                    EntryObj->TryGetNumberField(TEXT("vibrato_down"),
+                                                VibratoDown);
+
+                    FFrameNumber FrameNumber = ToFrameNumber(FrameDouble);
+
+                    // vibrato_up 通道
+                    {
+                        FMorphTargetKeyframeData* ChannelData =
+                            ChannelDataMap.Find(TEXT("vibrato_up"));
+                        if (!ChannelData) {
+                            ChannelData = &ChannelDataMap.Add(
+                                TEXT("vibrato_up"),
+                                FMorphTargetKeyframeData(TEXT("vibrato_up")));
+                        }
+                        ChannelData->FrameNumbers.Add(FrameNumber);
+                        ChannelData->Values.Add(static_cast<float>(VibratoUp));
+                    }
+
+                    // vibrato_down 通道
+                    {
+                        FMorphTargetKeyframeData* ChannelData =
+                            ChannelDataMap.Find(TEXT("vibrato_down"));
+                        if (!ChannelData) {
+                            ChannelData = &ChannelDataMap.Add(
+                                TEXT("vibrato_down"),
+                                FMorphTargetKeyframeData(TEXT("vibrato_down")));
+                        }
+                        ChannelData->FrameNumbers.Add(FrameNumber);
+                        ChannelData->Values.Add(
+                            static_cast<float>(VibratoDown));
+                    }
+                }
+            } else {
+                UE_LOG(LogTemp, Error,
+                       TEXT("Failed to parse vibrato shape key JSON"));
+            }
+        }
+    }
+
+    // ============================================================
+    // 阶段 B：一次性写入所有 Morph Target 关键帧
+    // ============================================================
+    TArray<FMorphTargetKeyframeData> KeyframeData;
+    for (auto& Pair : ChannelDataMap) {
+        KeyframeData.Add(Pair.Value);
+    }
+
+    if (KeyframeData.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("GenerateInstrumentAnimation: No data to write"));
+        return;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("Writing %d total morph target channels (string + vibrato)"),
+           KeyframeData.Num());
+
+    int32 Written =
+        UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
+            FretDanceActor->Guitar, KeyframeData, LevelSequence,
+            TEXT("guitar_root"));
+
+    if (Written == 0) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to write morph target animations"));
+        return;
+    }
+
     // 计算帧范围
     FFrameNumber MinFrame = FFrameNumber(INT_MAX);
     FFrameNumber MaxFrame = FFrameNumber(INT_MIN);
 
-    for (const auto& Pair : VibrationKeyframeData) {
-        const TArray<FFrameNumber>& FrameNumbers = Pair.Value.Key;
-        if (FrameNumbers.Num() > 0) {
-            MinFrame = FMath::Min(MinFrame, FrameNumbers[0]);
-            MaxFrame = FMath::Max(MaxFrame, FrameNumbers.Last());
+    for (const auto& Data : KeyframeData) {
+        if (Data.FrameNumbers.Num() > 0) {
+            MinFrame = FMath::Min(MinFrame, Data.FrameNumbers[0]);
+            MaxFrame = FMath::Max(MaxFrame, Data.FrameNumbers.Last());
         }
     }
 
@@ -277,9 +441,8 @@ void UFretDanceMusicInstrumentProcessor::GenerateInstrumentAnimation(
     UE_LOG(LogTemp, Warning,
            TEXT("========== GenerateInstrumentAnimation Report =========="));
     UE_LOG(LogTemp, Warning,
-           TEXT("Successfully processed string vibration data"));
-    UE_LOG(LogTemp, Warning, TEXT("Processed %d morph target channels"),
-           VibrationKeyframeData.Num());
+           TEXT("Successfully processed %d channels (string + vibrato)"),
+           KeyframeData.Num());
     UE_LOG(LogTemp, Warning, TEXT("Frame range: %d - %d"), MinFrame.Value,
            MaxFrame.Value);
     UE_LOG(LogTemp, Warning,

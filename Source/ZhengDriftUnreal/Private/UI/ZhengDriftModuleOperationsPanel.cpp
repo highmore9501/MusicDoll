@@ -55,37 +55,47 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
     Container->ClearChildren();
 
     if (!ZhengDriftActor.IsValid()) {
-        Container->AddSlot().AutoHeight().Padding(5.0f)
-            [SNew(STextBlock)
-                 .Text(LOCTEXT("NoActor", "No ZhengDrift Actor Selected"))
-                 .ColorAndOpacity(FLinearColor::Yellow)];
+        Container->AddSlot().AutoHeight().Padding(
+            5.0f)[SNew(STextBlock)
+                      .Text(LOCTEXT("NoActor", "No ZhengDrift Actor Selected"))
+                      .ColorAndOpacity(FLinearColor::Yellow)];
         return;
     }
 
     // ---- Hand State Configuration ----
-    Container->AddSlot().AutoHeight().Padding(5.0f, 15.0f, 5.0f, 15.0f)
-        [FCommonPanelUtility::CreateSectionHeader(
-            TEXT("Hand State Configuration"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Hand State Configuration"))];
 
     // 标签行
     Container->AddSlot().AutoHeight().Padding(5.0f, 5.0f, 5.0f, 2.0f)
         [SNew(SHorizontalBox) +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f).VAlign(
-             VAlign_Center)[SNew(STextBlock)
-                                .Text(LOCTEXT("LPosLabel", "L Position:"))
-                                .Justification(ETextJustify::Center)] +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f).VAlign(
-             VAlign_Center)[SNew(STextBlock)
-                                .Text(LOCTEXT("LActLabel", "L Action:"))
-                                .Justification(ETextJustify::Center)] +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f).VAlign(
-             VAlign_Center)[SNew(STextBlock)
-                                .Text(LOCTEXT("RPosLabel", "R Position:"))
-                                .Justification(ETextJustify::Center)] +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f).VAlign(
-             VAlign_Center)[SNew(STextBlock)
-                                .Text(LOCTEXT("RActLabel", "R Action:"))
-                                .Justification(ETextJustify::Center)]];
+         SHorizontalBox::Slot()
+             .FillWidth(1.0f)
+             .Padding(5.0f, 0.0f)
+             .VAlign(
+                 VAlign_Center)[SNew(STextBlock)
+                                    .Text(LOCTEXT("LPosLabel", "L Position:"))
+                                    .Justification(ETextJustify::Center)] +
+         SHorizontalBox::Slot()
+             .FillWidth(1.0f)
+             .Padding(5.0f, 0.0f)
+             .VAlign(VAlign_Center)[SNew(STextBlock)
+                                        .Text(LOCTEXT("LActLabel", "L Action:"))
+                                        .Justification(ETextJustify::Center)] +
+         SHorizontalBox::Slot()
+             .FillWidth(1.0f)
+             .Padding(5.0f, 0.0f)
+             .VAlign(
+                 VAlign_Center)[SNew(STextBlock)
+                                    .Text(LOCTEXT("RPosLabel", "R Position:"))
+                                    .Justification(ETextJustify::Center)] +
+         SHorizontalBox::Slot()
+             .FillWidth(1.0f)
+             .Padding(5.0f, 0.0f)
+             .VAlign(VAlign_Center)[SNew(STextBlock)
+                                        .Text(LOCTEXT("RActLabel", "R Action:"))
+                                        .Justification(ETextJustify::Center)]];
 
     // 下拉菜单行
     Container->AddSlot().AutoHeight().Padding(5.0f)
@@ -110,8 +120,7 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                             }
                         })
                     .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
-                        return SNew(STextBlock).Text(
-                            FText::FromString(*Item));
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
                     })[SNew(STextBlock).Text_Lambda([this]() -> FText {
                         if (!ZhengDriftActor.IsValid())
                             return FText::FromString(TEXT("MIDDLE"));
@@ -139,8 +148,7 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                             }
                         })
                     .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
-                        return SNew(STextBlock).Text(
-                            FText::FromString(*Item));
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
                     })[SNew(STextBlock).Text_Lambda([this]() -> FText {
                         if (!ZhengDriftActor.IsValid())
                             return FText::FromString(TEXT("NORMAL"));
@@ -170,8 +178,7 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                             }
                         })
                     .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
-                        return SNew(STextBlock).Text(
-                            FText::FromString(*Item));
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
                     })[SNew(STextBlock).Text_Lambda([this]() -> FText {
                         if (!ZhengDriftActor.IsValid())
                             return FText::FromString(TEXT("MIDDLE"));
@@ -199,8 +206,7 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                             }
                         })
                     .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
-                        return SNew(STextBlock).Text(
-                            FText::FromString(*Item));
+                        return SNew(STextBlock).Text(FText::FromString(*Item));
                     })[SNew(STextBlock).Text_Lambda([this]() -> FText {
                         if (!ZhengDriftActor.IsValid())
                             return FText::FromString(TEXT("NORMAL"));
@@ -211,121 +217,123 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                                 : TEXT("NORMAL"));
                     })]]];
 
-    // ---- Animation File Path ----
-    Container->AddSlot().AutoHeight().Padding(5.0f, 0.0f, 5.0f, 15.0f)
-        [FCommonPanelUtility::CreateSectionHeader(TEXT("Animation File Path"))];
-
-    TSharedPtr<SEditableTextBox> AnimFilePathBox;
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SHorizontalBox) +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
-             [SAssignNew(AnimFilePathBox, SEditableTextBox)
-                  .Text_Lambda([this]() -> FText {
-                      if (ZhengDriftActor.IsValid())
-                          return FText::FromString(
-                              ZhengDriftActor->AnimationFilePath);
-                      return FText::FromString(TEXT(""));
-                  })
-                  .OnTextCommitted_Lambda(
-                      [this](const FText& T, ETextCommit::Type Commit) {
-                          if ((Commit == ETextCommit::OnEnter ||
-                               Commit == ETextCommit::OnUserMovedFocus) &&
-                              ZhengDriftActor.IsValid()) {
-                              ZhengDriftActor->AnimationFilePath =
-                                  T.ToString();
-                              ZhengDriftActor->Modify();
-                          }
-                      })] +
-         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-             [SNew(SButton)
-                  .Text(LOCTEXT("BrowseBtn", "Browse"))
-                  .OnClicked_Lambda(
-                      [this, AnimFilePathBox]() -> FReply {
-                          if (!ZhengDriftActor.IsValid())
-                              return FReply::Handled();
-                          FString FilePath;
-                          if (FCommonPanelUtility::BrowseForFile(
-                                  TEXT(".zhengdrift"), FilePath, false)) {
-                              if (AnimFilePathBox.IsValid())
-                                  AnimFilePathBox->SetText(
-                                      FText::FromString(FilePath));
-                              ZhengDriftActor->AnimationFilePath = FilePath;
-                              ZhengDriftActor->Modify();
-                          }
-                          return FReply::Handled();
-                      })]];
-
     // ---- State Management ----
-    Container->AddSlot().AutoHeight().Padding(5.0f, 15.0f, 5.0f, 15.0f)
-        [FCommonPanelUtility::CreateSectionHeader(TEXT("State Management"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("State Management"))];
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SHorizontalBox) +
-         SHorizontalBox::Slot().FillWidth(0.5f).Padding(0.0f, 0.0f, 5.0f, 0.0f)
-             [SNew(SButton)
-                  .Text(LOCTEXT("SaveLeftBtn", "Save Left"))
-                  .OnClicked(this,
-                             &SZhengDriftModuleOperationsPanel::OnSaveLeft)
-                  .HAlign(HAlign_Center)
-                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")] +
-         SHorizontalBox::Slot().FillWidth(0.5f).Padding(5.0f, 0.0f, 0.0f, 0.0f)
-             [SNew(SButton)
-                  .Text(LOCTEXT("SaveRightBtn", "Save Right"))
-                  .OnClicked(this,
-                             &SZhengDriftModuleOperationsPanel::OnSaveRight)
-                  .HAlign(HAlign_Center)
-                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")]];
+         SHorizontalBox::Slot().FillWidth(0.5f).Padding(
+             0.0f, 0.0f, 5.0f,
+             0.0f)[SNew(SButton)
+                       .Text(LOCTEXT("SaveLeftBtn", "Save Left"))
+                       .OnClicked(this,
+                                  &SZhengDriftModuleOperationsPanel::OnSaveLeft)
+                       .HAlign(HAlign_Center)
+                       .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")] +
+         SHorizontalBox::Slot().FillWidth(0.5f).Padding(
+             5.0f, 0.0f, 0.0f,
+             0.0f)[SNew(SButton)
+                       .Text(LOCTEXT("SaveRightBtn", "Save Right"))
+                       .OnClicked(
+                           this, &SZhengDriftModuleOperationsPanel::OnSaveRight)
+                       .HAlign(HAlign_Center)
+                       .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")]];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("LoadStateBtn", "Load State"))
-             .OnClicked(this, &SZhengDriftModuleOperationsPanel::OnLoadState)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("LoadStateBtn", "Load State"))
+                  .OnClicked(this,
+                             &SZhengDriftModuleOperationsPanel::OnLoadState)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     // ---- Animation Generation ----
-    Container->AddSlot().AutoHeight().Padding(5.0f, 15.0f, 5.0f, 15.0f)
-        [FCommonPanelUtility::CreateSectionHeader(TEXT("Animation Generation"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Animation Generation"))];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("GenPerformerBtn", "Generate Performer Animation"))
-             .OnClicked(
-                 this,
-                 &SZhengDriftModuleOperationsPanel::OnGeneratePerformerAnimation)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    // ---- Animation File Path ----
+    TSharedPtr<SEditableTextBox> AnimFilePathBox;
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SHorizontalBox) +
+              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
+                  [SAssignNew(AnimFilePathBox, SEditableTextBox)
+                       .Text_Lambda([this]() -> FText {
+                           if (ZhengDriftActor.IsValid())
+                               return FText::FromString(
+                                   ZhengDriftActor->AnimationFilePath);
+                           return FText::FromString(TEXT(""));
+                       })
+                       .OnTextCommitted_Lambda(
+                           [this](const FText& T, ETextCommit::Type Commit) {
+                               if ((Commit == ETextCommit::OnEnter ||
+                                    Commit == ETextCommit::OnUserMovedFocus) &&
+                                   ZhengDriftActor.IsValid()) {
+                                   ZhengDriftActor->AnimationFilePath =
+                                       T.ToString();
+                                   ZhengDriftActor->Modify();
+                               }
+                           })] +
+              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
+                  [SNew(SButton)
+                       .Text(LOCTEXT("BrowseBtn", "Browse"))
+                       .OnClicked_Lambda([this, AnimFilePathBox]() -> FReply {
+                           if (!ZhengDriftActor.IsValid())
+                               return FReply::Handled();
+                           FString FilePath;
+                           if (FCommonPanelUtility::BrowseForFile(
+                                   TEXT(".zhengdrift"), FilePath, false)) {
+                               if (AnimFilePathBox.IsValid())
+                                   AnimFilePathBox->SetText(
+                                       FText::FromString(FilePath));
+                               ZhengDriftActor->AnimationFilePath = FilePath;
+                               ZhengDriftActor->Modify();
+                           }
+                           return FReply::Handled();
+                       })]];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("GenInstrumentBtn", "Generate Instrument Animation"))
-             .OnClicked(
-                 this,
-                 &SZhengDriftModuleOperationsPanel::OnGenerateInstrumentAnimation)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("GenPerformerBtn",
+                                "Generate Performer Animation"))
+                  .OnClicked(this, &SZhengDriftModuleOperationsPanel::
+                                       OnGeneratePerformerAnimation)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("GenAllBtn", "Generate All Animation"))
-             .OnClicked(this,
-                        &SZhengDriftModuleOperationsPanel::OnGenerateAllAnimation)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("GenInstrumentBtn",
+                                "Generate Instrument Animation"))
+                  .OnClicked(this, &SZhengDriftModuleOperationsPanel::
+                                       OnGenerateInstrumentAnimation)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("GenAllBtn", "Generate All Animation"))
+                  .OnClicked(
+                      this,
+                      &SZhengDriftModuleOperationsPanel::OnGenerateAllAnimation)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     // ---- Misc ----
-    Container->AddSlot().AutoHeight().Padding(5.0f, 15.0f, 5.0f, 15.0f)
-        [FCommonPanelUtility::CreateSectionHeader(TEXT("Misc"))];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f,
+        15.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("Misc"))];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("ReregBtn", "Trigger ControlRig Re-registration"))
-             .OnClicked(
-                 this,
-                 &SZhengDriftModuleOperationsPanel::
-                     OnTriggerControlRigReregistration)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(
+                      LOCTEXT("ReregBtn", "Trigger ControlRig Re-registration"))
+                  .OnClicked(this, &SZhengDriftModuleOperationsPanel::
+                                       OnTriggerControlRigReregistration)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)
@@ -374,8 +382,7 @@ FReply SZhengDriftModuleOperationsPanel::OnGenerateInstrumentAnimation() {
 
 FReply SZhengDriftModuleOperationsPanel::OnGenerateAllAnimation() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
-    UZhengDriftAnimationProcessor::GenerateAllAnimation(
-        ZhengDriftActor.Get());
+    UZhengDriftAnimationProcessor::GenerateAllAnimation(ZhengDriftActor.Get());
     return FReply::Handled();
 }
 

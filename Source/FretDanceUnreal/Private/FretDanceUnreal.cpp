@@ -122,34 +122,8 @@ void AFretDanceUnreal::BeginPlay() {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 统一的键名映射工具函数
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-TMap<FString, FString> AFretDanceUnreal::GetRightHandPositionKeyMapping() {
-    static TMap<FString, FString> Mapping = {{TEXT("p0"), TEXT("p_low")},
-                                             {TEXT("p3"), TEXT("p_high")},
-                                             {TEXT("pend"), TEXT("p_end")}};
-    return Mapping;
-}
-
-FString AFretDanceUnreal::MapRightHandPositionKeyName(
-    const FString& JsonKeyName) {
-    static const TMap<FString, FString> Mapping =
-        GetRightHandPositionKeyMapping();
-
-    if (const FString* MappedName = Mapping.Find(JsonKeyName)) {
-        return *MappedName;
-    }
-
-    // 如果没有找到映射，返回原始名称
-    return JsonKeyName;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void AFretDanceUnreal::Tick(float DeltaTime) {
-    Super::Tick(DeltaTime);
-}
+void AFretDanceUnreal::Tick(float DeltaTime) { Super::Tick(DeltaTime); }
 
 void AFretDanceUnreal::InitializeControllersAndRecorders() {
     UE_LOG(LogTemp, Warning,
@@ -203,13 +177,6 @@ void AFretDanceUnreal::InitializeControllersAndRecorders() {
     // 初始化右手手指控制器（根据乐器类型）
     RightFingerControllers = GetRightFingerControllersForInstrumentType();
 
-    // 初始化手掌旋转控制器
-    HandRotationControllers.Empty();
-    HandRotationControllers.Add("left_hand_rotation_controller",
-                                "H_rotation_L");
-    HandRotationControllers.Add("right_hand_rotation_controller",
-                                "H_rotation_R");
-
     // 初始化左手记录器
     LeftHandPositionRecorders.Empty();
     for (int32 PosIdx = 0; PosIdx <= 4; PosIdx++) {
@@ -247,42 +214,17 @@ void AFretDanceUnreal::InitializeControllersAndRecorders() {
         }
     }
 
-    // 初始化右手记录器
+    // 初始化右手记录器（通过统一入口生成）
     RightHandPositionRecorders.Empty();
-    RightHandRotationRecorders.Empty();
-
-    // 右手位置记录器
-    TArray<FString> RightHandStates = {"0", "end", "3"};
-    TArray<TPair<FString, FString>> FingerMappings = {{"p", "p"}, {"tp", "tp"},
-                                                      {"i", "i"}, {"m", "m"},
-                                                      {"a", "a"}, {"ch", "ch"}};
-
-    for (const FString& State : RightHandStates) {
-        // 手掌位置记录器
-        RightHandPositionRecorders.Add(State + "_h", FFretDanceStringArray());
-        RightHandPositionRecorders[State + "_h"].Add(
-            FString::Printf(TEXT("Normal_P%s_H_R"), *State));
-
-        RightHandPositionRecorders.Add(State + "_hp", FFretDanceStringArray());
-        RightHandPositionRecorders[State + "_hp"].Add(
-            FString::Printf(TEXT("Normal_P%s_HP_R"), *State));
-
-        // 手指位置记录器（所有乐器类型都记录完整的手指）
-        for (const auto& FingerPair : FingerMappings) {
-            const FString& Key = FingerPair.Key;
-            const FString& Prefix = FingerPair.Value;
-
-            RightHandPositionRecorders.Add(State + "_" + Key,
-                                           FFretDanceStringArray());
-            RightHandPositionRecorders[State + "_" + Key].Add(
-                FString::Printf(TEXT("%s%s"), *Prefix, *State));
+    {
+        TArray<TPair<FString, FString>> RightHandEntries;
+        GenerateRightHandRecorderEntries(RightHandEntries);
+        for (const auto& Entry : RightHandEntries) {
+            FFretDanceStringArray Array;
+            Array.Add(Entry.Value);
+            RightHandPositionRecorders.Add(Entry.Key, Array);
         }
     }
-
-    // 右手旋转记录器
-    RightHandRotationRecorders.Add("high", "Normal_P3_H_rotation_R");
-    RightHandRotationRecorders.Add("end", "Normal_Pend_H_rotation_R");
-    RightHandRotationRecorders.Add("low", "Normal_P0_H_rotation_R");
 
     // 初始化指板位置记录器
     GuitarFretPositions.Empty();
@@ -376,13 +318,22 @@ FString AFretDanceUnreal::GetRightHandRecorderName(
     FString StateStr;
     switch (State) {
         case EFretDanceRightHandState::LOW:
-            StateStr = "0";
+            StateStr = "low";
             break;
         case EFretDanceRightHandState::END:
             StateStr = "end";
             break;
         case EFretDanceRightHandState::HIGH:
-            StateStr = "3";
+            StateStr = "high";
+            break;
+        case EFretDanceRightHandState::RELEASE:
+            StateStr = "release";
+            break;
+        case EFretDanceRightHandState::UP:
+            StateStr = "up";
+            break;
+        case EFretDanceRightHandState::DOWN:
+            StateStr = "down";
             break;
         default:
             return FString();
@@ -411,15 +362,11 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
 
     // 创建分类对象（按照 Python 版本的 JSON 结构）
     TMap<FString, TSharedPtr<FJsonObject>> CategoryObjects;
-    TArray<FString> CategoryNames = {TEXT("NORMAL_LEFT_HAND_POSITIONS"),
-                                     TEXT("OUTER_LEFT_HAND_POSITIONS"),
-                                     TEXT("INNER_LEFT_HAND_POSITIONS"),
-                                     TEXT("BARRE_LEFT_HAND_POSITIONS"),
-                                     TEXT("LEFT_FINGER_POSITIONS"),
-                                     TEXT("ROTATIONS"),
-                                     TEXT("RIGHT_HAND_POSITIONS"),
-                                     TEXT("RIGHT_HAND_LINES"),
-                                     TEXT("OTHER_SETTING")};
+    TArray<FString> CategoryNames = {
+        TEXT("NORMAL_LEFT_HAND_POSITIONS"), TEXT("OUTER_LEFT_HAND_POSITIONS"),
+        TEXT("INNER_LEFT_HAND_POSITIONS"),  TEXT("BARRE_LEFT_HAND_POSITIONS"),
+        TEXT("LEFT_FINGER_POSITIONS"),      TEXT("RIGHT_HAND_POSITIONS"),
+        TEXT("RIGHT_HAND_LINES"),           TEXT("OTHER_SETTING")};
 
     for (const FString& CategoryName : CategoryNames) {
         CategoryObjects.Add(CategoryName, MakeShareable(new FJsonObject));
@@ -473,15 +420,18 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
             TSharedPtr<FJsonObject> PositionObj =
                 MakeShareable(new FJsonObject);
 
-            // 导出左手控制器 - 只输出位置数组
+            // 导出左手控制器 - 输出复合对象 {position: [x,y,z], rotation:
+            // [w,x,y,z]}
             for (const auto& ControllerPair : LeftHandControllers) {
                 const FString& ControllerName = ControllerPair.Value;
                 FString RecorderKey =
                     GetLeftHandRecorderName(Position, State, ControllerName);
 
-                const FFretDanceRecorderTransform* Transform =
-                    RecorderTransforms.Find(RecorderKey);
-                if (Transform) {
+                if (const FFretDanceRecorderTransform* Transform =
+                        RecorderTransforms.Find(RecorderKey)) {
+                    TSharedPtr<FJsonObject> ControlObj =
+                        MakeShareable(new FJsonObject);
+
                     TArray<TSharedPtr<FJsonValue>> LocationArray;
                     LocationArray.Add(MakeShareable(
                         new FJsonValueNumber(Transform->Location.X)));
@@ -489,20 +439,36 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                         new FJsonValueNumber(Transform->Location.Y)));
                     LocationArray.Add(MakeShareable(
                         new FJsonValueNumber(Transform->Location.Z)));
-                    PositionObj->SetArrayField(*ControllerName, LocationArray);
+                    ControlObj->SetArrayField(TEXT("position"), LocationArray);
+
+                    TArray<TSharedPtr<FJsonValue>> RotationArray;
+                    RotationArray.Add(MakeShareable(
+                        new FJsonValueNumber(Transform->Rotation.W)));
+                    RotationArray.Add(MakeShareable(
+                        new FJsonValueNumber(Transform->Rotation.X)));
+                    RotationArray.Add(MakeShareable(
+                        new FJsonValueNumber(Transform->Rotation.Y)));
+                    RotationArray.Add(MakeShareable(
+                        new FJsonValueNumber(Transform->Rotation.Z)));
+                    ControlObj->SetArrayField(TEXT("rotation"), RotationArray);
+
+                    PositionObj->SetObjectField(*ControllerName, ControlObj);
                     TotalExported++;
                 }
             }
 
-            // 导出左手手指控制器 - 只输出位置数组
+            // 导出左手手指控制器 - 输出复合对象 {position: [x,y,z], rotation:
+            // [w,x,y,z]}
             for (const auto& FingerPair : LeftFingerControllers) {
                 const FString& ControllerName = FingerPair.Value;
                 FString RecorderKey =
                     GetLeftHandRecorderName(Position, State, ControllerName);
 
-                const FFretDanceRecorderTransform* Transform =
-                    RecorderTransforms.Find(RecorderKey);
-                if (Transform) {
+                if (const FFretDanceRecorderTransform* Transform =
+                        RecorderTransforms.Find(RecorderKey)) {
+                    TSharedPtr<FJsonObject> ControlObj =
+                        MakeShareable(new FJsonObject);
+
                     TArray<TSharedPtr<FJsonValue>> LocationArray;
                     LocationArray.Add(MakeShareable(
                         new FJsonValueNumber(Transform->Location.X)));
@@ -510,7 +476,15 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                         new FJsonValueNumber(Transform->Location.Y)));
                     LocationArray.Add(MakeShareable(
                         new FJsonValueNumber(Transform->Location.Z)));
-                    PositionObj->SetArrayField(*ControllerName, LocationArray);
+                    ControlObj->SetArrayField(TEXT("position"), LocationArray);
+                    ControlObj->SetArrayField(
+                        TEXT("rotation"),
+                        {MakeShareable(new FJsonValueNumber(1.0)),
+                         MakeShareable(new FJsonValueNumber(0.0)),
+                         MakeShareable(new FJsonValueNumber(0.0)),
+                         MakeShareable(new FJsonValueNumber(0.0))});
+
+                    PositionObj->SetObjectField(*ControllerName, ControlObj);
                     TotalExported++;
                 }
             }
@@ -543,146 +517,102 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // === 导出旋转（按照 Python 版本的结构） ===
-    TSharedPtr<FJsonObject> RotationsObj = CategoryObjects[TEXT("ROTATIONS")];
-
-    // === 导出左手旋转 - 使用 H_L 的旋转值 ===
-    {
-        TSharedPtr<FJsonObject> LeftRotationObj =
-            MakeShareable(new FJsonObject);
-
-        // 状态映射：内部枚举名 -> JSON 驼峰式
-        static const TArray<TPair<FString, FString>> LeftHandStateMap = {
-            {TEXT("NORMAL"), TEXT("Normal")},
-            {TEXT("OUTER"), TEXT("Outer")},
-            {TEXT("INNER"), TEXT("Inner")},
-            {TEXT("BARRE"), TEXT("Barre")}};
-
-        for (const auto& StatePair : LeftHandStates) {
-            const FString& StateName = StatePair.Key;
-            EFretDanceLeftHandState State = StatePair.Value;
-
-            // 查找对应的 JSON 名称
-            FString FormattedStateName = TEXT("Normal");  // 默认值
-            for (const auto& MapPair : LeftHandStateMap) {
-                if (MapPair.Key == StateName) {
-                    FormattedStateName = MapPair.Value;
-                    break;
-                }
-            }
-
-            TSharedPtr<FJsonObject> StateRotationObj =
-                MakeShareable(new FJsonObject);
-
-            for (int32 PosIdx = 0; PosIdx <= 4; PosIdx++) {
-                EFretDanceBasePosition Position =
-                    static_cast<EFretDanceBasePosition>(PosIdx);
-
-                if (!IsValidLeftHandCombination(Position, State)) {
-                    continue;
-                }
-
-                FString PositionStr = FString::Printf(TEXT("P%d"), PosIdx);
-                FString RecorderKey =
-                    GetLeftHandRecorderName(Position, State, TEXT("H_L"));
-
-                if (const FFretDanceRecorderTransform* Transform =
-                        RecorderTransforms.Find(RecorderKey)) {
-                    StateRotationObj->SetArrayField(
-                        *PositionStr,
-                        {MakeShareable(
-                             new FJsonValueNumber(Transform->Rotation.W)),
-                         MakeShareable(
-                             new FJsonValueNumber(Transform->Rotation.X)),
-                         MakeShareable(
-                             new FJsonValueNumber(Transform->Rotation.Y)),
-                         MakeShareable(
-                             new FJsonValueNumber(Transform->Rotation.Z))});
-                    TotalExported++;
-                }
-            }
-
-            if (StateRotationObj->Values.Num() > 0) {
-                LeftRotationObj->SetObjectField(*FormattedStateName,
-                                                StateRotationObj);
-            }
-        }
-
-        if (LeftRotationObj->Values.Num() > 0) {
-            RotationsObj->SetObjectField(TEXT("H_rotation_L"), LeftRotationObj);
-        }
-    }
-
-    // === 导出右手旋转 - 使用 H_R 的旋转值 ===
-    {
-        // 右手位置配置（low/end/high 对应 P0/Pend/P3）
-        static const TArray<TPair<FString, FString>> RightHandPositions = {
-            {TEXT("low"), TEXT("P0")},
-            {TEXT("end"), TEXT("Pend")},
-            {TEXT("high"), TEXT("P3")}};
-
-        TSharedPtr<FJsonObject> NormalRightRotationObj =
-            MakeShareable(new FJsonObject);
-
-        for (const auto& PosPair : RightHandPositions) {
-            const FString& StateKey = PosPair.Key;
-            const FString& PositionStr = PosPair.Value;
-            FString RecorderKey =
-                FString::Printf(TEXT("Normal_%s_H_R"), *PositionStr);
-
-            if (const FFretDanceRecorderTransform* Transform =
-                    RecorderTransforms.Find(RecorderKey)) {
-                NormalRightRotationObj->SetArrayField(
-                    *PositionStr,
-                    {MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
-                     MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
-                     MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
-                     MakeShareable(
-                         new FJsonValueNumber(Transform->Rotation.Z))});
-                TotalExported++;
-            }
-        }
-
-        if (NormalRightRotationObj->Values.Num() > 0) {
-            TSharedPtr<FJsonObject> RightRotationObj =
-                MakeShareable(new FJsonObject);
-            RightRotationObj->SetObjectField(TEXT("Normal"),
-                                             NormalRightRotationObj);
-            RotationsObj->SetObjectField(TEXT("H_rotation_R"),
-                                         RightRotationObj);
-        }
-    }
-
-    // === 导出右手位置 - 按照 Python 版本的完整结构 ===
+    // === 导出右手位置 - 输出复合对象 {position: [x,y,z], rotation: [w,x,y,z]}
+    // ===
     TSharedPtr<FJsonObject> RightHandPositionsObj =
         CategoryObjects[TEXT("RIGHT_HAND_POSITIONS")];
 
-    // 导出所有右手记录器（包括手掌和手指）
-    for (const auto& RecorderPair : RightHandPositionRecorders) {
-        const FString& RecorderKey = RecorderPair.Key;
-        const FFretDanceStringArray& RecorderArray = RecorderPair.Value;
+    // 直接枚举所有6个状态和所有手指，不依赖 RightHandPositionRecorders
+    // 这样即使热重载后记录器未重建，也能输出正确的新格式键名
+    TArray<FString> AllRightHandStates = {TEXT("low"),  TEXT("end"),
+                                          TEXT("high"), TEXT("release"),
+                                          TEXT("up"),   TEXT("down")};
+    TArray<FString> RightHandFingerKeys = {TEXT("p"), TEXT("tp"), TEXT("i"),
+                                           TEXT("m"), TEXT("a"),  TEXT("ch")};
 
-        for (int32 i = 0; i < RecorderArray.Num(); ++i) {
-            const FString& RecorderName = RecorderArray[i];
+    for (const FString& State : AllRightHandStates) {
+        bool bIsVibrato = (State == TEXT("release") || State == TEXT("up") ||
+                           State == TEXT("down"));
+        // 颤音三态只在启用摇杆时导出
+        if (bIsVibrato && !bUseVibratoBar) continue;
 
-            // ✅ 使用统一的键名映射函数
-            FString TransformKeyName =
-                MapRightHandPositionKeyName(RecorderName);
+        // ---- 手掌 H_R ----
+        FString HRName;
+        if (bIsVibrato) {
+            FString Capitalized = State.Left(1).ToUpper() + State.RightChop(1);
+            HRName = FString::Printf(TEXT("Vibrato_%s_H_R"), *Capitalized);
+        } else {
+            HRName = FString::Printf(TEXT("Normal_P%s_H_R"), *State);
+        }
+        if (const FFretDanceRecorderTransform* Transform =
+                RecorderTransforms.Find(HRName)) {
+            TSharedPtr<FJsonObject> ControlObj = MakeShareable(new FJsonObject);
+            TArray<TSharedPtr<FJsonValue>> LocArr = {
+                MakeShareable(new FJsonValueNumber(Transform->Location.X)),
+                MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
+                MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+            };
+            ControlObj->SetArrayField(TEXT("position"), LocArr);
+            TArray<TSharedPtr<FJsonValue>> RotArr = {
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+            };
+            ControlObj->SetArrayField(TEXT("rotation"), RotArr);
+            RightHandPositionsObj->SetObjectField(*HRName, ControlObj);
+            TotalExported++;
+        }
 
-            const FFretDanceRecorderTransform* Transform =
-                RecorderTransforms.Find(TransformKeyName);
-            if (Transform) {
-                // 只输出位置数组 - JSON 中使用原始名称
-                TArray<TSharedPtr<FJsonValue>> LocationArray;
-                LocationArray.Add(
-                    MakeShareable(new FJsonValueNumber(Transform->Location.X)));
-                LocationArray.Add(
-                    MakeShareable(new FJsonValueNumber(Transform->Location.Y)));
-                LocationArray.Add(
-                    MakeShareable(new FJsonValueNumber(Transform->Location.Z)));
-                RightHandPositionsObj->SetArrayField(
-                    *RecorderName,  // ✅ JSON 用原始名称
-                    LocationArray);
+        // ---- 手掌 HP_R ----
+        FString HPRName;
+        if (bIsVibrato) {
+            FString Capitalized = State.Left(1).ToUpper() + State.RightChop(1);
+            HPRName = FString::Printf(TEXT("Vibrato_%s_HP_R"), *Capitalized);
+        } else {
+            HPRName = FString::Printf(TEXT("Normal_P%s_HP_R"), *State);
+        }
+        if (const FFretDanceRecorderTransform* Transform =
+                RecorderTransforms.Find(HPRName)) {
+            TSharedPtr<FJsonObject> ControlObj = MakeShareable(new FJsonObject);
+            TArray<TSharedPtr<FJsonValue>> LocArr = {
+                MakeShareable(new FJsonValueNumber(Transform->Location.X)),
+                MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
+                MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+            };
+            ControlObj->SetArrayField(TEXT("position"), LocArr);
+            TArray<TSharedPtr<FJsonValue>> RotArr = {
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
+                MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+            };
+            ControlObj->SetArrayField(TEXT("rotation"), RotArr);
+            RightHandPositionsObj->SetObjectField(*HPRName, ControlObj);
+            TotalExported++;
+        }
+
+        // ---- 手指控制器 ----
+        for (const FString& Finger : RightHandFingerKeys) {
+            FString FingerName = Finger + State;
+            if (const FFretDanceRecorderTransform* Transform =
+                    RecorderTransforms.Find(FingerName)) {
+                TSharedPtr<FJsonObject> ControlObj =
+                    MakeShareable(new FJsonObject);
+                TArray<TSharedPtr<FJsonValue>> LocArr = {
+                    MakeShareable(new FJsonValueNumber(Transform->Location.X)),
+                    MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
+                    MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+                };
+                ControlObj->SetArrayField(TEXT("position"), LocArr);
+                TArray<TSharedPtr<FJsonValue>> RotArr = {
+                    MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
+                    MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
+                    MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
+                    MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+                };
+                ControlObj->SetArrayField(TEXT("rotation"), RotArr);
+                RightHandPositionsObj->SetObjectField(*FingerName, ControlObj);
                 TotalExported++;
             }
         }
@@ -692,6 +622,7 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
     TSharedPtr<FJsonObject> OtherSettingObj =
         CategoryObjects[TEXT("OTHER_SETTING")];
     OtherSettingObj->SetBoolField(TEXT("is_unreal"), true);
+    OtherSettingObj->SetBoolField(TEXT("use_vibrato_bar"), bUseVibratoBar);
 
     // 将所有分类添加到主 JSON 对象
     for (const auto& CategoryPair : CategoryObjects) {
@@ -791,7 +722,7 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
             TSharedPtr<FJsonObject> PositionObj =
                 StateCategoryObj->GetObjectField(*PositionStr);
 
-            // 导入左手控制器 - 从数组格式读取位置
+            // 导入左手控制器 - 从复合对象读取位置和旋转
             for (const auto& ControllerPair : LeftHandControllers) {
                 const FString& ControllerName = ControllerPair.Value;
                 if (!PositionObj->HasField(*ControllerName)) {
@@ -801,29 +732,45 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
                 FString RecorderKey =
                     GetLeftHandRecorderName(Position, State, ControllerName);
 
-                // 新格式：直接读取 [x, y, z] 数组
-                TArray<TSharedPtr<FJsonValue>> LocationArray =
-                    PositionObj->GetArrayField(*ControllerName);
+                TSharedPtr<FJsonObject> ControlObj =
+                    PositionObj->GetObjectField(*ControllerName);
 
-                if (LocationArray.Num() == 3) {
+                if (ControlObj.IsValid()) {
                     FFretDanceRecorderTransform Transform;
                     Transform.Rotation = FQuat::Identity;
-                    FFretDanceHelpers::ReadLocationFromArray(
-                        LocationArray, Transform.Location);
+
+                    // 读取位置
+                    if (ControlObj->HasField(TEXT("position"))) {
+                        TArray<TSharedPtr<FJsonValue>> LocArray =
+                            ControlObj->GetArrayField(TEXT("position"));
+                        FFretDanceHelpers::ReadLocationFromArray(
+                            LocArray, Transform.Location);
+                    }
+
+                    // 读取旋转
+                    if (ControlObj->HasField(TEXT("rotation"))) {
+                        TArray<TSharedPtr<FJsonValue>> RotArray =
+                            ControlObj->GetArrayField(TEXT("rotation"));
+                        FFretDanceHelpers::ReadRotationFromArray(
+                            RotArray, Transform.Rotation);
+                    }
+
                     RecorderTransforms.Add(RecorderKey, Transform);
                     ImportedCount++;
 
                     UE_LOG(LogTemp, Log,
-                           TEXT("  [L-Hand] Read '%s' from %s.%s → Write to "
-                                "RecorderTransforms['%s'] | Loc: (%.3f, %.3f, "
-                                "%.3f)"),
+                           TEXT("  [L-Hand] Read '%s' from %s.%s → "
+                                "RecorderTransforms['%s'] | Loc: (%.3f, "
+                                "%.3f, %.3f) Rot: (%.3f, %.3f, %.3f, %.3f)"),
                            *ControllerName, *CategoryName, *PositionStr,
                            *RecorderKey, Transform.Location.X,
-                           Transform.Location.Y, Transform.Location.Z);
+                           Transform.Location.Y, Transform.Location.Z,
+                           Transform.Rotation.W, Transform.Rotation.X,
+                           Transform.Rotation.Y, Transform.Rotation.Z);
                 }
             }
 
-            // 导入左手手指控制器 - 从数组格式读取位置
+            // 导入左手手指控制器 - 从复合对象读取位置
             for (const auto& FingerPair : LeftFingerControllers) {
                 const FString& ControllerName = FingerPair.Value;
                 if (!PositionObj->HasField(*ControllerName)) {
@@ -833,26 +780,47 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
                 FString RecorderKey =
                     GetLeftHandRecorderName(Position, State, ControllerName);
 
-                // 新格式：直接读取 [x, y, z] 数组
-                TArray<TSharedPtr<FJsonValue>> LocationArray =
-                    PositionObj->GetArrayField(*ControllerName);
+                TSharedPtr<FJsonObject> ControlObj =
+                    PositionObj->GetObjectField(*ControllerName);
 
-                if (LocationArray.Num() == 3) {
+                if (ControlObj.IsValid()) {
                     FFretDanceRecorderTransform Transform;
                     Transform.Rotation = FQuat::Identity;
-                    FFretDanceHelpers::ReadLocationFromArray(
-                        LocationArray, Transform.Location);
+
+                    if (ControlObj->HasField(TEXT("position"))) {
+                        TArray<TSharedPtr<FJsonValue>> LocArray =
+                            ControlObj->GetArrayField(TEXT("position"));
+                        FFretDanceHelpers::ReadLocationFromArray(
+                            LocArray, Transform.Location);
+                    }
+
                     RecorderTransforms.Add(RecorderKey, Transform);
                     ImportedCount++;
 
                     UE_LOG(LogTemp, Log,
-                           TEXT("  [L-Finger] Read '%s' from %s.%s → Write to "
-                                "RecorderTransforms['%s'] | Loc: (%.3f, %.3f, "
-                                "%.3f)"),
+                           TEXT("  [L-Finger] Read '%s' from %s.%s → "
+                                "RecorderTransforms['%s'] | Loc: (%.3f, "
+                                "%.3f, %.3f)"),
                            *ControllerName, *CategoryName, *PositionStr,
                            *RecorderKey, Transform.Location.X,
                            Transform.Location.Y, Transform.Location.Z);
                 }
+            }
+        }
+    }
+
+    // === 提前读取 use_vibrato_bar，确保右手记录器包含颤音摇杆状态 ===
+    // 必须在 RIGHT_HAND_POSITIONS 导入之前完成，否则 vibrato 数据会被跳过
+    if (JsonObject->HasField(TEXT("OTHER_SETTING"))) {
+        TSharedPtr<FJsonObject> OtherSettingEarly =
+            JsonObject->GetObjectField(TEXT("OTHER_SETTING"));
+        if (OtherSettingEarly->HasField(TEXT("use_vibrato_bar"))) {
+            bool bImportedVibrato =
+                OtherSettingEarly->GetBoolField(TEXT("use_vibrato_bar"));
+            if (bImportedVibrato && !bUseVibratoBar) {
+                bUseVibratoBar = true;
+                UE_LOG(LogTemp, Warning,
+                       TEXT("  [Import] Early set use_vibrato_bar = true"));
             }
         }
     }
@@ -862,42 +830,43 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
         TSharedPtr<FJsonObject> RightHandPositionsObj =
             JsonObject->GetObjectField(TEXT("RIGHT_HAND_POSITIONS"));
 
-        for (auto& RecorderPair : RightHandPositionRecorders) {
-            const FString& RecorderKey = RecorderPair.Key;
-            FFretDanceStringArray& RecorderArray = RecorderPair.Value;
+        // 直接遍历 JSON 中的所有字段名，不依赖 RightHandPositionRecorders
+        // 这样无论 JSON 中的键名是旧格式还是新格式，都能正确导入
+        for (const auto& JsonEntry : RightHandPositionsObj->Values) {
+            const FString& JsonKeyName = JsonEntry.Key;
+            TSharedPtr<FJsonObject> ControlObj =
+                RightHandPositionsObj->GetObjectField(*JsonKeyName);
 
-            for (int32 i = 0; i < RecorderArray.Num(); ++i) {
-                const FString& RecorderName = RecorderArray[i];
+            if (ControlObj.IsValid()) {
+                FFretDanceRecorderTransform Transform;
+                Transform.Rotation = FQuat::Identity;
 
-                // ✅ JSON 中使用原始名称（p0, p3, pend），直接读取
-                if (!RightHandPositionsObj->HasField(*RecorderName)) {
-                    continue;
-                }
-
-                TArray<TSharedPtr<FJsonValue>> LocationArray =
-                    RightHandPositionsObj->GetArrayField(*RecorderName);
-
-                if (LocationArray.Num() == 3) {
-                    FFretDanceRecorderTransform Transform;
-                    Transform.Rotation = FQuat::Identity;
+                if (ControlObj->HasField(TEXT("position"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        ControlObj->GetArrayField(TEXT("position"));
                     FFretDanceHelpers::ReadLocationFromArray(
-                        LocationArray, Transform.Location);
-
-                    // ✅ 使用统一的键名映射函数
-                    FString TransformKeyName =
-                        MapRightHandPositionKeyName(RecorderName);
-
-                    RecorderTransforms.Add(TransformKeyName, Transform);
-                    ImportedCount++;
-
-                    UE_LOG(
-                        LogTemp, Log,
-                        TEXT("  [R-Hand] Read '%s' from RIGHT_HAND_POSITIONS → "
-                             "Write to RecorderTransforms['%s'] | Loc: (%.3f, "
-                             "%.3f, %.3f)"),
-                        *RecorderName, *TransformKeyName, Transform.Location.X,
-                        Transform.Location.Y, Transform.Location.Z);
+                        LocArray, Transform.Location);
                 }
+
+                if (ControlObj->HasField(TEXT("rotation"))) {
+                    TArray<TSharedPtr<FJsonValue>> RotArray =
+                        ControlObj->GetArrayField(TEXT("rotation"));
+                    FFretDanceHelpers::ReadRotationFromArray(
+                        RotArray, Transform.Rotation);
+                }
+
+                // 直接使用 JSON 中的键名存储，与内部键名统一
+                RecorderTransforms.Add(JsonKeyName, Transform);
+                ImportedCount++;
+
+                UE_LOG(LogTemp, Log,
+                       TEXT("  [R-Hand] Read '%s' from RIGHT_HAND_POSITIONS → "
+                            "Write to RecorderTransforms['%s'] | Loc: (%.3f, "
+                            "%.3f, %.3f) Rot: (%.3f, %.3f, %.3f, %.3f)"),
+                       *JsonKeyName, *JsonKeyName, Transform.Location.X,
+                       Transform.Location.Y, Transform.Location.Z,
+                       Transform.Rotation.W, Transform.Rotation.X,
+                       Transform.Rotation.Y, Transform.Rotation.Z);
             }
         }
     }
@@ -937,179 +906,17 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // === 导入旋转 ===
-    if (JsonObject->HasField(TEXT("ROTATIONS"))) {
-        TSharedPtr<FJsonObject> RotationsObj =
-            JsonObject->GetObjectField(TEXT("ROTATIONS"));
+    // === 导入 OTHER_SETTING ===
+    if (JsonObject->HasField(TEXT("OTHER_SETTING"))) {
+        TSharedPtr<FJsonObject> OtherSettingObj =
+            JsonObject->GetObjectField(TEXT("OTHER_SETTING"));
 
-        // 导入左手旋转（H_rotation_L）
-        if (RotationsObj->HasField(TEXT("H_rotation_L"))) {
-            TSharedPtr<FJsonObject> LeftRotationObj =
-                RotationsObj->GetObjectField(TEXT("H_rotation_L"));
-
-            // 关键修正：JSON
-            // 中使用驼峰式（Normal/Outer/Inner/Barre），需要转换为全大写
-            TArray<TPair<FString, FString>> JsonStateNames;
-            JsonStateNames.Add(
-                TPair<FString, FString>(TEXT("Normal"), TEXT("NORMAL")));
-            JsonStateNames.Add(
-                TPair<FString, FString>(TEXT("Outer"), TEXT("OUTER")));
-            JsonStateNames.Add(
-                TPair<FString, FString>(TEXT("Inner"), TEXT("INNER")));
-            JsonStateNames.Add(
-                TPair<FString, FString>(TEXT("Barre"), TEXT("BARRE")));
-
-            for (const auto& StateNamePair : JsonStateNames) {
-                const FString& JsonStateName = StateNamePair.Key;    // "Normal"
-                const FString& CodeStateName = StateNamePair.Value;  // "NORMAL"
-
-                EFretDanceLeftHandState State;
-                if (CodeStateName == TEXT("NORMAL"))
-                    State = EFretDanceLeftHandState::NORMAL;
-                else if (CodeStateName == TEXT("OUTER"))
-                    State = EFretDanceLeftHandState::OUTER;
-                else if (CodeStateName == TEXT("INNER"))
-                    State = EFretDanceLeftHandState::INNER;
-                else if (CodeStateName == TEXT("BARRE"))
-                    State = EFretDanceLeftHandState::BARRE;
-                else
-                    continue;
-
-                if (!LeftRotationObj->HasField(*JsonStateName)) {
-                    continue;
-                }
-
-                TSharedPtr<FJsonObject> StateRotationObj =
-                    LeftRotationObj->GetObjectField(*JsonStateName);
-
-                for (int32 PosIdx = 0; PosIdx <= 4; PosIdx++) {
-                    EFretDanceBasePosition Position =
-                        static_cast<EFretDanceBasePosition>(PosIdx);
-
-                    if (!IsValidLeftHandCombination(Position, State)) {
-                        continue;
-                    }
-
-                    FString PositionStr = FString::Printf(TEXT("P%d"), PosIdx);
-                    if (!StateRotationObj->HasField(*PositionStr)) {
-                        continue;
-                    }
-
-                    TArray<TSharedPtr<FJsonValue>> RotationArray =
-                        StateRotationObj->GetArrayField(*PositionStr);
-
-                    if (RotationArray.Num() == 4) {
-                        // 关键：将 H_rotation_L 的旋转值应用到 H_L 上
-                        FString RealRecorderName = GetLeftHandRecorderName(
-                            Position, State, TEXT("H_L"));
-
-                        FFretDanceRecorderTransform* ExistingTransform =
-                            RecorderTransforms.Find(RealRecorderName);
-
-                        FFretDanceRecorderTransform Transform;
-                        if (ExistingTransform) {
-                            Transform = *ExistingTransform;
-                        } else {
-                            Transform.Location = FVector::ZeroVector;
-                        }
-
-                        FFretDanceHelpers::ReadRotationFromArray(
-                            RotationArray, Transform.Rotation);
-
-                        RecorderTransforms.Add(RealRecorderName, Transform);
-                        ImportedCount++;
-
-                        UE_LOG(LogTemp, Log,
-                               TEXT("  [L-Rotation] Read 'H_rotation_L' from "
-                                    "ROTATIONS.%s.P%d → Write to "
-                                    "RecorderTransforms['%s'] | Rot: (%.3f, "
-                                    "%.3f, %.3f, %.3f)"),
-                               *JsonStateName, PosIdx, *RealRecorderName,
-                               Transform.Rotation.W, Transform.Rotation.X,
-                               Transform.Rotation.Y, Transform.Rotation.Z);
-                    }
-                }
-            }
-        }
-
-        // 导入右手旋转（H_rotation_R）- 将旋转值应用到 H_R
-        if (RotationsObj->HasField(TEXT("H_rotation_R"))) {
-            TSharedPtr<FJsonObject> RightRotationObj =
-                RotationsObj->GetObjectField(TEXT("H_rotation_R"));
-
-            if (RightRotationObj->HasField(TEXT("Normal"))) {
-                TSharedPtr<FJsonObject> NormalRotationObj =
-                    RightRotationObj->GetObjectField(TEXT("Normal"));
-
-                // 右手旋转映射（P0/Pend/P3）
-                // ✅ 修正：JSON 字段名 (P0/Pend/P3) → RecorderTransforms 键名
-                // (Normal_Px_H_R) 注意：H_rotation_R
-                // 是虚拟记录器，旋转值应该与位置值合并到同一个记录器
-                static const TArray<TPair<FString, FString>>
-                    RightHandRotationMapping = {
-                        {TEXT("P0"),
-                         TEXT("Normal_P0_H_R")},  // JSON "P0" → Recorder
-                                                  // "Normal_P0_H_R"
-                        {TEXT("Pend"),
-                         TEXT("Normal_Pend_H_R")},  // JSON "Pend" → Recorder
-                                                    // "Normal_Pend_H_R"
-                        {TEXT("P3"),
-                         TEXT("Normal_P3_H_R")}  // JSON "P3" → Recorder
-                                                 // "Normal_P3_H_R"
-                    };
-
-                for (const auto& PosPair : RightHandRotationMapping) {
-                    const FString& PositionStr =
-                        PosPair.Key;  // "P0" (JSON 字段名)
-                    const FString& RecorderName =
-                        PosPair.Value;  // "Normal_P0_H_R" (RecorderTransforms
-                                        // 键名，与右手位置导入一致)
-
-                    if (NormalRotationObj->HasField(*PositionStr)) {
-                        TArray<TSharedPtr<FJsonValue>> RotationArray =
-                            NormalRotationObj->GetArrayField(*PositionStr);
-
-                        if (RotationArray.Num() == 4) {
-                            FFretDanceRecorderTransform* ExistingTransform =
-                                RecorderTransforms.Find(RecorderName);
-
-                            if (ExistingTransform) {
-                                // ✅ 关键：已有位置数据，现在添加旋转数据
-                                FFretDanceHelpers::ReadRotationFromArray(
-                                    RotationArray, ExistingTransform->Rotation);
-                                UE_LOG(
-                                    LogTemp, Log,
-                                    TEXT("  [R-Rotation] Read 'H_rotation_R' "
-                                         "from ROTATIONS.Normal.%s → Merge "
-                                         "into RecorderTransforms['%s'] | Rot: "
-                                         "(%.3f, %.3f, %.3f, %.3f)"),
-                                    *PositionStr, *RecorderName,
-                                    ExistingTransform->Rotation.W,
-                                    ExistingTransform->Rotation.X,
-                                    ExistingTransform->Rotation.Y,
-                                    ExistingTransform->Rotation.Z);
-                            } else {
-                                // 没有位置数据，创建新的变换（只有旋转）
-                                FFretDanceRecorderTransform Transform;
-                                Transform.Location = FVector::ZeroVector;
-                                FFretDanceHelpers::ReadRotationFromArray(
-                                    RotationArray, Transform.Rotation);
-                                RecorderTransforms.Add(RecorderName, Transform);
-                                ImportedCount++;
-                                UE_LOG(
-                                    LogTemp, Log,
-                                    TEXT("  [R-Rotation] Read 'H_rotation_R' "
-                                         "from ROTATIONS.Normal.%s → Write to "
-                                         "RecorderTransforms['%s'] | Rot: "
-                                         "(%.3f, %.3f, %.3f, %.3f)"),
-                                    *PositionStr, *RecorderName,
-                                    Transform.Rotation.W, Transform.Rotation.X,
-                                    Transform.Rotation.Y, Transform.Rotation.Z);
-                            }
-                        }
-                    }
-                }
-            }
+        if (OtherSettingObj->HasField(TEXT("use_vibrato_bar"))) {
+            bUseVibratoBar =
+                OtherSettingObj->GetBoolField(TEXT("use_vibrato_bar"));
+            UE_LOG(LogTemp, Warning,
+                   TEXT("  [OtherSetting] Read 'use_vibrato_bar' = %s"),
+                   bUseVibratoBar ? TEXT("true") : TEXT("false"));
         }
     }
 
@@ -1139,6 +946,11 @@ void AFretDanceUnreal::SetInstrumentType(EFretDanceInstrumentType NewType) {
 
     // 更新乐器类型
     InstrumentType = NewType;
+
+    // 如果切换到非电吉他，自动关闭颤音摇杆
+    if (NewType != EFretDanceInstrumentType::ELECTRIC_GUITAR) {
+        bUseVibratoBar = false;
+    }
 
     // 重新初始化右手手指控制器
     RightFingerControllers = GetRightFingerControllersForInstrumentType();
@@ -1217,10 +1029,12 @@ UControlRig* AFretDanceUnreal::GetCachedControlRig(FName ComponentName) {
                *Actor->GetName(), *RootControlName);
 
         // 触发注册
-        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence, RootControlName);
+        CacheSubsystem->TriggerRegistrationIfNeeded(Actor, LevelSequence,
+                                                    RootControlName);
 
         // 再次查询
-        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence, RootControlName);
+        ControlRig = CacheSubsystem->GetControlRig(Actor, LevelSequence,
+                                                   RootControlName);
 
         if (!ControlRig) {
             UE_LOG(LogTemp, Error,
@@ -1437,17 +1251,9 @@ void AFretDanceUnreal::InitializeRecorderTransforms() {
     // 初始化右手位置记录器
     for (const auto& Pair : RightHandPositionRecorders) {
         for (int32 i = 0; i < Pair.Value.Num(); ++i) {
-            // ✅ 使用统一的键名映射函数，确保与Save/Load一致
-            FString RecorderKeyName = MapRightHandPositionKeyName(Pair.Value[i]);
+            // JSON 键名与内部键名已统一，直接使用
+            FString RecorderKeyName = Pair.Value[i];
             RecorderTransforms.Add(RecorderKeyName, DefaultTransform);
-            KeyCount++;
-        }
-    }
-
-    // 初始化右手旋转记录器
-    for (const auto& Pair : RightHandRotationRecorders) {
-        for (int32 i = 0; i < RightHandRotationRecorders.Num(); ++i) {
-            RecorderTransforms.Add(Pair.Value, DefaultTransform);
             KeyCount++;
         }
     }
@@ -1462,7 +1268,7 @@ void AFretDanceUnreal::InitializeRecorderTransforms() {
         }
     }
 
-        // 初始化吉他品格位置记录器
+    // 初始化吉他品格位置记录器
     for (const auto& FretPair : GuitarFretPositions) {
         RecorderTransforms.Add(FretPair.Value, DefaultTransform);
         KeyCount++;
@@ -1472,6 +1278,161 @@ void AFretDanceUnreal::InitializeRecorderTransforms() {
            TEXT("Initialized %d recorder keys in RecorderTransforms map from "
                 "existing lists"),
            KeyCount);
+}
+
+// ============================================================================
+// 右手记录器条目生成（单点定义拼接逻辑）
+// ============================================================================
+void AFretDanceUnreal::GenerateRightHandRecorderEntries(
+    TArray<TPair<FString, FString>>& OutEntries) const {
+    OutEntries.Empty();
+
+    TArray<FString> RightHandStates = {TEXT("low"), TEXT("end"), TEXT("high")};
+    TArray<TPair<FString, FString>> FingerMappings = {
+        {TEXT("p"), TEXT("p")}, {TEXT("tp"), TEXT("tp")},
+        {TEXT("i"), TEXT("i")}, {TEXT("m"), TEXT("m")},
+        {TEXT("a"), TEXT("a")}, {TEXT("ch"), TEXT("ch")}};
+
+    for (const FString& State : RightHandStates) {
+        OutEntries.Add({State + TEXT("_h"),
+                        FString::Printf(TEXT("Normal_P%s_H_R"), *State)});
+        OutEntries.Add({State + TEXT("_hp"),
+                        FString::Printf(TEXT("Normal_P%s_HP_R"), *State)});
+        for (const auto& FingerPair : FingerMappings) {
+            OutEntries.Add(
+                {State + TEXT("_") + FingerPair.Key,
+                 FString::Printf(TEXT("%s%s"), *FingerPair.Value, *State)});
+        }
+    }
+
+    if (bUseVibratoBar) {
+        TArray<FString> VibratoStates = {TEXT("release"), TEXT("up"),
+                                         TEXT("down")};
+        for (const FString& State : VibratoStates) {
+            FString Capitalized = State.Left(1).ToUpper() + State.RightChop(1);
+            OutEntries.Add(
+                {State + TEXT("_h"),
+                 FString::Printf(TEXT("Vibrato_%s_H_R"), *Capitalized)});
+            OutEntries.Add(
+                {State + TEXT("_hp"),
+                 FString::Printf(TEXT("Vibrato_%s_HP_R"), *Capitalized)});
+            for (const auto& FingerPair : FingerMappings) {
+                OutEntries.Add(
+                    {State + TEXT("_") + FingerPair.Key,
+                     FString::Printf(TEXT("%s%s"), *FingerPair.Value, *State)});
+            }
+        }
+    }
+}
+
+void AFretDanceUnreal::UpdateRecorderKeys() {
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== UpdateRecorderKeys Started =========="));
+
+    int32 AddedCount = 0;
+    int32 RemovedCount = 0;
+
+    // ── 左手：根据当前逻辑生成期望的键名集合 ──
+    TSet<FString> ExpectedLeftKeys;
+    for (int32 PosIdx = 0; PosIdx <= 4; PosIdx++) {
+        EFretDanceBasePosition Position =
+            static_cast<EFretDanceBasePosition>(PosIdx);
+        for (int32 StateIdx = 0; StateIdx <= 3; StateIdx++) {
+            EFretDanceLeftHandState State =
+                static_cast<EFretDanceLeftHandState>(StateIdx);
+            if (!IsValidLeftHandCombination(Position, State)) {
+                continue;
+            }
+            for (const auto& ControllerPair : LeftHandControllers) {
+                FString Key = GetLeftHandRecorderName(Position, State,
+                                                      ControllerPair.Value);
+                if (!Key.IsEmpty()) {
+                    ExpectedLeftKeys.Add(Key);
+                }
+            }
+            for (const auto& FingerPair : LeftFingerControllers) {
+                FString Key =
+                    GetLeftHandRecorderName(Position, State, FingerPair.Value);
+                if (!Key.IsEmpty()) {
+                    ExpectedLeftKeys.Add(Key);
+                }
+            }
+        }
+    }
+
+    // 对左手做 diff：删除多余，增加缺少
+    TArray<FString> LeftKeysToRemove;
+    for (const auto& Pair : LeftHandPositionRecorders) {
+        if (!ExpectedLeftKeys.Contains(Pair.Key)) {
+            LeftKeysToRemove.Add(Pair.Key);
+        }
+    }
+    for (const FString& Key : LeftKeysToRemove) {
+        LeftHandPositionRecorders.Remove(Key);
+        RemovedCount++;
+        UE_LOG(LogTemp, Log, TEXT("  [L] REMOVED: %s"), *Key);
+    }
+    for (const FString& Key : ExpectedLeftKeys) {
+        if (!LeftHandPositionRecorders.Contains(Key)) {
+            FFretDanceStringArray NewArray;
+            NewArray.Add(Key);
+            LeftHandPositionRecorders.Add(Key, NewArray);
+            AddedCount++;
+            UE_LOG(LogTemp, Log, TEXT("  [L] ADDED: %s"), *Key);
+        }
+    }
+
+    // ── 右手：通过统一入口生成期望的键值对 ──
+    TArray<TPair<FString, FString>> ExpectedRightEntries;
+    GenerateRightHandRecorderEntries(ExpectedRightEntries);
+
+    // 对右手做 diff
+    TSet<FString> ExpectedRightKeys;
+    for (const auto& Entry : ExpectedRightEntries) {
+        ExpectedRightKeys.Add(Entry.Key);
+    }
+
+    // 删除不在期望中的条目
+    TArray<FString> RightKeysToRemove;
+    for (const auto& Pair : RightHandPositionRecorders) {
+        if (!ExpectedRightKeys.Contains(Pair.Key)) {
+            RightKeysToRemove.Add(Pair.Key);
+        }
+    }
+    for (const FString& Key : RightKeysToRemove) {
+        RightHandPositionRecorders.Remove(Key);
+        RemovedCount++;
+        UE_LOG(LogTemp, Log, TEXT("  [R] REMOVED: %s"), *Key);
+    }
+
+    // 增加缺少的条目，或更新值不匹配的条目
+    for (const auto& Entry : ExpectedRightEntries) {
+        if (!RightHandPositionRecorders.Contains(Entry.Key)) {
+            FFretDanceStringArray NewArray;
+            NewArray.Add(Entry.Value);
+            RightHandPositionRecorders.Add(Entry.Key, NewArray);
+            AddedCount++;
+            UE_LOG(LogTemp, Log, TEXT("  [R] ADDED: %s → %s"), *Entry.Key,
+                   *Entry.Value);
+        } else {
+            const FFretDanceStringArray& ExistingArray =
+                RightHandPositionRecorders[Entry.Key];
+            if (ExistingArray.Num() > 0 && ExistingArray[0] != Entry.Value) {
+                RightHandPositionRecorders[Entry.Key].Strings[0] = Entry.Value;
+                AddedCount++;
+                UE_LOG(LogTemp, Log, TEXT("  [R] UPDATED: %s → %s (was %s)"),
+                       *Entry.Key, *Entry.Value, *ExistingArray[0]);
+            }
+        }
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("UpdateRecorderKeys: Added=%d, Removed=%d, LeftRecorders=%d, "
+                "RightRecorders=%d"),
+           AddedCount, RemovedCount, LeftHandPositionRecorders.Num(),
+           RightHandPositionRecorders.Num());
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== UpdateRecorderKeys Completed =========="));
 }
 
 TMap<FString, FString> AFretDanceUnreal::GetLeftHandControllerToRecorderMapping(
@@ -1503,18 +1464,6 @@ TMap<FString, FString> AFretDanceUnreal::GetLeftHandControllerToRecorderMapping(
         }
     }
 
-    // 为左手旋转控制器构造 recorder 名称
-    for (const auto& RotationPair : HandRotationControllers) {
-        const FString& ControllerName = RotationPair.Value;
-        if (ControllerName.EndsWith(TEXT("_L"))) {  // 只处理左手
-            FString RecorderName =
-                GetLeftHandRecorderName(Position, State, ControllerName);
-            if (!RecorderName.IsEmpty()) {
-                Mapping.Add(ControllerName, RecorderName);
-            }
-        }
-    }
-
     return Mapping;
 }
 
@@ -1543,72 +1492,45 @@ AFretDanceUnreal::GetRightHandControllerToRecorderMapping(
     FString StateStr;
     switch (State) {
         case EFretDanceRightHandState::LOW:
-            StateStr = "0";
+            StateStr = "low";
             break;
         case EFretDanceRightHandState::END:
             StateStr = "end";
             break;
         case EFretDanceRightHandState::HIGH:
-            StateStr = "3";
+            StateStr = "high";
+            break;
+        case EFretDanceRightHandState::RELEASE:
+            StateStr = "release";
+            break;
+        case EFretDanceRightHandState::UP:
+            StateStr = "up";
+            break;
+        case EFretDanceRightHandState::DOWN:
+            StateStr = "down";
             break;
         default:
             return Mapping;  // 返回空映射
     }
 
-    // 西班牙手指缩写到英文控制器的映射
-    TMap<FString, FString> FingerMapping;
-    FingerMapping.Add("p", "T_R");    // 拇指
-    FingerMapping.Add("tp", "TP_R");  // 拇指 ik pivot
-    FingerMapping.Add("i", "I_R");    // 食指
-    FingerMapping.Add("m", "M_R");    // 中指
-    FingerMapping.Add("a", "R_R");    // 无名指
-    FingerMapping.Add("ch", "P_R");   // 小指
+    // 从 RightHandPositionRecorders 中查找，不再自行拼接
+    TMap<FString, FString> ControllerToKeySuffix;
+    ControllerToKeySuffix.Add("H_R", "_h");
+    ControllerToKeySuffix.Add("HP_R", "_hp");
+    ControllerToKeySuffix.Add("T_R", "_p");
+    ControllerToKeySuffix.Add("TP_R", "_tp");
+    ControllerToKeySuffix.Add("I_R", "_i");
+    ControllerToKeySuffix.Add("M_R", "_m");
+    ControllerToKeySuffix.Add("R_R", "_a");
+    ControllerToKeySuffix.Add("P_R", "_ch");
 
-    // 根据乐器类型确定要处理的手指
-    TArray<FString> CurrentFingers;
-    if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
-        CurrentFingers.Add("p");  // 电吉他只有大拇指
-    } else {
-        CurrentFingers.Append({"p", "i", "m", "a", "ch", "tp"});
-    }
-
-    // 为每个手指控制器构造 recorder 名称
-    for (const auto& FingerPair : FingerMapping) {
-        if (CurrentFingers.Contains(FingerPair.Key)) {
-            FString RecorderName =
-                GetRightHandRecorderName(State, FingerPair.Key);
-            Mapping.Add(FingerPair.Value, RecorderName);
-        }
-    }
-
-    // 为手掌控制器构造 recorder 名称 - 需要从 RightHandPositionRecorders
-    // 查找实际的 recorder 名称
-    const FFretDanceStringArray* ActualHRecorder =
-        RightHandPositionRecorders.Find(StateStr + "_h");
-    if (ActualHRecorder && ActualHRecorder->Num() > 0) {
-        Mapping.Add(
-            "H_R", (*ActualHRecorder)[0]);  // 使用 "Normal_P0_H_R" 而不是 "0_h"
-    }
-
-    const FFretDanceStringArray* ActualHPRecorder =
-        RightHandPositionRecorders.Find(StateStr + "_hp");
-    if (ActualHPRecorder && ActualHPRecorder->Num() > 0) {
-        Mapping.Add(
-            "HP_R",
-            (*ActualHPRecorder)[0]);  // 使用 "Normal_P0_HP_R" 而不是 "0_hp"
-    }
-
-    // 为右手旋转控制器构造 recorder 名称（只有 H_rotation_R）
-    TMap<FString, FString> RotationMapping;
-    RotationMapping.Add("0", "low");
-    RotationMapping.Add("end", "end");
-    RotationMapping.Add("3", "high");
-
-    if (RotationMapping.Contains(StateStr)) {
-        FString RotationRecorderKey = RotationMapping[StateStr];
-        if (RightHandRotationRecorders.Contains(RotationRecorderKey)) {
-            Mapping.Add("H_rotation_R",
-                        RightHandRotationRecorders[RotationRecorderKey]);
+    for (const auto& Pair : ControllerToKeySuffix) {
+        FString MapKey = StateStr + Pair.Value;
+        if (const FFretDanceStringArray* RecorderArray =
+                RightHandPositionRecorders.Find(MapKey)) {
+            if (RecorderArray->Num() > 0) {
+                Mapping.Add(Pair.Key, (*RecorderArray)[0]);
+            }
         }
     }
 

@@ -1,7 +1,7 @@
 ﻿#include "UI/StringFlowModuleMainPanel.h"
 
 #include "UI/SBoneControlMappingEditPanel.h"
-#include "UI/StringFlowBakeOperationsPanel.h"
+#include "UI/SLipSyncPanel.h"
 #include "UI/StringFlowModuleOperationsPanel.h"
 #include "UI/StringFlowModulePropertiesPanel.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -17,14 +17,14 @@ void SStringFlowModuleMainPanel::Construct(const FArguments& InArgs) {
     PropertiesPanel = SNew(SStringFlowModulePropertiesPanel);
     OperationsPanel = SNew(SStringFlowModuleOperationsPanel);
     BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
-    BakeOperationsPanel = SNew(SStringFlowBakeOperationsPanel);
+    LipSyncPanel = SNew(SLipSyncPanel);
 
     // Register panels (order matters for tab positions)
     RegisterPanel(PropertiesPanel, LOCTEXT("PropertiesTabLabel", "Properties"));
     RegisterPanel(OperationsPanel, LOCTEXT("OperationsTabLabel", "Operations"));
     RegisterPanel(BoneControlMappingPanel,
                   LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
-    RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
+    RegisterPanel(LipSyncPanel, LOCTEXT("LipSyncTabLabel", "Lip Sync"));
 
     // Show first panel after all panels are registered
     ShowFirstPanel();
@@ -46,8 +46,8 @@ void SStringFlowModuleMainPanel::SetActor(AActor* InActor) {
         BoneControlMappingPanel->SetActor(InActor);
     }
 
-    if (BakeOperationsPanel.IsValid()) {
-        BakeOperationsPanel->SetActor(InActor);
+    if (LipSyncPanel.IsValid()) {
+        LipSyncPanel->SetActor(InActor);
     }
 
     RefreshPanel();

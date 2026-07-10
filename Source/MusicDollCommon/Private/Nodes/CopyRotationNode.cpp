@@ -40,8 +40,8 @@ FRigUnit_CopyRotation_Execute() {
             ? Hierarchy->GetInitialLocalTransform(CachedSourceBone.GetIndex())
             : Hierarchy->GetInitialGlobalTransform(CachedSourceBone.GetIndex());
 
-    FVector SourceInitialEuler =
-        AnimationCore::EulerFromQuat(SourceInitialTransform.GetRotation(), RotationOrder);
+    FVector SourceInitialEuler = AnimationCore::EulerFromQuat(
+        SourceInitialTransform.GetRotation(), RotationOrder);
 
     // Step 2: Get source CURRENT rotation as Euler angles
     FTransform SourceCurrentTransform =
@@ -49,8 +49,8 @@ FRigUnit_CopyRotation_Execute() {
             ? Hierarchy->GetLocalTransformByIndex(CachedSourceBone)
             : Hierarchy->GetGlobalTransformByIndex(CachedSourceBone);
 
-    FVector SourceCurrentEuler =
-        AnimationCore::EulerFromQuat(SourceCurrentTransform.GetRotation(), RotationOrder);
+    FVector SourceCurrentEuler = AnimationCore::EulerFromQuat(
+        SourceCurrentTransform.GetRotation(), RotationOrder);
 
     // Step 3: Get target INITIAL rotation as Euler angles
     FTransform TargetInitialTransform =
@@ -58,32 +58,36 @@ FRigUnit_CopyRotation_Execute() {
             ? Hierarchy->GetInitialLocalTransform(CachedTargetBone.GetIndex())
             : Hierarchy->GetInitialGlobalTransform(CachedTargetBone.GetIndex());
 
-    FVector TargetInitialEuler =
-        AnimationCore::EulerFromQuat(TargetInitialTransform.GetRotation(), RotationOrder);
+    FVector TargetInitialEuler = AnimationCore::EulerFromQuat(
+        TargetInitialTransform.GetRotation(), RotationOrder);
 
-    // Step 4: Get target CURRENT transform (we need the full transform to write back)
+    // Step 4: Get target CURRENT transform (we need the full transform to write
+    // back)
     FTransform TargetCurrentTransform =
         bUseTargetLocal
             ? Hierarchy->GetLocalTransformByIndex(CachedTargetBone)
             : Hierarchy->GetGlobalTransformByIndex(CachedTargetBone);
 
-    FVector TargetCurrentEuler =
-        AnimationCore::EulerFromQuat(TargetCurrentTransform.GetRotation(), RotationOrder);
+    FVector TargetCurrentEuler = AnimationCore::EulerFromQuat(
+        TargetCurrentTransform.GetRotation(), RotationOrder);
 
     if (bUseDebug) {
         UE_LOG(LogControlRig, Warning,
                TEXT("[CopyRotation] SourceInitialEuler: (%.2f, %.2f, %.2f), "
                     "SourceCurrentEuler: (%.2f, %.2f, %.2f)"),
                SourceInitialEuler.X, SourceInitialEuler.Y, SourceInitialEuler.Z,
-               SourceCurrentEuler.X, SourceCurrentEuler.Y, SourceCurrentEuler.Z);
+               SourceCurrentEuler.X, SourceCurrentEuler.Y,
+               SourceCurrentEuler.Z);
         UE_LOG(LogControlRig, Warning,
                TEXT("[CopyRotation] TargetInitialEuler: (%.2f, %.2f, %.2f), "
                     "TargetCurrentEuler: (%.2f, %.2f, %.2f)"),
                TargetInitialEuler.X, TargetInitialEuler.Y, TargetInitialEuler.Z,
-               TargetCurrentEuler.X, TargetCurrentEuler.Y, TargetCurrentEuler.Z);
+               TargetCurrentEuler.X, TargetCurrentEuler.Y,
+               TargetCurrentEuler.Z);
     }
 
-    // Step 5: Compute source_offset = SourceCurrent[SourceAxis] - SourceInitial[SourceAxis]
+    // Step 5: Compute source_offset = SourceCurrent[SourceAxis] -
+    // SourceInitial[SourceAxis]
     float SourceInitialValue = 0.0f;
     float SourceCurrentValue = 0.0f;
     switch (SourceAxis) {
@@ -103,7 +107,8 @@ FRigUnit_CopyRotation_Execute() {
 
     float SourceOffset = SourceCurrentValue - SourceInitialValue;
 
-    // Step 6: Compute current_target_offset = TargetCurrent[TargetAxis] - TargetInitial[TargetAxis]
+    // Step 6: Compute current_target_offset = TargetCurrent[TargetAxis] -
+    // TargetInitial[TargetAxis]
     float TargetInitialValue = 0.0f;
     float TargetCurrentValue = 0.0f;
     switch (TargetAxis) {
@@ -123,26 +128,30 @@ FRigUnit_CopyRotation_Execute() {
 
     float CurrentTargetOffset = TargetCurrentValue - TargetInitialValue;
 
-    // Step 7: Blend: target_offset = current_target_offset * (1 - weight) + source_offset * weight
+    // Step 7: Blend: target_offset = current_target_offset * (1 - weight) +
+    // source_offset * weight
     float ClampedWeight = FMath::Clamp(Weight, 0.0f, 1.0f);
-    float BlendedOffset = CurrentTargetOffset * (1.0f - ClampedWeight) + SourceOffset * ClampedWeight;
+    float BlendedOffset = CurrentTargetOffset * (1.0f - ClampedWeight) +
+                          SourceOffset * ClampedWeight;
 
     // Step 8: FinalValue = TargetInitial[TargetAxis] + blended_offset
     float FinalValue = TargetInitialValue + BlendedOffset;
 
     if (bUseDebug) {
-        UE_LOG(LogControlRig, Warning,
-               TEXT("[CopyRotation] SourceAxis=%d SourceOffset=%.2f (%.2f - %.2f), "
-                    "TargetAxis=%d CurrentTargetOffset=%.2f (%.2f - %.2f), "
-                    "Weight=%.2f, BlendedOffset=%.2f, FinalValue=%.2f"),
-               static_cast<int32>(SourceAxis), SourceOffset,
-               SourceCurrentValue, SourceInitialValue,
-               static_cast<int32>(TargetAxis), CurrentTargetOffset,
-               TargetCurrentValue, TargetInitialValue,
-               ClampedWeight, BlendedOffset, FinalValue);
+        UE_LOG(
+            LogControlRig, Warning,
+            TEXT(
+                "[CopyRotation] SourceAxis=%d SourceOffset=%.2f (%.2f - %.2f), "
+                "TargetAxis=%d CurrentTargetOffset=%.2f (%.2f - %.2f), "
+                "Weight=%.2f, BlendedOffset=%.2f, FinalValue=%.2f"),
+            static_cast<int32>(SourceAxis), SourceOffset, SourceCurrentValue,
+            SourceInitialValue, static_cast<int32>(TargetAxis),
+            CurrentTargetOffset, TargetCurrentValue, TargetInitialValue,
+            ClampedWeight, BlendedOffset, FinalValue);
     }
 
-    // Step 9: Apply to target Euler (start from current Euler, only replace TargetAxis)
+    // Step 9: Apply to target Euler (start from current Euler, only replace
+    // TargetAxis)
     FVector NewTargetEuler = TargetCurrentEuler;
     switch (TargetAxis) {
         case ERotationCopyAxis::X:
@@ -159,16 +168,24 @@ FRigUnit_CopyRotation_Execute() {
     // Step 10: Convert back to quaternion and apply
     FQuat NewTargetQuat =
         AnimationCore::QuatFromEuler(NewTargetEuler, RotationOrder);
+
+    // 确保新四元数与当前旋转四元数在同一个半球，防止 360 度闪烁
+    if ((NewTargetQuat | TargetCurrentTransform.GetRotation()) < 0.0f) {
+        NewTargetQuat = -NewTargetQuat;
+    }
+
     NewTargetQuat.Normalize();
 
     TargetCurrentTransform.SetRotation(NewTargetQuat);
 
     if (bUseTargetLocal) {
-        Hierarchy->SetLocalTransformByIndex(CachedTargetBone, TargetCurrentTransform,
-                                            false, bPropagateToChildren);
+        Hierarchy->SetLocalTransformByIndex(CachedTargetBone,
+                                            TargetCurrentTransform, false,
+                                            bPropagateToChildren);
     } else {
-        Hierarchy->SetGlobalTransformByIndex(CachedTargetBone, TargetCurrentTransform,
-                                             false, bPropagateToChildren);
+        Hierarchy->SetGlobalTransformByIndex(CachedTargetBone,
+                                             TargetCurrentTransform, false,
+                                             bPropagateToChildren);
     }
 
     if (bUseDebug) {

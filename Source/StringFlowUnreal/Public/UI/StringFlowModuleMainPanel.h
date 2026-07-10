@@ -4,10 +4,10 @@
 #include "StringFlowUnreal.h"
 #include "UI/ModuleMainPanelBase.h"
 #include "UI/SBoneControlMappingEditPanel.h"
-#include "UI/StringFlowBakeOperationsPanel.h"
 
 class SStringFlowModulePropertiesPanel;
 class SStringFlowModuleOperationsPanel;
+class SLipSyncPanel;
 
 /**
  * Main panel for StringFlow module
@@ -37,5 +37,5 @@ class STRINGFLOWUNREAL_API SStringFlowModuleMainPanel
     TSharedPtr<SStringFlowModulePropertiesPanel> PropertiesPanel;
     TSharedPtr<SStringFlowModuleOperationsPanel> OperationsPanel;
     TSharedPtr<SBoneControlMappingEditPanel> BoneControlMappingPanel;
-    TSharedPtr<SStringFlowBakeOperationsPanel> BakeOperationsPanel;
+    TSharedPtr<SLipSyncPanel> LipSyncPanel;
 };

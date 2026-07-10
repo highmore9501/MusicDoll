@@ -216,9 +216,18 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
                                      else if (*NewSelection == TEXT("END"))
                                          FretDanceActor->CurrentRightHandState =
                                              EFretDanceRightHandState::END;
-                                     else
+                                     else if (*NewSelection == TEXT("HIGH"))
                                          FretDanceActor->CurrentRightHandState =
                                              EFretDanceRightHandState::HIGH;
+                                     else if (*NewSelection == TEXT("RELEASE"))
+                                         FretDanceActor->CurrentRightHandState =
+                                             EFretDanceRightHandState::RELEASE;
+                                     else if (*NewSelection == TEXT("UP"))
+                                         FretDanceActor->CurrentRightHandState =
+                                             EFretDanceRightHandState::UP;
+                                     else
+                                         FretDanceActor->CurrentRightHandState =
+                                             EFretDanceRightHandState::DOWN;
                                  }
                              })
                          .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
@@ -235,17 +244,21 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
                                  case EFretDanceRightHandState::END:
                                      Result = TEXT("END");
                                      break;
-                                 default:
+                                 case EFretDanceRightHandState::HIGH:
                                      Result = TEXT("HIGH");
+                                     break;
+                                 case EFretDanceRightHandState::RELEASE:
+                                     Result = TEXT("RELEASE");
+                                     break;
+                                 case EFretDanceRightHandState::UP:
+                                     Result = TEXT("UP");
+                                     break;
+                                 default:
+                                     Result = TEXT("DOWN");
                                      break;
                              }
                              return FText::FromString(Result);
                          })]]];
-
-    // Animation File Path Section (moved above generation UI)
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f, 0.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
-        TEXT("Animation File Path"))];
 
     // State Management Buttons
     Container->AddSlot().AutoHeight().Padding(
@@ -276,6 +289,11 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
                              &SFretDanceModuleOperationsPanel::OnLoadState)
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // Animation Generation Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Animation Generation"))];  // Animation Generation Section
 
     TSharedPtr<SEditableTextBox> AnimationFilePathBox;
     Container->AddSlot().AutoHeight().Padding(5.0f)
@@ -320,11 +338,6 @@ void SFretDanceModuleOperationsPanel::CreateOperationWidgets() {
                       }
                       return FReply::Handled();
                   })]];
-
-    // Animation Generation Section
-    Container->AddSlot().AutoHeight().Padding(
-        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
-        TEXT("Animation Generation"))];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
@@ -431,7 +444,8 @@ void SFretDanceModuleOperationsPanel::Construct(const FArguments& InArgs) {
     // 初始化左手状态选项（会根据 P 位置动态过滤）
     UpdateLeftHandStateOptions();
 
-    // 右手状态：LOW, END, HIGH
+    // 右手状态：LOW, END, HIGH（vibrato 状态在 RefreshOperations 中根据
+    // bUseVibratoBar 动态添加）
     RightHandStateOptions.Add(MakeShareable(new FString(TEXT("LOW"))));
     RightHandStateOptions.Add(MakeShareable(new FString(TEXT("END"))));
     RightHandStateOptions.Add(MakeShareable(new FString(TEXT("HIGH"))));
@@ -450,6 +464,19 @@ bool SFretDanceModuleOperationsPanel::CanHandleActor(
 void SFretDanceModuleOperationsPanel::RefreshOperations() {
     // 更新左手状态选项以反映当前的 P 位置选择
     UpdateLeftHandStateOptions();
+
+    // 更新右手状态选项：基础三项 + 可选的 vibrato 三项
+    RightHandStateOptions.Empty();
+    RightHandStateOptions.Add(MakeShareable(new FString(TEXT("LOW"))));
+    RightHandStateOptions.Add(MakeShareable(new FString(TEXT("END"))));
+    RightHandStateOptions.Add(MakeShareable(new FString(TEXT("HIGH"))));
+
+    if (FretDanceActor.IsValid() && FretDanceActor->bUseVibratoBar) {
+        RightHandStateOptions.Add(MakeShareable(new FString(TEXT("RELEASE"))));
+        RightHandStateOptions.Add(MakeShareable(new FString(TEXT("UP"))));
+        RightHandStateOptions.Add(MakeShareable(new FString(TEXT("DOWN"))));
+    }
+
     CreateOperationWidgets();
 }
 

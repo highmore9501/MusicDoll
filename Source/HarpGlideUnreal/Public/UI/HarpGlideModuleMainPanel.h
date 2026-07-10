@@ -7,7 +7,7 @@
 
 class SHarpGlideModulePropertiesPanel;
 class SHarpGlideModuleOperationsPanel;
-class SHarpGlideBakeOperationsPanel;
+class SLipSyncPanel;
 
 /**
  * 竖琴模块主面板
@@ -32,5 +32,5 @@ class HARPGLIDEUNREAL_API SHarpGlideModuleMainPanel
     TSharedPtr<SHarpGlideModulePropertiesPanel> PropertiesPanel;
     TSharedPtr<SHarpGlideModuleOperationsPanel> OperationsPanel;
     TSharedPtr<SBoneControlMappingEditPanel> BoneControlMappingPanel;
-    TSharedPtr<SHarpGlideBakeOperationsPanel> BakeOperationsPanel;
+    TSharedPtr<SLipSyncPanel> LipSyncPanel;
 };

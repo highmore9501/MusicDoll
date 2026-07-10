@@ -49,9 +49,12 @@ enum class EFretDanceLeftHandState : uint8 {
 // 右手状态枚举
 UENUM(BlueprintType)
 enum class EFretDanceRightHandState : uint8 {
-    LOW = 0,  // 值 "0"
-    END = 1,  // 值 "end"
-    HIGH = 2  // 值 "3"
+    LOW = 0,      // 值 "0"
+    END = 1,      // 值 "end"
+    HIGH = 2,     // 值 "3"
+    RELEASE = 3,  // 颤音摇杆-松开
+    UP = 4,       // 颤音摇杆-上摇
+    DOWN = 5      // 颤音摇杆-下压
 };
 
 // 字符串数组结构体
@@ -179,6 +182,11 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FretDance State")
     EFretDanceRightHandState CurrentRightHandState;
 
+    // 是否使用颤音摇杆（仅电吉他可用）
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "FretDance Configuration")
+    bool bUseVibratoBar = false;
+
     // ========== 控制器映射 ==========
     // 左手手掌控制器 (H_L, HP_L, T_L, TP_L)
     UPROPERTY()
@@ -195,10 +203,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // 右手手指控制器（因乐器类型不同而变化）
     UPROPERTY()
     TMap<FString, FString> RightFingerControllers;
-
-    // 手掌旋转控制器
-    UPROPERTY()
-    TMap<FString, FString> HandRotationControllers;
 
     // ========== 记录器映射 ==========
     // 左手手指记录器
@@ -220,10 +224,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // 右手位置记录器
     UPROPERTY()
     TMap<FString, FFretDanceStringArray> RightHandPositionRecorders;
-
-    // 右手旋转记录器
-    UPROPERTY()
-    TMap<FString, FString> RightHandRotationRecorders;
 
     // 指板位置记录器
     UPROPERTY()
@@ -285,20 +285,6 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // 设置乐器类型（会自动更新配置）
     void SetInstrumentType(EFretDanceInstrumentType NewType);
 
-    // ========== 统一的键名映射工具函数 ==========
-    /**
-     * 获取右手位置键名映射表（JSON 名称 → 内部名称）
-     * @return TMap: {"p0"->"p_low", "p3"->"p_high", "pend"->"p_end"}
-     */
-    static TMap<FString, FString> GetRightHandPositionKeyMapping();
-
-    /**
-     * 将 JSON 中的右手位置键名转换为内部使用的键名
-     * @param JsonKeyName JSON 中的键名（如 "p0", "p3", "pend"）
-     * @return 内部使用的键名（如 "p_low", "p_high", "p_end"）
-     */
-    static FString MapRightHandPositionKeyName(const FString& JsonKeyName);
-
     // 检查是否已初始化
     bool IsInitialized() const { return bIsInitialized; }
 
@@ -312,10 +298,19 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     // 记录器初始化方法
     void InitializeRecorderTransforms();
 
+    // 更新记录器键名（根据当前逻辑做 diff，只增删有变化的条目，不碰
+    // RecorderTransforms）
+    void UpdateRecorderKeys();
+
     // 当 ControlRig 相关操作失败时触发重新注册
     void TriggerControlRigReregistration(const FString& ErrorMessage);
 
    private:
+    // ========== 右手记录器条目生成（单点定义拼接逻辑） ==========
+    // 生成 {map_key, recorder_name} 键值对列表，供初始化和更新方法共用
+    void GenerateRightHandRecorderEntries(
+        TArray<TPair<FString, FString>>& OutEntries) const;
+
     // ========== 无效组合表 ==========
     UPROPERTY()
     TMap<EFretDanceBasePosition, FFretDanceInvalidLeftHandCombinations>

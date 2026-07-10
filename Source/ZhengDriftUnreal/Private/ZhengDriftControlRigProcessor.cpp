@@ -64,17 +64,18 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
     // 2. 左手控制器（8 个主控制器 + 4 个 pole）
     // 主控制器直接挂在 controller_root 下
     const TArray<FString> LeftMain = {
-        TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("I_L"),
-        TEXT("M_L"), TEXT("R_L"),  TEXT("P_L"),
+        TEXT("H_L"),
+        TEXT("HP_L"),
     };
     for (const FString& Name : LeftMain) {
         if (CreateController(Blueprint, Name, TEXT("controller_root")))
             CreatedCount++;
     }
 
-    // Pole 控制器挂在对应手掌（H_L）下
+    // 子控制器挂在对应手掌（H_L）下
     const TArray<FString> LeftPole = {
-        TEXT("I_L_pole"), TEXT("M_L_pole"), TEXT("R_L_pole"),
+        TEXT("T_L"),      TEXT("I_L"),      TEXT("M_L"),      TEXT("R_L"),
+        TEXT("P_L"),      TEXT("I_L_pole"), TEXT("M_L_pole"), TEXT("R_L_pole"),
         TEXT("P_L_pole"), TEXT("TP_L"),
     };
     for (const FString& Name : LeftPole) {
@@ -83,8 +84,8 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
 
     // 3. 右手控制器（8 个主 + 4 个 pole）
     const TArray<FString> RightMain = {
-        TEXT("H_R"), TEXT("HP_R"), TEXT("T_R"), TEXT("I_R"),
-        TEXT("M_R"), TEXT("R_R"),  TEXT("P_R"),
+        TEXT("H_R"),
+        TEXT("HP_R"),
     };
     for (const FString& Name : RightMain) {
         if (CreateController(Blueprint, Name, TEXT("controller_root")))
@@ -92,7 +93,8 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
     }
 
     const TArray<FString> RightPole = {
-        TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
+        TEXT("T_R"),      TEXT("I_R"),      TEXT("M_R"),      TEXT("R_R"),
+        TEXT("P_R"),      TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
         TEXT("P_R_pole"), TEXT("TP_R"),
     };
     for (const FString& Name : RightPole) {
@@ -491,7 +493,7 @@ bool UZhengDriftControlRigProcessor::CreateController(
 int32 UZhengDriftControlRigProcessor::LinearDistributeControls(
     AZhengDriftUnreal* ZhengDriftActor) {
     if (!ValidateZhengDriftActor(ZhengDriftActor,
-                                  TEXT("LinearDistributeControls")))
+                                 TEXT("LinearDistributeControls")))
         return -1;
 
     UControlRig* ControlRig = GetControlRig(ZhengDriftActor);

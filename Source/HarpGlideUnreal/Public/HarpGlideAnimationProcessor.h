@@ -64,17 +64,8 @@ class HARPGLIDEUNREAL_API UHarpGlideAnimationProcessor : public UObject {
      * "ring": [...], "pinky": [...] }, "hand_pole_target": [x, y, z]
      * }
      */
-    static void MakePerformanceAnimation(AHarpGlideUnreal* HarpGlideActor,
-                                         const FString& AnimationFilePath,
-                                         ULevelSequence* LevelSequence);
-
-    /**
-     * 从 harp_animation JSON 生成 harp_pivot 关键帧
-     *
-     * JSON 每帧格式：
-     * { "frame": 0, "location": [x, y, z], "rotation": [w, x, y, z] }
-     */
-    static void MakeHarpAnimation(AHarpGlideUnreal* HarpGlideActor,
-                                  const FString& HarpAnimationPath,
-                                  ULevelSequence* LevelSequence);
+    static void MakePerformanceAnimation(
+        AHarpGlideUnreal* HarpGlideActor, const FString& AnimationFilePath,
+        ULevelSequence* LevelSequence,
+        const FString& HarpAnimationPath = TEXT(""));
 };

@@ -120,11 +120,8 @@ void UHarpGlideAnimationProcessor::GeneratePerformerAnimation(
     }
 
     if (!PerfPath.IsEmpty()) {
-        MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence);
-    }
-
-    if (!HarpPath.IsEmpty()) {
-        MakeHarpAnimation(HarpGlideActor, HarpPath, LevelSequence);
+        MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence,
+                                 HarpPath);
     }
 
     // 与 FretDance 对齐：写入关键帧后触发 ControlRig 重新注册
@@ -193,18 +190,17 @@ void UHarpGlideAnimationProcessor::GenerateAllAnimation(
         LogTemp, Warning,
         TEXT("========== HarpGlide GenerateAllAnimation Started =========="));
 
-    // 1. 演奏者动画（双手 + 双脚 + 头部）
+    // 1. 演奏者动画（双手 + 双脚 + 头部 + 竖琴支点）
+    //    harp_pivot 数据通过 HarpPath 传入 MakePerformanceAnimation，
+    //    与演奏者数据合并为一次 BatchInsertControlRigKeys 写入，
+    //    避免单独写入缩小 Section Range。
     if (!PerfPath.IsEmpty()) {
         if (HarpGlideActor->SkeletalMeshActor) {
             UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
                 HarpGlideActor->SkeletalMeshActor);
         }
-        MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence);
-    }
-
-    // 2. 竖琴倾斜动画（harp_pivot）
-    if (!HarpPath.IsEmpty()) {
-        MakeHarpAnimation(HarpGlideActor, HarpPath, LevelSequence);
+        MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence,
+                                 HarpPath);
     }
 
     // 3. 弦振动 + 踏板 Shape Key 合并为一次写入
@@ -228,11 +224,12 @@ void UHarpGlideAnimationProcessor::GenerateAllAnimation(
 //   双手: H_L/R (位置+旋转), T/I/M/R/P_L/R (位置), HP_L/R (位置)
 //   双脚: F_L, F_R (位置+旋转)
 //   头部: Head (位置+旋转)
+//   中手: Mid_Hand (位置+旋转)
 // ============================================================
 
 void UHarpGlideAnimationProcessor::MakePerformanceAnimation(
     AHarpGlideUnreal* HarpGlideActor, const FString& AnimationFilePath,
-    ULevelSequence* LevelSequence) {
+    ULevelSequence* LevelSequence, const FString& HarpAnimationPath) {
     if (!HarpGlideActor || AnimationFilePath.IsEmpty() || !LevelSequence)
         return;
 
@@ -469,6 +466,77 @@ void UHarpGlideAnimationProcessor::MakePerformanceAnimation(
                ProcessedFrames);
     };
 
+    // ── 处理 Mid_Hand 数据 ──────────────────────────────────────────
+    // 格式与手部控制器相同：{ controller_name, frame, state, transform:
+    // { position, rotation } } controller_name 为 "Mid_Hand"，直接作为控件名
+    auto ProcessMidHand =
+        [&](const TArray<TSharedPtr<FJsonValue>>& MidHandArray) {
+            int32 ProcessedFrames = 0;
+
+            for (const auto& FrameVal : MidHandArray) {
+                TSharedPtr<FJsonObject> FrameObj = FrameVal->AsObject();
+                if (!FrameObj.IsValid()) continue;
+
+                // 读取 controller_name
+                FString ControllerName;
+                if (!FrameObj->TryGetStringField(TEXT("controller_name"),
+                                                 ControllerName))
+                    continue;
+
+                // 读取帧号
+                double FrameDouble = 0.0;
+                FrameObj->TryGetNumberField(TEXT("frame"), FrameDouble);
+                int32 FrameNumber =
+                    static_cast<int32>(FMath::RoundToInt(FrameDouble));
+
+                // 读取 transform 嵌套对象
+                if (!FrameObj->HasField(TEXT("transform"))) continue;
+                const TSharedPtr<FJsonObject>& TransformObj =
+                    FrameObj->GetObjectField(TEXT("transform"));
+                if (!TransformObj.IsValid()) continue;
+
+                FAnimationKeyframe KF;
+                KF.FrameNumber = FrameNumber;
+                KF.bHasLocation = false;
+                KF.bHasRotation = false;
+
+                // position
+                if (TransformObj->HasField(TEXT("position"))) {
+                    TArray<TSharedPtr<FJsonValue>> Arr =
+                        TransformObj->GetArrayField(TEXT("position"));
+                    if (Arr.Num() == 3) {
+                        KF.Translation =
+                            FVector(Arr[0]->AsNumber(), Arr[1]->AsNumber(),
+                                    Arr[2]->AsNumber());
+                        KF.bHasLocation = true;
+                    }
+                }
+
+                // rotation (WXYZ)
+                if (TransformObj->HasField(TEXT("rotation"))) {
+                    TArray<TSharedPtr<FJsonValue>> Arr =
+                        TransformObj->GetArrayField(TEXT("rotation"));
+                    if (Arr.Num() == 4) {
+                        KF.Rotation.W = Arr[0]->AsNumber();
+                        KF.Rotation.X = Arr[1]->AsNumber();
+                        KF.Rotation.Y = Arr[2]->AsNumber();
+                        KF.Rotation.Z = Arr[3]->AsNumber();
+                        KF.bHasRotation = true;
+                    }
+                }
+
+                if (KF.bHasLocation || KF.bHasRotation) {
+                    ControlKeyframeData.FindOrAdd(ControllerName).Add(KF);
+                    ProcessedFrames++;
+                }
+            }
+
+            UE_LOG(LogTemp, Warning,
+                   TEXT("MakePerformanceAnimation: Processed %d frames for "
+                        "Mid_Hand"),
+                   ProcessedFrames);
+        };
+
     // ── 执行数据提取 ──────────────────────────────────────────────
 
     if (Root->HasField(TEXT("left_hand")))
@@ -486,6 +554,82 @@ void UHarpGlideAnimationProcessor::MakePerformanceAnimation(
     if (Root->HasField(TEXT("head")))
         ProcessHead(Root->GetArrayField(TEXT("head")));
 
+    if (Root->HasField(TEXT("mid_hand")))
+        ProcessMidHand(Root->GetArrayField(TEXT("mid_hand")));
+
+    // ── 可选的竖琴支点（harp_pivot）数据 ───────────────────────────
+    // 如果提供了 HarpAnimationPath，从 harp_anim JSON 中读取 harp_pivot 关键帧
+    // 并与演奏者数据合并到一次批写入中，避免后续单独写入缩小 Section Range
+    if (!HarpAnimationPath.IsEmpty()) {
+        FString HarpJsonContent;
+        if (FFileHelper::LoadFileToString(HarpJsonContent,
+                                          *HarpAnimationPath)) {
+            TArray<TSharedPtr<FJsonValue>> HarpJsonArray;
+            TSharedRef<TJsonReader<>> HarpReader =
+                TJsonReaderFactory<>::Create(HarpJsonContent);
+            if (FJsonSerializer::Deserialize(HarpReader, HarpJsonArray)) {
+                int32 HarpPivotCount = 0;
+                for (const auto& Val : HarpJsonArray) {
+                    TSharedPtr<FJsonObject> FrameObj = Val->AsObject();
+                    if (!FrameObj.IsValid()) continue;
+
+                    double FrameDouble = 0.0;
+                    FrameObj->TryGetNumberField(TEXT("frame"), FrameDouble);
+                    int32 FrameNumber =
+                        static_cast<int32>(FMath::RoundToInt(FrameDouble));
+
+                    FAnimationKeyframe KF;
+                    KF.FrameNumber = FrameNumber;
+                    KF.bHasLocation = false;
+                    KF.bHasRotation = false;
+
+                    if (FrameObj->HasField(TEXT("location"))) {
+                        TArray<TSharedPtr<FJsonValue>> Arr =
+                            FrameObj->GetArrayField(TEXT("location"));
+                        if (Arr.Num() == 3) {
+                            KF.Translation =
+                                FVector(Arr[0]->AsNumber(), Arr[1]->AsNumber(),
+                                        Arr[2]->AsNumber());
+                            KF.bHasLocation = true;
+                        }
+                    }
+
+                    if (FrameObj->HasField(TEXT("rotation"))) {
+                        TArray<TSharedPtr<FJsonValue>> Arr =
+                            FrameObj->GetArrayField(TEXT("rotation"));
+                        if (Arr.Num() == 4) {
+                            KF.Rotation.W = Arr[0]->AsNumber();
+                            KF.Rotation.X = Arr[1]->AsNumber();
+                            KF.Rotation.Y = Arr[2]->AsNumber();
+                            KF.Rotation.Z = Arr[3]->AsNumber();
+                            KF.bHasRotation = true;
+                        }
+                    }
+
+                    if (KF.bHasLocation || KF.bHasRotation) {
+                        ControlKeyframeData.FindOrAdd(TEXT("harp_pivot"))
+                            .Add(KF);
+                        HarpPivotCount++;
+                    }
+                }
+                UE_LOG(LogTemp, Warning,
+                       TEXT("MakePerformanceAnimation: Loaded %d harp_pivot "
+                            "keyframes from '%s'"),
+                       HarpPivotCount, *HarpAnimationPath);
+            } else {
+                UE_LOG(LogTemp, Error,
+                       TEXT("MakePerformanceAnimation: Failed to parse "
+                            "harp_anim JSON '%s'"),
+                       *HarpAnimationPath);
+            }
+        } else {
+            UE_LOG(LogTemp, Error,
+                   TEXT("MakePerformanceAnimation: Failed to load "
+                        "harp_anim '%s'"),
+                   *HarpAnimationPath);
+        }
+    }
+
     // ── 批量写入关键帧 ──────────────────────────────────────────────
     if (ControlKeyframeData.Num() > 0 && HarpGlideActor->SkeletalMeshActor) {
         UControlRig* ControlRig =
@@ -498,98 +642,6 @@ void UHarpGlideAnimationProcessor::MakePerformanceAnimation(
                    TEXT("MakePerformanceAnimation: Wrote keyframes for %d "
                         "controllers"),
                    ControlKeyframeData.Num());
-        }
-    }
-}
-
-// ============================================================
-// MakeHarpAnimation
-//
-// 从 harp_animation JSON 生成 harp_pivot 关键帧
-// JSON 格式：{ "frame": N, "location": [x,y,z], "rotation": [w,x,y,z] }
-// ============================================================
-
-void UHarpGlideAnimationProcessor::MakeHarpAnimation(
-    AHarpGlideUnreal* HarpGlideActor, const FString& HarpAnimationPath,
-    ULevelSequence* LevelSequence) {
-    if (!HarpGlideActor || HarpAnimationPath.IsEmpty() || !LevelSequence)
-        return;
-
-    FString JsonContent;
-    if (!FFileHelper::LoadFileToString(JsonContent, *HarpAnimationPath)) {
-        UE_LOG(LogTemp, Error, TEXT("MakeHarpAnimation: Failed to load '%s'"),
-               *HarpAnimationPath);
-        return;
-    }
-
-    TArray<TSharedPtr<FJsonValue>> JsonArray;
-    TSharedRef<TJsonReader<>> Reader =
-        TJsonReaderFactory<>::Create(JsonContent);
-    if (!FJsonSerializer::Deserialize(Reader, JsonArray)) {
-        UE_LOG(LogTemp, Error,
-               TEXT("MakeHarpAnimation: JSON parse failed for '%s'"),
-               *HarpAnimationPath);
-        return;
-    }
-
-    TMap<FString, TArray<FAnimationKeyframe>> ControlKeyframeData;
-
-    for (const auto& Val : JsonArray) {
-        TSharedPtr<FJsonObject> FrameObj = Val->AsObject();
-        if (!FrameObj.IsValid()) continue;
-
-        double FrameDouble = 0.0;
-        FrameObj->TryGetNumberField(TEXT("frame"), FrameDouble);
-        int32 FrameNumber = static_cast<int32>(FMath::RoundToInt(FrameDouble));
-
-        bool bHasLocation = false;
-        bool bHasRotation = false;
-        FVector Loc(FVector::ZeroVector);
-        FQuat Rot(FQuat::Identity);
-
-        if (FrameObj->HasField(TEXT("location"))) {
-            TArray<TSharedPtr<FJsonValue>> Arr =
-                FrameObj->GetArrayField(TEXT("location"));
-            if (Arr.Num() == 3) {
-                Loc = FVector(Arr[0]->AsNumber(), Arr[1]->AsNumber(),
-                              Arr[2]->AsNumber());
-                bHasLocation = true;
-            }
-        }
-
-        if (FrameObj->HasField(TEXT("rotation"))) {
-            TArray<TSharedPtr<FJsonValue>> Arr =
-                FrameObj->GetArrayField(TEXT("rotation"));
-            if (Arr.Num() == 4) {
-                Rot.W = Arr[0]->AsNumber();
-                Rot.X = Arr[1]->AsNumber();
-                Rot.Y = Arr[2]->AsNumber();
-                Rot.Z = Arr[3]->AsNumber();
-                bHasRotation = true;
-            }
-        }
-
-        if (bHasLocation || bHasRotation) {
-            FAnimationKeyframe KF;
-            KF.FrameNumber = FrameNumber;
-            KF.Translation = Loc;
-            KF.Rotation = Rot;
-            KF.bHasLocation = bHasLocation;
-            KF.bHasRotation = bHasRotation;
-            ControlKeyframeData.FindOrAdd(TEXT("harp_pivot")).Add(KF);
-        }
-    }
-
-    if (ControlKeyframeData.Num() > 0 && HarpGlideActor->SkeletalMeshActor) {
-        UControlRig* ControlRig =
-            HarpGlideActor->GetCachedControlRig(TEXT("Performer"));
-        if (ControlRig) {
-            FBatchInsertKeyframesSettings Settings;
-            UInstrumentAnimationUtility::BatchInsertControlRigKeys(
-                LevelSequence, ControlRig, ControlKeyframeData, Settings);
-            UE_LOG(LogTemp, Warning,
-                   TEXT("MakeHarpAnimation: Wrote %d harp_pivot keyframes"),
-                   ControlKeyframeData[TEXT("harp_pivot")].Num());
         }
     }
 }

@@ -1,9 +1,9 @@
 ﻿#include "UI/KeyRippleModuleMainPanel.h"
 
-#include "UI/KeyRippleBakeOperationsPanel.h"
 #include "UI/KeyRippleModuleOperationsPanel.h"
 #include "UI/KeyRippleModulePropertiesPanel.h"
 #include "UI/SBoneControlMappingEditPanel.h"
+#include "UI/SLipSyncPanel.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -17,14 +17,14 @@ void SKeyRippleModuleMainPanel::Construct(const FArguments& InArgs) {
     PropertiesPanel = SNew(SKeyRippleModulePropertiesPanel);
     OperationsPanel = SNew(SKeyRippleModuleOperationsPanel);
     BoneControlMappingPanel = SNew(SBoneControlMappingEditPanel);
-    BakeOperationsPanel = SNew(SKeyRippleBakeOperationsPanel);
+    LipSyncPanel = SNew(SLipSyncPanel);
 
     // Register panels (order matters for tab positions)
     RegisterPanel(PropertiesPanel, LOCTEXT("PropertiesTabLabel", "Properties"));
     RegisterPanel(OperationsPanel, LOCTEXT("OperationsTabLabel", "Operations"));
     RegisterPanel(BoneControlMappingPanel,
                   LOCTEXT("BoneControlMappingTabLabel", "B/C Mapping"));
-    RegisterPanel(BakeOperationsPanel, LOCTEXT("BakeTabLabel", "Bake"));
+    RegisterPanel(LipSyncPanel, LOCTEXT("LipSyncTabLabel", "Lip Sync"));
 
     // Show first panel after all panels are registered
     ShowFirstPanel();
@@ -46,8 +46,8 @@ void SKeyRippleModuleMainPanel::SetActor(AActor* InActor) {
         BoneControlMappingPanel->SetActor(InActor);
     }
 
-    if (BakeOperationsPanel.IsValid()) {
-        BakeOperationsPanel->SetActor(InActor);
+    if (LipSyncPanel.IsValid()) {
+        LipSyncPanel->SetActor(InActor);
     }
 
     RefreshPanel();
