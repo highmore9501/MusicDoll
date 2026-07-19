@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.h"
@@ -12,9 +13,9 @@
  */
 UENUM(BlueprintType)
 enum class EBeatBloomState : uint8 {
-    BEAT  UMETA(DisplayName = "Beat"),
+    BEAT UMETA(DisplayName = "Beat"),
     READY UMETA(DisplayName = "Ready"),
-    REST  UMETA(DisplayName = "Rest")
+    REST UMETA(DisplayName = "Rest")
 };
 
 /**
@@ -22,9 +23,9 @@ enum class EBeatBloomState : uint8 {
  */
 UENUM(BlueprintType)
 enum class EBeatBloomLimb : uint8 {
-    LEFT_HAND  UMETA(DisplayName = "Left Hand"),
+    LEFT_HAND UMETA(DisplayName = "Left Hand"),
     RIGHT_HAND UMETA(DisplayName = "Right Hand"),
-    LEFT_FOOT  UMETA(DisplayName = "Left Foot"),
+    LEFT_FOOT UMETA(DisplayName = "Left Foot"),
     RIGHT_FOOT UMETA(DisplayName = "Right Foot")
 };
 
@@ -165,7 +166,7 @@ class BEATBLOOMUNREAL_API ABeatBloomUnreal : public AInstrumentBase,
                                              public FTickableGameObject {
     GENERATED_BODY()
 
-public:
+   public:
     ABeatBloomUnreal();
 
     // FTickableGameObject interface
@@ -177,10 +178,10 @@ public:
         RETURN_QUICK_DECLARE_CYCLE_STAT(ABeatBloomUnreal, STATGROUP_Tickables);
     }
 
-protected:
+   protected:
     virtual void BeginPlay() override;
 
-public:
+   public:
     // ============ 乐器骨骼引用 ============
 
     /** 鼓组骨骼 Mesh */
@@ -283,7 +284,8 @@ public:
 
     /**
      * 加载鼓组配置文件（.drumkit）
-     * 解析 JSON 并填充 DrumKitConfig 结构体，然后调用 InitializeRecordersFromConfig
+     * 解析 JSON 并填充 DrumKitConfig 结构体，然后调用
+     * InitializeRecordersFromConfig
      *
      * @param FilePath .drumkit 文件路径
      * @return 加载是否成功
@@ -347,7 +349,8 @@ public:
      * 获取肢体名称字符串
      *
      * @param Limb 肢体枚举
-     * @return 肢体字符串（"left_hand", "right_hand", "left_foot", "right_foot"）
+     * @return 肢体字符串（"left_hand", "right_hand", "left_foot",
+     * "right_foot"）
      */
     static FString GetLimbString(EBeatBloomLimb Limb);
 
@@ -378,10 +381,9 @@ public:
      * @param OutDrumKitAnimationPath 输出：鼓组 ShapeKey 动画路径
      * @return 解析是否成功
      */
-    static bool ParseBeatBloomFile(
-        const FString& FilePath,
-        FString& OutPerformerAnimationPath,
-        FString& OutDrumKitAnimationPath);
+    static bool ParseBeatBloomFile(const FString& FilePath,
+                                   FString& OutPerformerAnimationPath,
+                                   FString& OutDrumKitAnimationPath);
 
     /**
      * 清理 RecorderTransforms 中不在合法键名集合内的条目
@@ -391,23 +393,23 @@ public:
      */
     int32 CleanupInvalidRecorderKeys();
 
-private:
+   private:
     // ============ 辅助方法 ============
-    
+
     /** 为单个鼓组件生成所有状态和肢体的记录器 */
     void GenerateRecordersForComponent(
         const FString& ComponentName,
         const TArray<FBeatBloomDrivableLimb>& DrivableLimbs);
-    
+
     /** 添加休息状态记录器（手部专用） */
     void AddRestRecorders();
-    
+
     /** 添加目标控制器记录器（仅手部可驱动的组件） */
     void AddTargetRecorders();
-    
+
     /** 添加单个记录器到映射中 */
     void AddRecorder(const FString& RecorderName);
-    
+
     /** 是否已完成初始化 */
     UPROPERTY(Transient)
     bool bIsInitialized;

@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.h"

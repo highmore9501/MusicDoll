@@ -9,6 +9,7 @@
 #include "KeyRippleUnreal.h"
 #include "Misc/Paths.h"
 #include "MusicDollStyle.h"
+#include "SingerUnreal.h"
 #include "StringFlowUnreal.h"
 #include "UI/BakeQueuePanel.h"
 #include "UI/BeatBloomModuleMainPanel.h"
@@ -16,7 +17,9 @@
 #include "UI/HarpGlideModuleMainPanel.h"
 #include "UI/KeyRippleModuleMainPanel.h"
 #include "UI/ModuleMainPanelInterface.h"
+#include "UI/SingerModuleMainPanel.h"
 #include "UI/StringFlowModuleMainPanel.h"
+#include "UI/WindRiseModuleMainPanel.h"
 #include "UI/ZhengDriftModuleMainPanel.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
@@ -24,6 +27,7 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
+#include "WindRiseUnreal.h"
 #include "ZhengDriftUnreal.h"
 
 #define LOCTEXT_NAMESPACE "SMusicDollMainPanel"
@@ -212,6 +216,31 @@ FText SMusicDollMainPanel::GetSelectedActorTypeLabel() const {
         return FText::FromString(TEXT("BeatBloom"));
     }
 
+    // 检查是否为 FretDance
+    if (Actor->IsA<AFretDanceUnreal>()) {
+        return FText::FromString(TEXT("FretDance"));
+    }
+
+    // 检查是否为 ZhengDrift
+    if (Actor->IsA<AZhengDriftUnreal>()) {
+        return FText::FromString(TEXT("ZhengDrift"));
+    }
+
+    // 检查是否为 HarpGlide
+    if (Actor->IsA<AHarpGlideUnreal>()) {
+        return FText::FromString(TEXT("HarpGlide"));
+    }
+
+    // 检查是否为Singer
+    if (Actor->IsA<ASingerUnreal>()) {
+        return FText::FromString(TEXT("Singer"));
+    }
+
+    // 检查是否为WindRise
+    if (Actor->IsA<AWindRiseUnreal>()) {
+        return FText::FromString(TEXT("WindRise"));
+    }
+
     // 默认情况
     return FText::FromString(TEXT(""));
 }
@@ -392,6 +421,41 @@ void SMusicDollMainPanel::OnActorSelected(AInstrumentBase* InActor) {
             CurrentModulePanel =
                 StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
 
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中对象是否为 ASingerUnreal 类型
+    ASingerUnreal* SingerActor = Cast<ASingerUnreal>(InActor);
+    if (SingerActor) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SSingerModuleMainPanel);
+        if (ModulePanel.IsValid() && ModulePanel->CanHandleActor(SingerActor)) {
+            ModulePanel->SetActor(SingerActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
+            if (PropertiesPanelWidget.IsValid()) {
+                PropertiesPanelWidget->AddSlot().FillHeight(
+                    1.0f)[ModulePanel->GetWidget().ToSharedRef()];
+            }
+        }
+        return;
+    }
+
+    // 检查选中对象是否为 AWindRiseUnreal 类型
+    AWindRiseUnreal* WindRiseActor = Cast<AWindRiseUnreal>(InActor);
+    if (WindRiseActor) {
+        TSharedPtr<SModuleMainPanelBase> ModulePanel =
+            SNew(SWindRiseModuleMainPanel);
+        if (ModulePanel.IsValid() &&
+            ModulePanel->CanHandleActor(WindRiseActor)) {
+            ModulePanel->SetActor(WindRiseActor);
+            CurrentModulePanel =
+                StaticCastSharedPtr<IModuleMainPanel>(ModulePanel);
             if (PropertiesPanelWidget.IsValid()) {
                 PropertiesPanelWidget->AddSlot().FillHeight(
                     1.0f)[ModulePanel->GetWidget().ToSharedRef()];

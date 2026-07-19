@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.h"
@@ -23,8 +24,8 @@ enum class EZhengDriftLeftHandAction : uint8 {
 
 UENUM(BlueprintType)
 enum class EZhengDriftRightHandAction : uint8 {
-    NORMAL = 0,   // 普通拨弦
-    TREMOLO = 1   // 摇指
+    NORMAL = 0,  // 普通拨弦
+    TREMOLO = 1  // 摇指
 };
 
 UENUM(BlueprintType)
@@ -93,7 +94,7 @@ class ZHENGDRIFTUNREAL_API AZhengDriftUnreal : public AInstrumentBase,
                                                public FTickableGameObject {
     GENERATED_BODY()
 
-public:
+   public:
     AZhengDriftUnreal();
 
     // FTickableGameObject interface
@@ -105,10 +106,10 @@ public:
         RETURN_QUICK_DECLARE_CYCLE_STAT(AZhengDriftUnreal, STATGROUP_Tickables);
     }
 
-protected:
+   protected:
     virtual void BeginPlay() override;
 
-public:
+   public:
     // ========== 乐器引用 ==========
 
     /** 古筝骨骼模型 */
@@ -154,7 +155,8 @@ public:
     UPROPERTY()
     TMap<FString, FString> TargetControllers;
 
-    /** 双线性映射辅助控制器：8 个（Middle_Hand_A/B/C/D + Head_Control_A/B/C/D，只持久化 location） */
+    /** 双线性映射辅助控制器：8 个（Middle_Hand_A/B/C/D +
+     * Head_Control_A/B/C/D，只持久化 location） */
     UPROPERTY()
     TMap<FString, FString> BilinearHelpers;
 
@@ -171,8 +173,6 @@ public:
     /** 右手记录器：48 个（3位置 × 2动作 × 8手指） */
     UPROPERTY()
     TMap<FString, FString> RightHandRecorders;
-
-
 
     // ========== 数据存储 ==========
 

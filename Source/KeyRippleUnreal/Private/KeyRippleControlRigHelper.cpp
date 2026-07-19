@@ -3,6 +3,7 @@
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentControlRigUtility.h"
 #include "KeyRippleControlRigProcessor.h"
 #include "Rigs/RigHierarchyController.h"
 
@@ -133,44 +134,27 @@ void FKeyRippleControlRigHelper::SaveControllerTransform(
            TEXT("SaveControllerTransform: Control='%s' -> Recorder='%s'"),
            *ControlName, *RecorderName);
 
-    FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-    if (RigHierarchy->Contains(ControlKey)) {
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ControlKey);
-        if (ControlElement) {
-            FRigControlValue CurrentValue = RigHierarchy->GetControlValue(
-                ControlElement, ERigControlValueType::Current);
-            FTransform CurrentTransform = CurrentValue.GetAsTransform(
-                ControlElement->Settings.ControlType,
-                ControlElement->Settings.PrimaryAxis);
+    FTransform CurrentTransform;
+    if (FInstrumentControlRigUtility::GetControlLocalTransform(
+            RigHierarchy, ControlName, CurrentTransform)) {
+        FRecorderTransform RecorderTransform;
+        RecorderTransform.FromTransform(CurrentTransform);
 
-            FRecorderTransform RecorderTransform;
-            RecorderTransform.FromTransform(CurrentTransform);
+        KeyRippleActor->RecorderTransforms.Add(RecorderName, RecorderTransform);
 
-            KeyRippleActor->RecorderTransforms.Add(RecorderName,
-                                                   RecorderTransform);
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("  SAVED: '%s' at Pos(%.2f,%.2f,%.2f) "
+                 "Rot(%.2f,%.2f,%.2f,%.2f)"),
+            *RecorderName, CurrentTransform.GetLocation().X,
+            CurrentTransform.GetLocation().Y, CurrentTransform.GetLocation().Z,
+            CurrentTransform.GetRotation().W, CurrentTransform.GetRotation().X,
+            CurrentTransform.GetRotation().Y, CurrentTransform.GetRotation().Z);
 
-            UE_LOG(LogTemp, Warning,
-                   TEXT("  SAVED: '%s' at Pos(%.2f,%.2f,%.2f) "
-                        "Rot(%.2f,%.2f,%.2f,%.2f)"),
-                   *RecorderName, CurrentTransform.GetLocation().X,
-                   CurrentTransform.GetLocation().Y,
-                   CurrentTransform.GetLocation().Z,
-                   CurrentTransform.GetRotation().W,
-                   CurrentTransform.GetRotation().X,
-                   CurrentTransform.GetRotation().Y,
-                   CurrentTransform.GetRotation().Z);
-
-            SavedCount++;
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("  ✗ Failed to get ControlElement for: %s"),
-                   *ControlName);
-            FailedCount++;
-        }
+        SavedCount++;
     } else {
-        UE_LOG(LogTemp, Warning, TEXT("  ✗ Control not found: %s"),
-               *ControlName);
+        UE_LOG(LogTemp, Warning,
+               TEXT("  ✗ Failed to get ControlElement for: %s"), *ControlName);
         FailedCount++;
     }
 }
@@ -205,33 +189,15 @@ void FKeyRippleControlRigHelper::LoadControllerTransform(
            LoadTransform.GetRotation().W, LoadTransform.GetRotation().X,
            LoadTransform.GetRotation().Y, LoadTransform.GetRotation().Z);
 
-    FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-    if (RigHierarchy->Contains(ControlKey)) {
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ControlKey);
-        if (ControlElement) {
-            FTransform NewTransform = FoundTransform->ToTransform();
+    if (FInstrumentControlRigUtility::SetControlLocalTransform(
+            RigHierarchy, ControlName, FoundTransform->ToTransform())) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("LOADED: Applied transform to control '%s'"), *ControlName);
 
-            FRigControlValue NewValue;
-            NewValue.SetFromTransform(NewTransform,
-                                      ControlElement->Settings.ControlType,
-                                      ControlElement->Settings.PrimaryAxis);
-
-            RigHierarchy->SetControlValue(ControlElement, NewValue,
-                                          ERigControlValueType::Current);
-
-            UE_LOG(LogTemp, Warning,
-                   TEXT("LOADED: Applied transform to control '%s'"),
-                   *ControlName);
-
-            LoadedCount++;
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Failed to get ControlElement for: %s"), *ControlName);
-            FailedCount++;
-        }
+        LoadedCount++;
     } else {
-        UE_LOG(LogTemp, Warning, TEXT("Control not found: %s"), *ControlName);
+        UE_LOG(LogTemp, Warning, TEXT("Failed to get ControlElement for: %s"),
+               *ControlName);
         FailedCount++;
     }
 }

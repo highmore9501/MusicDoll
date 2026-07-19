@@ -14,7 +14,21 @@ public class SingerUnreal : ModuleRules
             "ControlRig",
             "ControlRigDeveloper",    // 提供 UControlRigBlueprint 的反射数据
             "LevelSequence",
+            "Slate",
+            "SlateCore",
             "MusicDollCommon"
         });
+
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(
+                new string[]
+                {
+                    "UnrealEd",
+                    "EditorStyle",
+                    "WorkspaceMenuStructure"
+                }
+            );
+        }
     }
 }

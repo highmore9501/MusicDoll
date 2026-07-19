@@ -35,7 +35,7 @@ class MUSICDOLLCOMMON_API SLipSyncPanel : public SCompoundWidget {
 
     // ===== Mapping 区域 =====
 
-    /** 映射列表项（9 行固定：A~H, X） */
+    /** 映射列表项（12 行固定：A~K, X，兼容 Lisa 8 符号 + Cherry 12 符号） */
     TArray<TSharedPtr<FLipSyncMappingPair>> MappingPairs;
 
     /** 映射列表视图 */
@@ -73,6 +73,9 @@ class MUSICDOLLCOMMON_API SLipSyncPanel : public SCompoundWidget {
 
     /** 初始化 Lip Sync Control */
     FReply OnInitLipSyncControlClicked();
+
+    /** 将 Mapping 应用到 Rig */
+    FReply OnApplyMappingToRigClicked();
 
     // ===== Generation 区域 =====
 

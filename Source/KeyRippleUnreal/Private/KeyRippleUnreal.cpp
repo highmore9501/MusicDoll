@@ -369,21 +369,6 @@ static void ProcessTransformDataForStringArray(
                     VectorToJsonArray(FoundTransform->Location));
 
                 ListObject->SetObjectField(*RecorderName, RecorderObject);
-
-                bool isHandRecorder = RecorderName.Contains(TEXT("H_L")) ||
-                                      RecorderName.Contains(TEXT("H_R"));
-
-                if (isHandRecorder) {
-                    FString RotationControllerName =
-                        RecorderName.Replace(TEXT("_H_"), TEXT("_H_rotation_"));
-
-                    UE_LOG(LogTemp, Log,
-                           TEXT("isHandRecorder: %s, changed to %s"),
-                           *RecorderName, *RotationControllerName);
-
-                    ListObject->SetObjectField(*RotationControllerName,
-                                               RecorderObject);
-                }
             }
 
             CategoryObject->SetObjectField(*ListName, ListObject);

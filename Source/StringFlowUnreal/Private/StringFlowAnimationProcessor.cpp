@@ -71,37 +71,6 @@ static const TSet<FString> GetValidStringFlowControllerNames(
 }
 
 /**
- * 收集 StringFlow 中的所有控制器名称
- */
-static void CollectStringFlowControllerNames(
-    AStringFlowUnreal* StringFlowActor, TSet<FString>& OutControllerNames) {
-    if (!StringFlowActor) {
-        return;
-    }
-
-    // 收集左手控制器
-    for (const auto& Pair : StringFlowActor->LeftFingerControllers) {
-        OutControllerNames.Add(Pair.Value);
-    }
-    for (const auto& Pair : StringFlowActor->LeftHandControllers) {
-        OutControllerNames.Add(Pair.Value);
-    }
-
-    // 收集右手控制器
-    for (const auto& Pair : StringFlowActor->RightFingerControllers) {
-        OutControllerNames.Add(Pair.Value);
-    }
-    for (const auto& Pair : StringFlowActor->RightHandControllers) {
-        OutControllerNames.Add(Pair.Value);
-    }
-
-    // 收集辅助线
-    for (const auto& Pair : StringFlowActor->GuideLines) {
-        OutControllerNames.Add(Pair.Value);
-    }
-}
-
-/**
  * 处理单个动画帧 - StringFlow 特定的 JSON 结构解析
  * 假设 JSON 结构为: { "frame": N, "hand_infos": {...} }
  */
@@ -412,19 +381,7 @@ void UStringFlowAnimationProcessor::MakeStringAnimation(
                     "Proceeding with animation generation."));
     }
 
-    // 5. 收集需要清理的控制器名称
-    TSet<FString> ControlNamesToClean;
-    StringFlowAnimationHelper::CollectStringFlowControllerNames(
-        StringFlowActor, ControlNamesToClean);
-
-    // 6. 清空关键帧（使用通用方法）
-    UE_LOG(LogTemp, Warning,
-           TEXT("Clearing existing Control Rig keyframes before adding new "
-                "keyframes"));
-    UInstrumentAnimationUtility::ClearControlRigKeyframes(
-        LevelSequence, ControlRigInstance, ControlNamesToClean);
-
-    // 7. 处理每一帧并收集关键帧数据
+    // 5. 处理每一帧并收集关键帧数据
     TMap<FString, TArray<FAnimationKeyframe>> ControlKeyframeData;
     int32 ProcessedFrames = 0;
     int32 FailedFrames = 0;
@@ -581,13 +538,6 @@ void UStringFlowAnimationProcessor::MakePerformerAnimation(
                     "controllers"),
                ControlNamesToClean.Num());
     }
-
-    // 6. 清空关键帧（使用通用方法）
-    UE_LOG(LogTemp, Warning,
-           TEXT("Clearing existing Control Rig keyframes before adding new "
-                "keyframes"));
-    UInstrumentAnimationUtility::ClearControlRigKeyframes(
-        LevelSequence, ControlRigInstance, ControlNamesToClean);
 
     UE_LOG(LogTemp, Warning, TEXT("Starting to process %d animation frames"),
            JsonArray.Num());

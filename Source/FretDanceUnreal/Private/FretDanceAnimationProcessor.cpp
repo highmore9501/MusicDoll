@@ -524,12 +524,7 @@ void UFretDanceAnimationProcessor::MakeControllerRootAnimation(
         return;
     }
 
-    // 4. 清空 controller_root_offset 的关键帧（改为写入 offset）
-    TSet<FString> ControlNamesToClean = {TEXT("controller_root_offset")};
-    UInstrumentAnimationUtility::ClearControlRigKeyframes(
-        LevelSequence, ControlRigInstance, ControlNamesToClean);
-
-    // 5. 处理每一帧，合并位置和旋转到 controller_root_offset
+    // 4. 处理每一帧，合并位置和旋转到 controller_root_offset
     TMap<FString, TArray<FAnimationKeyframe>> ControlKeyframeData;
     int32 ProcessedFrames = 0;
     int32 FailedFrames = 0;
@@ -703,54 +698,25 @@ void UFretDanceAnimationProcessor::MakePerformerAnimation(
                     "Proceeding with animation generation."));
     }
 
-    // 5. 根据文件路径确定要清理的控制器集合
-    TSet<FString> ControlNamesToClean;
-
-    // 判断是左手还是右手动画
+    // 判断是左手还是右手动画（仅用于日志）
     bool bIsLeftHand =
         AnimationFilePath.Contains(TEXT("left"), ESearchCase::IgnoreCase);
     bool bIsRightHand =
         AnimationFilePath.Contains(TEXT("right"), ESearchCase::IgnoreCase);
 
     if (bIsLeftHand) {
-        // 只收集左手控制器
-        ControlNamesToClean.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"),
-                                    TEXT("TP_L"), TEXT("I_L"), TEXT("M_L"),
-                                    TEXT("R_L"), TEXT("P_L")});
-        UE_LOG(LogTemp, Warning,
-               TEXT("Detected LEFT HAND animation, will only clear %d left "
-                    "hand controllers"),
-               ControlNamesToClean.Num());
+        UE_LOG(LogTemp, Warning, TEXT("Detected LEFT HAND animation"));
     } else if (bIsRightHand) {
-        // 只收集右手控制器
-        ControlNamesToClean.Append({TEXT("H_R"), TEXT("HP_R"), TEXT("T_R"),
-                                    TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"),
-                                    TEXT("R_R"), TEXT("P_R")});
-        UE_LOG(LogTemp, Warning,
-               TEXT("Detected RIGHT HAND animation, will only clear %d right "
-                    "hand controllers"),
-               ControlNamesToClean.Num());
+        UE_LOG(LogTemp, Warning, TEXT("Detected RIGHT HAND animation"));
     } else {
-        // 如果无法判断，收集所有控制器
-        ControlNamesToClean =
-            FretDanceAnimationHelper::GetValidFretDanceControllerNames();
         UE_LOG(LogTemp, Warning,
-               TEXT("Could not determine hand type from path, clearing all %d "
-                    "controllers"),
-               ControlNamesToClean.Num());
+               TEXT("Could not determine hand type from path"));
     }
-
-    // 6. 清空关键帧（使用通用方法）
-    UE_LOG(LogTemp, Warning,
-           TEXT("Clearing existing Control Rig keyframes before adding new "
-                "keyframes"));
-    UInstrumentAnimationUtility::ClearControlRigKeyframes(
-        LevelSequence, ControlRigInstance, ControlNamesToClean);
 
     UE_LOG(LogTemp, Warning, TEXT("Starting to process %d animation frames"),
            JsonArray.Num());
 
-    // 7. 处理每一帧并收集关键帧数据
+    // 6. 处理每一帧并收集关键帧数据
     TMap<FString, TArray<FAnimationKeyframe>> ControlKeyframeData;
     int32 ProcessedFrames = 0;
     int32 FailedFrames = 0;

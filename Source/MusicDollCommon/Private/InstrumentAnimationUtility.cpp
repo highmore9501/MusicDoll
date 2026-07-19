@@ -718,7 +718,8 @@ bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
             // the track in a valid state. A ControlRig track with zero sections
             // causes crashes in Anim Outliner when Sequencer tries to read the
             // ChannelProxy (e.g. after save/reload).
-            if (RemovedCount > 0 && ControlRigTrack->GetAllSections().Num() == 0) {
+            if (RemovedCount > 0 &&
+                ControlRigTrack->GetAllSections().Num() == 0) {
                 UMovieSceneSection* NewSection =
                     ControlRigTrack->CreateNewSection();
                 if (NewSection) {
@@ -1009,6 +1010,58 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
         return;
     }
 
+    // 自动清理：在写入前清除本次要写入的控制器通道的旧关键帧
+    // 这样调用方无需再单独调用 ClearControlRigKeyframes
+    {
+        int32 AutoClearedCount = 0;
+        for (const auto& ControlPair : ControlKeyframeData) {
+            const FString& ControlName = ControlPair.Key;
+            FString Prefix = ControlName + TEXT(".");
+
+            FMovieSceneFloatChannel* LocX = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sLocation.X"), *Prefix));
+            FMovieSceneFloatChannel* LocY = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sLocation.Y"), *Prefix));
+            FMovieSceneFloatChannel* LocZ = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sLocation.Z"), *Prefix));
+            FMovieSceneFloatChannel* RotX = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sRotation.X"), *Prefix));
+            FMovieSceneFloatChannel* RotY = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sRotation.Y"), *Prefix));
+            FMovieSceneFloatChannel* RotZ = FindFloatChannel(
+                Section, *FString::Printf(TEXT("%sRotation.Z"), *Prefix));
+
+            if (LocX) {
+                LocX->Reset();
+                AutoClearedCount++;
+            }
+            if (LocY) {
+                LocY->Reset();
+                AutoClearedCount++;
+            }
+            if (LocZ) {
+                LocZ->Reset();
+                AutoClearedCount++;
+            }
+            if (RotX) {
+                RotX->Reset();
+                AutoClearedCount++;
+            }
+            if (RotY) {
+                RotY->Reset();
+                AutoClearedCount++;
+            }
+            if (RotZ) {
+                RotZ->Reset();
+                AutoClearedCount++;
+            }
+        }
+        UE_LOG(LogTemp, Log,
+               TEXT("[COMMON] BatchInsert: Auto-cleared %d channels for %d "
+                    "controllers before writing"),
+               AutoClearedCount, ControlKeyframeData.Num());
+    }
+
     FFrameRate TickResolution = MovieScene->GetTickResolution();
     FFrameRate DisplayRate = MovieScene->GetDisplayRate();
 
@@ -1202,13 +1255,17 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
             DisplayRate.Denominator /
             (TickResolution.Denominator * DisplayRate.Numerator);
 
-        Section->SetRange(TRange<FFrameNumber>(
-            FFrameNumber(0), MaxFrame + PaddingInInternalFrames));
+        // 扩展 Section 范围（而非覆盖），始终从零帧开始
+        FFrameNumber NewEnd = MaxFrame + PaddingInInternalFrames;
+        if (!Section->GetRange().IsEmpty()) {
+            NewEnd =
+                FMath::Max(Section->GetRange().GetUpperBoundValue(), NewEnd);
+        }
+        Section->SetRange(TRange<FFrameNumber>(FFrameNumber(0), NewEnd));
         UE_LOG(LogTemp, Warning,
-               TEXT("[COMMON] Set section range to %d - %d (Padding: %d "
+               TEXT("[COMMON] Set section range to 0 - %d (Padding: %d "
                     "display frames -> %d internal frames)"),
-               MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value,
-               Settings.FramePadding, PaddingInInternalFrames);
+               NewEnd.Value, Settings.FramePadding, PaddingInInternalFrames);
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("[COMMON] Warning: Invalid frame range. MinFrame=%d, "

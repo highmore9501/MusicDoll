@@ -81,20 +81,19 @@ bool UAnimationBaker::EvaluateSequenceAtFrame(TSharedPtr<ISequencer> Sequencer,
     // 关键修复：强制立即评估Sequencer以确保所有轨道按正确顺序评估
     // Animation Track必须先于Control Rig Track评估
     Sequencer->ForceEvaluate();
-    
+
     // 强制处理所有pending的更新
-    if (GEditor)
-    {
+    if (GEditor) {
         UWorld* World = GEditor->GetEditorWorldContext().World();
-        if (World)
-        {
+        if (World) {
             // 触发世界Tick以确保所有Actor组件更新
             World->Tick(LEVELTICK_All, 0.0f);
         }
     }
 
     UE_LOG(LogTemp, Verbose,
-           TEXT("[AnimationBaker] Moved playhead to frame %d (ticks: %f) and forced evaluation"),
+           TEXT("[AnimationBaker] Moved playhead to frame %d (ticks: %f) and "
+                "forced evaluation"),
            Frame, FrameInTicks.AsDecimal());
     return true;
 }
@@ -408,21 +407,6 @@ int32 UAnimationBaker::BakeMultiInstanceControlsUnified(
                TEXT("[AnimationBaker] Preparing to insert %d controls for "
                     "instance %p"),
                BatchKeyframeData.Num(), ControlRigInstance);
-
-        // 如果需要覆盖，先清理关键帧
-        if (Settings.bOverwriteExistingKeys && BatchKeyframeData.Num() > 0) {
-            UE_LOG(LogTemp, Log,
-                   TEXT("[AnimationBaker] Cleaning existing keyframes for %d "
-                        "controls in instance %p"),
-                   BatchKeyframeData.Num(), ControlRigInstance);
-
-            TSet<FString> ControlsToClean;
-            for (const auto& Pair : BatchKeyframeData) {
-                ControlsToClean.Add(Pair.Key);
-            }
-            UInstrumentAnimationUtility::ClearControlRigKeyframes(
-                LevelSequence, ControlRigInstance, ControlsToClean);
-        }
 
         // 配置批量插入设置
         FBatchInsertKeyframesSettings BatchSettings;

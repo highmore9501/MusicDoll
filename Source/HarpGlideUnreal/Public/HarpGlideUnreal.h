@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "InstrumentBase.h"
@@ -137,7 +138,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
    public:
     // ========== 乐器引用 ==========
 
-    /** 竖琴骨骼模型（用于竖�?Control Rig，Morph Target 载体�?*/
+    /** 竖琴骨骼模型（用于竖�?Control Rig，Morph Target
+     * 载体�?*/
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     ASkeletalMeshActor* Harp;
 
@@ -178,7 +180,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
               Category = "HarpGlide Configuration")
     int32 RightNear;
 
-    /** 标记�?Unreal 导出（始终为 true，写�?.harpist �?Blender 识别�?*/
+    /** 标记�?Unreal 导出（始终为 true，写�?.harpist �?Blender
+     * 识别�?*/
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
               Category = "HarpGlide Configuration")
     bool bIsUnreal;
@@ -206,7 +209,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> BodyControllers;
 
-    /** 左手控制器：7 个（key=内部�? value=CR 名称�?*/
+    /** 左手控制器：7 个（key=内部�? value=CR
+     * 名称�?*/
     UPROPERTY()
     TMap<FString, FString> LeftHandControllers;
 
@@ -218,19 +222,23 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> FootControllers;
 
-    /** Target 控制器：3 个（特殊朝向控制器） */
+    /** Target 控制器：3 个（特殊朝向控制器）
+     */
     UPROPERTY()
     TMap<FString, FString> TargetControllers;
 
-    /** 竖琴支点控制器：1 个（harp_pivot，驱�?harp 骨骼�?*/
+    /** 竖琴支点控制器：1 个（harp_pivot，驱�?harp
+     * 骨骼�?*/
     UPROPERTY()
     TMap<FString, FString> HarpPivotControllers;
 
-    /** 手指极向量控制器�?0 个（仅手动调节，不参�?Save/Load�?*/
+    /** 手指极向量控制器�?0
+     * 个（仅手动调节，不参�?Save/Load�?*/
     UPROPERTY()
     TMap<FString, FString> HandPoleControllers;
 
-    /** 双线性映射辅助控制器�? 个（只持久化 location�?*/
+    /** 双线性映射辅助控制器�? 个（只持久化
+     * location�?*/
     UPROPERTY()
     TMap<FString, FString> BilinearHelpers;
 
@@ -240,15 +248,18 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> StringPositionRecorders;
 
-    /** 踏板位置记录器：35 个（7踏板 × 5档位�?*/
+    /** 踏板位置记录器：35 个（7踏板 ×
+     * 5档位�?*/
     UPROPERTY()
     TMap<FString, FString> PedalPositionRecorders;
 
-    /** 竖琴支点状态记录器�? 个（near/mid/far�?*/
+    /** 竖琴支点状态记录器�?
+     * 个（near/mid/far�?*/
     UPROPERTY()
     TMap<FString, FString> HarpPivotRecorders;
 
-    /** 左手姿势记录器：28 个（7控制�?× 4姿势�?*/
+    /** 左手姿势记录器：28 个（7控制�?×
+     * 4姿势�?*/
     UPROPERTY()
     TMap<FString, FString> LeftHandRecorders;
 
@@ -256,7 +267,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> RightHandRecorders;
 
-    /** 头部姿势记录器：4 个（1控制�?× 4姿势�?*/
+    /** 头部姿势记录器：4 个（1控制�?×
+     * 4姿势�?*/
     UPROPERTY()
     TMap<FString, FString> HeadRecorders;
 
@@ -270,7 +282,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HarpGlide Data")
     TMap<FString, FHarpGlideRecorderTransform> RecorderTransforms;
 
-    /** 竖琴弦材质实例缓存（47 根弦的独立材质） */
+    /** 竖琴弦材质实例缓存（47 根弦的独立材质）
+     */
     UPROPERTY()
     TMap<FString, UMaterialInstanceConstant*> GeneratedMaterials;
 
@@ -278,7 +291,8 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
 
     /**
      * 初始化所有控制器和记录器映射
-     * 在构造函数中调用，直接翻译自 Blender 插件 HarpBaseState.__init__
+     * 在构造函数中调用，直接翻译自 Blender 插件
+     * HarpBaseState.__init__
      */
     void InitializeControllersAndRecorders();
 

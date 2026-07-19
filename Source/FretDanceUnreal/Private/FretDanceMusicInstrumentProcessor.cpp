@@ -654,13 +654,7 @@ void UFretDanceMusicInstrumentProcessor::CleanupExistingGuitarAnimations(
 
     UE_LOG(LogTemp, Warning, TEXT("Cleaning up existing guitar animations..."));
 
-    // 清理 Control Rig 轨道上的旧关键帧
-    if (FretDanceActor->SkeletalMeshActor) {
-        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-            FretDanceActor->SkeletalMeshActor);
-    }
-
-    // 清理材质参数轨道上的旧关键帧
+    // 清理吉他乐器的轨道（乐器是独立的 SkeletalMeshActor，不影响演奏者）
     if (FretDanceActor->Guitar) {
         UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
             FretDanceActor->Guitar);

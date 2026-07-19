@@ -113,12 +113,6 @@ void UHarpGlideAnimationProcessor::GeneratePerformerAnimation(
         return;
     }
 
-    // 清理演奏者旧关键帧
-    if (HarpGlideActor->SkeletalMeshActor) {
-        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-            HarpGlideActor->SkeletalMeshActor);
-    }
-
     if (!PerfPath.IsEmpty()) {
         MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence,
                                  HarpPath);
@@ -195,10 +189,6 @@ void UHarpGlideAnimationProcessor::GenerateAllAnimation(
     //    与演奏者数据合并为一次 BatchInsertControlRigKeys 写入，
     //    避免单独写入缩小 Section Range。
     if (!PerfPath.IsEmpty()) {
-        if (HarpGlideActor->SkeletalMeshActor) {
-            UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-                HarpGlideActor->SkeletalMeshActor);
-        }
         MakePerformanceAnimation(HarpGlideActor, PerfPath, LevelSequence,
                                  HarpPath);
     }

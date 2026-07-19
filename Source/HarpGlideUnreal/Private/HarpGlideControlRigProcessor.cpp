@@ -233,8 +233,9 @@ bool UHarpGlideControlRigProcessor::SaveLeftHandState(
         const FString& CtrlKey = Pair.Key;
         const FString& RecName = Pair.Value;
 
-        FRigElementKey Key(*CtrlKey, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlKey, T)) {
             UE_LOG(
                 LogTemp, Warning,
                 TEXT(
@@ -242,15 +243,6 @@ bool UHarpGlideControlRigProcessor::SaveLeftHandState(
                 *CtrlKey);
             continue;
         }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
 
         FHarpGlideRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -291,23 +283,15 @@ bool UHarpGlideControlRigProcessor::SaveRightHandState(
         const FString& CtrlKey = Pair.Key;
         const FString& RecName = Pair.Value;
 
-        FRigElementKey Key(*CtrlKey, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlKey, T)) {
             UE_LOG(LogTemp, Warning,
                    TEXT("SaveRightHandState [HarpGlide]: Controller '%s' not "
                         "found"),
                    *CtrlKey);
             continue;
         }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
 
         FHarpGlideRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -362,28 +346,15 @@ bool UHarpGlideControlRigProcessor::LoadState(
                 continue;
             }
 
-            FRigElementKey Key(*CtrlKey, ERigElementType::Control);
-            if (!ControlRig->GetHierarchy()->Contains(Key)) {
-                Failed++;
-                continue;
-            }
-
-            FRigControlElement* Elem =
-                ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-            if (!Elem) {
-                Failed++;
-                continue;
-            }
-
             FTransform NewT;
             NewT.SetLocation(FoundT->Location);
             NewT.SetRotation(FoundT->Rotation);
 
-            FRigControlValue NewVal;
-            NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                    Elem->Settings.PrimaryAxis);
-            ControlRig->GetHierarchy()->SetControlValue(
-                Elem, NewVal, ERigControlValueType::Current);
+            if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                    ControlRig->GetHierarchy(), CtrlKey, NewT)) {
+                Failed++;
+                continue;
+            }
 
             Loaded++;
         }
@@ -499,17 +470,10 @@ void UHarpGlideControlRigProcessor::SaveStringPositionStates(
     for (const auto& Pair : HarpGlideActor->StringPositionRecorders) {
         const FString& CtrlName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) continue;
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T))
+            continue;
 
         FHarpGlideRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -542,28 +506,15 @@ void UHarpGlideControlRigProcessor::ApplyStringPositionToControlRig(
             continue;
         }
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
-            Failed++;
-            continue;
-        }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) {
-            Failed++;
-            continue;
-        }
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, NewT)) {
+            Failed++;
+            continue;
+        }
         Applied++;
     }
 
@@ -583,17 +534,10 @@ void UHarpGlideControlRigProcessor::SaveFootControllerStates(
     for (const auto& Pair : HarpGlideActor->FootControllers) {
         const FString& CtrlName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) continue;
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T))
+            continue;
 
         FHarpGlideRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -618,20 +562,12 @@ void UHarpGlideControlRigProcessor::LoadFootControllerStates(
             HarpGlideActor->RecorderTransforms.Find(CtrlName);
         if (!FoundT) continue;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        FInstrumentControlRigUtility::SetControlLocalTransform(
+            ControlRig->GetHierarchy(), CtrlName, NewT);
     }
 }
 
@@ -650,20 +586,12 @@ void UHarpGlideControlRigProcessor::LoadStringPositionStates(
             HarpGlideActor->RecorderTransforms.Find(CtrlName);
         if (!FoundT) continue;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        FInstrumentControlRigUtility::SetControlLocalTransform(
+            ControlRig->GetHierarchy(), CtrlName, NewT);
     }
 }
 
@@ -877,17 +805,10 @@ bool UHarpGlideControlRigProcessor::SaveHarpTiltState(
     FString RecKey = FString::Printf(
         TEXT("harp_pivot_%s"), *AHarpGlideUnreal::GetTiltStateString(State));
 
-    FRigElementKey Key(TEXT("harp_pivot"), ERigElementType::Control);
-    if (!ControlRig->GetHierarchy()->Contains(Key)) return false;
-
-    FRigControlElement* Elem =
-        ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-    if (!Elem) return false;
-
-    FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-        Elem, ERigControlValueType::Current);
-    FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                      Elem->Settings.PrimaryAxis);
+    FTransform T;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            ControlRig->GetHierarchy(), TEXT("harp_pivot"), T))
+        return false;
 
     FHarpGlideRecorderTransform RecT;
     RecT.FromTransform(T);
@@ -916,20 +837,12 @@ bool UHarpGlideControlRigProcessor::LoadHarpTiltState(
         HarpGlideActor->RecorderTransforms.Find(RecKey);
     if (!FoundT) return false;
 
-    FRigElementKey Key(TEXT("harp_pivot"), ERigElementType::Control);
-    FRigControlElement* Elem =
-        ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-    if (!Elem) return false;
-
     FTransform NewT;
     NewT.SetLocation(FoundT->Location);
     NewT.SetRotation(FoundT->Rotation);
 
-    FRigControlValue NewVal;
-    NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                            Elem->Settings.PrimaryAxis);
-    ControlRig->GetHierarchy()->SetControlValue(Elem, NewVal,
-                                                ERigControlValueType::Current);
+    FInstrumentControlRigUtility::SetControlLocalTransform(
+        ControlRig->GetHierarchy(), TEXT("harp_pivot"), NewT);
     ControlRig->Evaluate_AnyThread();
     return true;
 }
@@ -960,17 +873,10 @@ bool UHarpGlideControlRigProcessor::SaveFootRestState(
 
     int32 Saved = 0;
     for (const auto& Pair : Pairs) {
-        FRigElementKey Key(*Pair.CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) continue;
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), Pair.CtrlName, T))
+            continue;
 
         FHarpGlideRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -1007,21 +913,14 @@ bool UHarpGlideControlRigProcessor::LoadFootRestState(
             HarpGlideActor->RecorderTransforms.Find(Pair.RecKey);
         if (!FoundT) continue;
 
-        FRigElementKey Key(*Pair.CtrlName, ERigElementType::Control);
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
-        Loaded++;
+        if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                ControlRig->GetHierarchy(), Pair.CtrlName, NewT)) {
+            Loaded++;
+        }
     }
 
     if (Loaded > 0) ControlRig->Evaluate_AnyThread();

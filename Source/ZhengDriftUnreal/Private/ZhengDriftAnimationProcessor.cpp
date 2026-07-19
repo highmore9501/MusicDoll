@@ -113,14 +113,6 @@ void UZhengDriftAnimationProcessor::GeneratePerformerAnimation(
         return;
     }
 
-    // 清理演奏者旧关键帧
-    if (ZhengDriftActor->SkeletalMeshActor) {
-        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-            ZhengDriftActor->SkeletalMeshActor,
-            TArray<FString>{TEXT("F_L"), TEXT("F_R"), TEXT("F_L_pole"),
-                            TEXT("F_R_pole")});
-    }
-
     // ====== 第一步：收集所有数据（先不写入） ======
     TMap<FString, TArray<FAnimationKeyframe>> AllControlKeyframeData;
 
@@ -215,13 +207,6 @@ void UZhengDriftAnimationProcessor::GenerateAllAnimation(
 
     // 1. 演奏者手部动画 — 先收集数据
     TMap<FString, TArray<FAnimationKeyframe>> AllControlKeyframeData;
-
-    if (ZhengDriftActor->SkeletalMeshActor) {
-        UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
-            ZhengDriftActor->SkeletalMeshActor,
-            TArray<FString>{TEXT("F_L"), TEXT("F_R"), TEXT("F_L_pole"),
-                            TEXT("F_R_pole")});
-    }
 
     if (!PerformancePath.IsEmpty()) {
         CollectPerformerKeyframes(PerformancePath, AllControlKeyframeData);

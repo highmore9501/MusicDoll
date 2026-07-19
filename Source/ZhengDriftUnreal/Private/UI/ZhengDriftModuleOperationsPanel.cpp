@@ -3,7 +3,6 @@
 #include "UI/CommonPanelUtility.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 #include "ZhengDriftAnimationProcessor.h"
@@ -254,45 +253,17 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
         5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
         TEXT("Animation Generation"))];
 
-    // ---- Animation File Path ----
-    TSharedPtr<SEditableTextBox> AnimFilePathBox;
     Container->AddSlot().AutoHeight().Padding(
-        5.0f)[SNew(SHorizontalBox) +
-              SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
-                  [SAssignNew(AnimFilePathBox, SEditableTextBox)
-                       .Text_Lambda([this]() -> FText {
-                           if (ZhengDriftActor.IsValid())
-                               return FText::FromString(
-                                   ZhengDriftActor->AnimationFilePath);
-                           return FText::FromString(TEXT(""));
-                       })
-                       .OnTextCommitted_Lambda(
-                           [this](const FText& T, ETextCommit::Type Commit) {
-                               if ((Commit == ETextCommit::OnEnter ||
-                                    Commit == ETextCommit::OnUserMovedFocus) &&
-                                   ZhengDriftActor.IsValid()) {
-                                   ZhengDriftActor->AnimationFilePath =
-                                       T.ToString();
-                                   ZhengDriftActor->Modify();
-                               }
-                           })] +
-              SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-                  [SNew(SButton)
-                       .Text(LOCTEXT("BrowseBtn", "Browse"))
-                       .OnClicked_Lambda([this, AnimFilePathBox]() -> FReply {
-                           if (!ZhengDriftActor.IsValid())
-                               return FReply::Handled();
-                           FString FilePath;
-                           if (FCommonPanelUtility::BrowseForFile(
-                                   TEXT(".zhengdrift"), FilePath, false)) {
-                               if (AnimFilePathBox.IsValid())
-                                   AnimFilePathBox->SetText(
-                                       FText::FromString(FilePath));
-                               ZhengDriftActor->AnimationFilePath = FilePath;
-                               ZhengDriftActor->Modify();
-                           }
-                           return FReply::Handled();
-                       })]];
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Animation File Path"), ZhengDriftActor->AnimationFilePath,
+        TEXT("AnimationFilePath"), TEXT(".zhengdrift"),
+        [this](const FString& NewPath) {
+            if (ZhengDriftActor.IsValid()) {
+                ZhengDriftActor->Modify();
+                ZhengDriftActor->AnimationFilePath = NewPath;
+            }
+        },
+        false)];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)

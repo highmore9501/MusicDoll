@@ -12,9 +12,9 @@
 #include "ISequencer.h"
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
-#include "Kismet2/BlueprintEditorUtils.h"
 #include "Json.h"
 #include "JsonUtilities.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "LevelEditorSequencerIntegration.h"
 #include "LevelSequence.h"
 #include "LevelSequenceEditorBlueprintLibrary.h"
@@ -565,21 +565,26 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
     // 写入关键帧
     int32 WrittenTargets = WriteMorphTargetKeyframes(Section, KeyframeData);
 
-    // 更新Section范围
+    // 扩展 Section 范围（而非覆盖），始终从零帧开始
     if (bHasFrames) {
         // 将 FramePadding 从显示帧转换为内部帧空间
         FFrameRate TickResolution = MovieScene->GetTickResolution();
         FFrameRate DisplayRate = MovieScene->GetDisplayRate();
-        int32 PaddingInInternalFrames = FramePadding * 
-                                        TickResolution.Numerator * DisplayRate.Denominator /
-                                        (TickResolution.Denominator * DisplayRate.Numerator);
-        
-        Section->SetRange(TRange<FFrameNumber>(MinFrame, MaxFrame + PaddingInInternalFrames));
+        int32 PaddingInInternalFrames =
+            FramePadding * TickResolution.Numerator * DisplayRate.Denominator /
+            (TickResolution.Denominator * DisplayRate.Numerator);
+
+        FFrameNumber NewEnd = MaxFrame + PaddingInInternalFrames;
+        if (!Section->GetRange().IsEmpty()) {
+            NewEnd =
+                FMath::Max(Section->GetRange().GetUpperBoundValue(), NewEnd);
+        }
+        Section->SetRange(TRange<FFrameNumber>(FFrameNumber(0), NewEnd));
         UE_LOG(LogTemp, Warning,
-               TEXT("[InstrumentMorphTargetUtility] Set section range to [%d, "
-                    "%d) (Padding: %d display frames -> %d internal frames)"),
-               MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value,
-               FramePadding, PaddingInInternalFrames);
+               TEXT("[InstrumentMorphTargetUtility] Expanded section range to "
+                    "[0, %d) (Padding: %d display frames -> %d internal "
+                    "frames)"),
+               NewEnd.Value, FramePadding, PaddingInInternalFrames);
     }
 
     // 对 Section 和 Track 调用 Modify 确保更改被追踪
@@ -625,20 +630,21 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
 }
 
 bool UInstrumentMorphTargetUtility::GetCurveNamesFromBlueprint(
-    UControlRigBlueprint* ControlRigBlueprint,
-    TArray<FString>& OutNames) {
+    UControlRigBlueprint* ControlRigBlueprint, TArray<FString>& OutNames) {
     OutNames.Empty();
 
     if (!ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error,
-               TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
         return false;
     }
 
     URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
     if (!RigHierarchy) {
         UE_LOG(LogTemp, Error,
-               TEXT("[InstrumentMorphTargetUtility] Failed to get RigHierarchy from Blueprint"));
+               TEXT("[InstrumentMorphTargetUtility] Failed to get RigHierarchy "
+                    "from Blueprint"));
         return false;
     }
 
@@ -650,20 +656,21 @@ bool UInstrumentMorphTargetUtility::GetCurveNamesFromBlueprint(
     }
 
     UE_LOG(LogTemp, Log,
-           TEXT("[InstrumentMorphTargetUtility] Found %d curves in ControlRig Blueprint"),
+           TEXT("[InstrumentMorphTargetUtility] Found %d curves in ControlRig "
+                "Blueprint"),
            OutNames.Num());
 
     return OutNames.Num() > 0;
 }
 
 int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
-    UControlRigBlueprint* ControlRigBlueprint,
-    const FString& RootControlName,
+    UControlRigBlueprint* ControlRigBlueprint, const FString& RootControlName,
     TArray<FString>* OutChannelNames) {
     // 参数验证
     if (!ControlRigBlueprint) {
-        UE_LOG(LogTemp, Error,
-               TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("[InstrumentMorphTargetUtility] ControlRigBlueprint is null"));
         return 0;
     }
 
@@ -709,14 +716,14 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
     // 步骤 3: 批量添加 Animation Channels
     FRigElementKey RootControlKey(*RootControlName, ERigElementType::Control);
 
-    int32 ChannelsAdded = AddAnimationChannels(ControlRigBlueprint,
-                                               RootControlKey, MorphTargetNames);
+    int32 ChannelsAdded = AddAnimationChannels(
+        ControlRigBlueprint, RootControlKey, MorphTargetNames);
 
     // 输出结果
     UE_LOG(LogTemp, Warning,
            TEXT("========== InitializeMorphTargetChannels Summary =========="));
-    UE_LOG(LogTemp, Warning,
-           TEXT("Successfully created/verified: %d channels"), ChannelsAdded);
+    UE_LOG(LogTemp, Warning, TEXT("Successfully created/verified: %d channels"),
+           ChannelsAdded);
     UE_LOG(LogTemp, Warning, TEXT("Expected total: %d Morph Targets"),
            MorphTargetNames.Num());
 
@@ -728,12 +735,12 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
                TEXT("⚠ Partially initialized: %d/%d channels"), ChannelsAdded,
                MorphTargetNames.Num());
     } else {
-        UE_LOG(LogTemp, Error,
-               TEXT("✗ Failed to initialize any channels"));
+        UE_LOG(LogTemp, Error, TEXT("✗ Failed to initialize any channels"));
     }
 
-    UE_LOG(LogTemp, Warning,
-           TEXT("========== InitializeMorphTargetChannels Completed =========="));
+    UE_LOG(
+        LogTemp, Warning,
+        TEXT("========== InitializeMorphTargetChannels Completed =========="));
 
     // 如果需要，输出通道名称列表
     if (OutChannelNames) {
@@ -743,8 +750,8 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
     // 修改 Blueprint Hierarchy 后，必须触发 Blueprint 重编译。
     // 否则运行时 ControlRig 实例的 Hierarchy 仍然是旧的结构，
     // Sequencer 的 ControlRig Parameter Section 也不知道新增了哪些 Channel。
-    // 保存、关闭、重新打开 Sequence 后，Section 会尝试用旧数据匹配新 Hierarchy，
-    // 导致 "Array index out of bounds" 崩溃。
+    // 保存、关闭、重新打开 Sequence 后，Section 会尝试用旧数据匹配新
+    // Hierarchy， 导致 "Array index out of bounds" 崩溃。
     //
     // MarkBlueprintAsStructurallyModified 会：
     //   1. 重编译 ControlRig VM，同步 Blueprint Hierarchy 到所有运行时实例
@@ -766,8 +773,9 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
     if (ChannelsAdded > 0) {
         ULevelSequence* LevelSequence = nullptr;
         TSharedPtr<ISequencer> Sequencer = nullptr;
-        bool bHasSequencer = UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
-            LevelSequence, Sequencer);
+        bool bHasSequencer =
+            UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                LevelSequence, Sequencer);
 
         // 步骤 1: 在重编译前先清空 Sequencer 选择，
         // 防止 Anim Outliner 在重编译过程中访问正在被销毁的 ControlRig 元素
@@ -786,7 +794,8 @@ int32 UInstrumentMorphTargetUtility::InitializeMorphTargetChannels(
                     "structurally modified to trigger VM recompilation"));
 
         // 步骤 3: 清除所有 ControlRig 缓存
-        // Blueprint 重编译后，基于该 Blueprint 的运行时 ControlRig 实例已被重建。
+        // Blueprint 重编译后，基于该 Blueprint 的运行时 ControlRig
+        // 实例已被重建。
         // 缓存中的旧指针不再有效，必须清除以防止后续操作使用过时的指针。
         if (GEngine) {
             UControlRigCacheSubsystem* CacheSubsystem =

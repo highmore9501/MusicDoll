@@ -39,6 +39,8 @@ public class MusicDollUI : ModuleRules
                 "BeatBloomUnreal",
                 "ZhengDriftUnreal",
                 "HarpGlideUnreal",
+                "WindRiseUnreal",
+                "SingerUnreal"
             }
         );
 

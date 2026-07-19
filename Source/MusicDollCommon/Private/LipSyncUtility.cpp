@@ -297,6 +297,77 @@ bool ULipSyncUtility::SetLipSyncMapping(
 
     ControlRigBlueprint->MarkPackageDirty();
 
+    // 清理 lip_sync control 下多余的 float channel（不在 mapping 中的）
+    {
+        URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
+        if (RigHierarchy) {
+            FRigElementKey LipSyncKey(*LipSyncControlName,
+                                      ERigElementType::Control);
+            if (RigHierarchy->Contains(LipSyncKey)) {
+                URigHierarchyController* HierarchyController =
+                    RigHierarchy->GetController();
+                if (HierarchyController) {
+                    // 收集 mapping 中的有效 morph target 名称
+                    TSet<FString> ValidMorphTargetNames;
+                    for (const FLipSyncMappingPair& Pair : InMapping) {
+                        if (!Pair.MorphTargetName.IsEmpty()) {
+                            ValidMorphTargetNames.Add(Pair.MorphTargetName);
+                        }
+                    }
+
+                    if (ValidMorphTargetNames.Num() > 0) {
+                        // 遍历所有 control，找出 lip_sync 下不在 mapping 中的
+                        // float animation channel 并删除
+                        TArray<FRigElementKey> AllKeys =
+                            RigHierarchy->GetAllKeys(false);
+                        int32 RemovedCount = 0;
+
+                        for (const FRigElementKey& Key : AllKeys) {
+                            if (Key.Type != ERigElementType::Control) continue;
+
+                            FRigElementKey ParentKey =
+                                RigHierarchy->GetFirstParent(Key);
+                            if (ParentKey != LipSyncKey) continue;
+
+                            const FRigControlElement* ControlElement =
+                                RigHierarchy->Find<FRigControlElement>(Key);
+                            if (!ControlElement ||
+                                !ControlElement->IsAnimationChannel())
+                                continue;
+                            if (ControlElement->Settings.ControlType !=
+                                ERigControlType::Float)
+                                continue;
+
+                            const FString ChannelName = Key.Name.ToString();
+                            if (!ValidMorphTargetNames.Contains(ChannelName)) {
+                                if (HierarchyController->RemoveElement(
+                                        Key, true, false)) {
+                                    RemovedCount++;
+                                    UE_LOG(LogTemp, Log,
+                                           TEXT("[LipSyncUtility] "
+                                                "SetLipSyncMapping: Removed "
+                                                "orphaned channel '%s'"),
+                                           *ChannelName);
+                                }
+                            }
+                        }
+
+                        if (RemovedCount > 0) {
+                            UE_LOG(LogTemp, Log,
+                                   TEXT("[LipSyncUtility] "
+                                        "SetLipSyncMapping: Cleaned up %d "
+                                        "orphaned channels"),
+                                   RemovedCount);
+                            FBlueprintEditorUtils::
+                                MarkBlueprintAsStructurallyModified(
+                                    ControlRigBlueprint);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     UE_LOG(LogTemp, Log,
            TEXT("[LipSyncUtility] SetLipSyncMapping: Successfully saved %d "
                 "mappings"),
@@ -307,46 +378,111 @@ bool ULipSyncUtility::SetLipSyncMapping(
 
 // ===== Control Rig 操作 =====
 
-int32 ULipSyncUtility::SetupLipSyncControl(
-    UControlRigBlueprint* ControlRigBlueprint,
-    const TArray<FLipSyncMappingPair>& Mapping) {
+bool ULipSyncUtility::InitializeLipSyncControl(
+    UControlRigBlueprint* ControlRigBlueprint) {
     if (!ControlRigBlueprint) {
         UE_LOG(LogTemp, Error,
-               TEXT("[LipSyncUtility] SetupLipSyncControl: ControlRigBlueprint "
-                    "is null"));
-        return 0;
+               TEXT("[LipSyncUtility] InitializeLipSyncControl: "
+                    "ControlRigBlueprint is null"));
+        return false;
     }
 
-    // Step 1: 确保 lip_sync Control 存在于根层级
-    UE_LOG(
-        LogTemp, Log,
-        TEXT("[LipSyncUtility] SetupLipSyncControl: Creating '%s' control..."),
-        *LipSyncControlName);
-
-    // 检查是否已存在
-    URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
-    if (RigHierarchy) {
-        FRigElementKey ExistingKey(*LipSyncControlName,
-                                   ERigElementType::Control);
-        if (RigHierarchy->Contains(ExistingKey)) {
-            UE_LOG(LogTemp, Log,
-                   TEXT("[LipSyncUtility] Control '%s' already exists"),
-                   *LipSyncControlName);
-        } else {
-            if (!FControlRigCreationUtility::CreateControl(
-                    ControlRigBlueprint, LipSyncControlName, TEXT(""))) {
-                UE_LOG(LogTemp, Error,
-                       TEXT("[LipSyncUtility] Failed to create '%s' control"),
-                       *LipSyncControlName);
-                return 0;
+    // --- 第一层：检查 LipSyncMapping 变量是否存在，不存在则创建 ---
+    {
+        bool bVarExists = false;
+        for (const FBPVariableDescription& Var :
+             ControlRigBlueprint->NewVariables) {
+            if (Var.VarName == LipSyncMappingVariableName) {
+                bVarExists = true;
+                break;
             }
+        }
+
+        if (!bVarExists) {
+            if (!AddLipSyncMappingVariable(ControlRigBlueprint)) {
+                UE_LOG(LogTemp, Error,
+                       TEXT("[LipSyncUtility] "
+                            "InitializeLipSyncControl: Failed to add "
+                            "LipSyncMapping variable"));
+                return false;
+            }
+
             UE_LOG(LogTemp, Log,
-                   TEXT("[LipSyncUtility] Created '%s' control successfully"),
-                   *LipSyncControlName);
+                   TEXT("[LipSyncUtility] InitializeLipSyncControl: "
+                        "Created LipSyncMapping variable"));
+        } else {
+            UE_LOG(LogTemp, Log,
+                   TEXT("[LipSyncUtility] InitializeLipSyncControl: "
+                        "LipSyncMapping variable already exists"));
         }
     }
 
-    // Step 2: 收集需要创建 Channel 的 Morph Target 名称（去重）
+    // --- 第二层：检查 lip_sync Control 是否存在 ---
+    {
+        URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
+        if (!RigHierarchy) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("[LipSyncUtility] InitializeLipSyncControl: Failed "
+                        "to get RigHierarchy"));
+            return false;
+        }
+
+        FRigElementKey ExistingKey(*LipSyncControlName,
+                                   ERigElementType::Control);
+        if (!RigHierarchy->Contains(ExistingKey)) {
+            // Control 不存在 → 创建 Control
+            if (!FControlRigCreationUtility::CreateControl(
+                    ControlRigBlueprint, LipSyncControlName, TEXT(""))) {
+                UE_LOG(LogTemp, Error,
+                       TEXT("[LipSyncUtility] "
+                            "InitializeLipSyncControl: Failed to create "
+                            "'%s' control"),
+                       *LipSyncControlName);
+                return false;
+            }
+
+            UE_LOG(LogTemp, Log,
+                   TEXT("[LipSyncUtility] "
+                        "InitializeLipSyncControl: Created '%s' control"),
+                   *LipSyncControlName);
+            return true;
+        }
+    }
+
+    UE_LOG(LogTemp, Log,
+           TEXT("[LipSyncUtility] InitializeLipSyncControl: Control '%s' "
+                "already exists"),
+           *LipSyncControlName);
+
+    UE_LOG(LogTemp, Log,
+           TEXT("[LipSyncUtility] InitializeLipSyncControl: Already "
+                "initialized (both variable and control exist). "
+                "Use ApplyMappingToRig to create channels."));
+
+    return true;
+}
+
+// ===== Mapping应用到Rig =====
+
+int32 ULipSyncUtility::ApplyMappingToRig(
+    UControlRigBlueprint* ControlRigBlueprint) {
+    if (!ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ApplyMappingToRig: "
+                    "ControlRigBlueprint is null"));
+        return 0;
+    }
+
+    // 读取 mapping 变量
+    TArray<FLipSyncMappingPair> Mapping;
+    if (!GetLipSyncMapping(ControlRigBlueprint, Mapping)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("[LipSyncUtility] ApplyMappingToRig: Failed to read "
+                    "mapping (Blueprint may need compilation)"));
+        return 0;
+    }
+
+    // 收集需要创建 Channel 的 Morph Target 名称（去重）
     TSet<FString> UniqueMorphTargets;
     for (const FLipSyncMappingPair& Pair : Mapping) {
         if (!Pair.MorphTargetName.IsEmpty()) {
@@ -355,29 +491,28 @@ int32 ULipSyncUtility::SetupLipSyncControl(
     }
 
     if (UniqueMorphTargets.Num() == 0) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("[LipSyncUtility] SetupLipSyncControl: No valid morph "
-                    "targets in mapping"));
+        UE_LOG(LogTemp, Log,
+               TEXT("[LipSyncUtility] ApplyMappingToRig: Mapping is empty, "
+                    "no channels to create"));
         return 0;
     }
 
     TArray<FString> ChannelNames = UniqueMorphTargets.Array();
 
     UE_LOG(LogTemp, Log,
-           TEXT("[LipSyncUtility] SetupLipSyncControl: Creating %d animation "
+           TEXT("[LipSyncUtility] ApplyMappingToRig: Creating %d animation "
                 "channels under '%s'"),
            ChannelNames.Num(), *LipSyncControlName);
 
-    // Step 3: 批量创建 Float Animation Channel
     FRigElementKey ParentKey(*LipSyncControlName, ERigElementType::Control);
-    int32 SuccessCount = UInstrumentMorphTargetUtility::AddAnimationChannels(
+    int32 CreatedCount = UInstrumentMorphTargetUtility::AddAnimationChannels(
         ControlRigBlueprint, ParentKey, ChannelNames, ERigControlType::Float);
 
     UE_LOG(LogTemp, Log,
-           TEXT("[LipSyncUtility] SetupLipSyncControl: Created %d channels"),
-           SuccessCount);
+           TEXT("[LipSyncUtility] ApplyMappingToRig: Created %d channels"),
+           CreatedCount);
 
-    return SuccessCount;
+    return CreatedCount;
 }
 
 // ===== JSON 解析 =====
@@ -447,6 +582,141 @@ bool ULipSyncUtility::ParseLipSyncJson(const FString& FilePath,
     return OutCues.Num() > 0;
 }
 
+// ===== TSV 解析（Cherry 格式）=====
+
+bool ULipSyncUtility::ParseLipSyncTsv(const FString& FilePath,
+                                      TArray<FLipSyncMouthCue>& OutCues,
+                                      float& OutDuration) {
+    OutCues.Reset();
+    OutDuration = 0.0f;
+
+    // 读取文件
+    FString FileContent;
+    if (!FFileHelper::LoadFileToString(FileContent, *FilePath)) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("[LipSyncUtility] ParseLipSyncTsv: Failed to load file: %s"),
+            *FilePath);
+        return false;
+    }
+
+    // 按行分割
+    TArray<FString> Lines;
+    FileContent.ParseIntoArrayLines(Lines);
+
+    if (Lines.Num() == 0) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ParseLipSyncTsv: File is empty"));
+        return false;
+    }
+
+    // 解析每一行：<时间>\t<口型字母>
+    struct FTimestampedPhoneme {
+        float Time;
+        FString Phoneme;
+    };
+    TArray<FTimestampedPhoneme> Entries;
+
+    for (const FString& Line : Lines) {
+        FString TrimmedLine = Line.TrimStartAndEnd();
+        if (TrimmedLine.IsEmpty()) {
+            continue;
+        }
+
+        TArray<FString> Columns;
+        TrimmedLine.ParseIntoArray(Columns, TEXT("\t"), false);
+
+        if (Columns.Num() < 2) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("[LipSyncUtility] ParseLipSyncTsv: Skipping malformed "
+                        "line: %s"),
+                   *TrimmedLine);
+            continue;
+        }
+
+        float Time = FCString::Atof(*Columns[0]);
+        FString Phoneme = Columns[1].TrimStartAndEnd().ToUpper();
+
+        FTimestampedPhoneme Entry;
+        Entry.Time = Time;
+        Entry.Phoneme = Phoneme;
+        Entries.Add(Entry);
+    }
+
+    if (Entries.Num() == 0) {
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("[LipSyncUtility] ParseLipSyncTsv: No valid entries found"));
+        return false;
+    }
+
+    // 转换为 FLipSyncMouthCue：每行的口型持续到下一行的开始时间
+    // 最后一行使用默认的短暂持续时间
+    const float DefaultLastDuration = 0.1f;
+
+    for (int32 i = 0; i < Entries.Num(); ++i) {
+        FLipSyncMouthCue Cue;
+        Cue.Start = Entries[i].Time;
+        Cue.Value = Entries[i].Phoneme;
+
+        if (i + 1 < Entries.Num()) {
+            Cue.End = Entries[i + 1].Time;
+        } else {
+            Cue.End = Entries[i].Time + DefaultLastDuration;
+        }
+
+        OutCues.Add(Cue);
+    }
+
+    // 计算总时长：最后一行的时间 + 默认持续时长
+    OutDuration = Entries.Last().Time + DefaultLastDuration;
+
+    UE_LOG(LogTemp, Log,
+           TEXT("[LipSyncUtility] ParseLipSyncTsv: Parsed %d cues from %d "
+                "entries, duration=%.2fs"),
+           OutCues.Num(), Entries.Num(), OutDuration);
+
+    return OutCues.Num() > 0;
+}
+
+// ===== 自动检测文件类型 =====
+
+bool ULipSyncUtility::ParseLipSyncFile(const FString& FilePath,
+                                       TArray<FLipSyncMouthCue>& OutCues,
+                                       float& OutDuration) {
+    OutCues.Reset();
+    OutDuration = 0.0f;
+
+    // 根据文件扩展名自动选择解析器
+    FString Extension = FPaths::GetExtension(FilePath).ToLower();
+
+    if (Extension == TEXT("tsv")) {
+        UE_LOG(LogTemp, Log,
+               TEXT("[LipSyncUtility] ParseLipSyncFile: Detected TSV format"));
+        return ParseLipSyncTsv(FilePath, OutCues, OutDuration);
+    } else if (Extension == TEXT("json")) {
+        UE_LOG(LogTemp, Log,
+               TEXT("[LipSyncUtility] ParseLipSyncFile: Detected JSON format"));
+        return ParseLipSyncJson(FilePath, OutCues, OutDuration);
+    } else {
+        // 未知扩展名，先尝试 JSON 再尝试 TSV
+        UE_LOG(LogTemp, Log,
+               TEXT("[LipSyncUtility] ParseLipSyncFile: Unknown extension "
+                    "'%s', trying JSON first"),
+               *Extension);
+
+        if (ParseLipSyncJson(FilePath, OutCues, OutDuration)) {
+            return true;
+        }
+
+        UE_LOG(
+            LogTemp, Log,
+            TEXT("[LipSyncUtility] ParseLipSyncFile: JSON failed, trying TSV"));
+
+        return ParseLipSyncTsv(FilePath, OutCues, OutDuration);
+    }
+}
+
 // ===== 关键帧转换 =====
 
 float ULipSyncUtility::ComputeChangeDuration(float CueDuration) {
@@ -480,11 +750,12 @@ bool ULipSyncUtility::ConvertCuesToKeyframeData(
     if (Mapping.Num() == 0) {
         UE_LOG(LogTemp, Warning,
                TEXT("[LipSyncUtility] ConvertCuesToKeyframeData: Mapping array "
-                    "is empty"));
+                    "is empty, no keyframes will be generated"));
         return false;
     }
 
     // 构建 Phoneme → MorphTargetName 的快速查找表
+    // 只包含有效映射条目，缺失的口型将被跳过（部分映射容错）
     TMap<FString, FString> PhonemeToMorphTarget;
     for (const FLipSyncMappingPair& Pair : Mapping) {
         if (!Pair.Phoneme.IsEmpty() && !Pair.MorphTargetName.IsEmpty()) {
@@ -518,25 +789,26 @@ bool ULipSyncUtility::ConvertCuesToKeyframeData(
         }
 
         const float CueDuration = Cue.GetDuration();
-        const float ChangeDuration = ComputeChangeDuration(CueDuration);
+        const float CurrentChangeDur =
+            ComputeChangeDuration(CueDuration);  // current_change_dur
 
-        // 查找下一个非 X cue 来计算 next_change_duration
-        float NextChangeDuration =
-            ChangeDuration;  // 默认使用当前 cue 的 change_duration
-        for (int32 j = i + 1; j < Cues.Num(); ++j) {
-            if (Cues[j].Value.ToUpper() != TEXT("X")) {
-                NextChangeDuration =
-                    ComputeChangeDuration(Cues[j].GetDuration());
-                break;
-            }
+        // pre_change_dur 源于前一个口型的持续时间
+        float PreChangeDur = CurrentChangeDur;
+        if (i > 0) {
+            PreChangeDur = ComputeChangeDuration(Cues[i - 1].GetDuration());
         }
 
         // 计算四帧时间和值
-        const float T0 =
-            FMath::Max(0.0f, Cue.Start - ChangeDuration);  // 淡入开始
-        const float T1 = Cue.Start;                        // 口型激活
-        const float T2 = Cue.End;                          // 口型保持结束
-        const float T3 = Cue.End + NextChangeDuration;     // 淡出结束
+        // t1 = max(0, start - pre_change_dur)    —
+        // 淡入开始（速度取决于前一口型） t2 = start — 口型激活 t3 = end -
+        // current_change_dur          — 淡出开始（速度取决于当前口型） t4 = end
+        // — 口型结束 注意：X 虽然不生成关键帧，但 change_duration
+        // 计算将其视为普通口型参与
+        const float T1 =
+            FMath::Max(0.0f, Cue.Start - PreChangeDur);  // 淡入开始
+        const float T2 = Cue.Start;                      // 口型激活
+        const float T3 = Cue.End - CurrentChangeDur;     // 淡出开始
+        const float T4 = Cue.End;                        // 口型结束
 
         TArray<FFrameNumber>& Frames =
             MorphTargetFrames.FindOrAdd(*MorphTargetNamePtr);
@@ -544,16 +816,16 @@ bool ULipSyncUtility::ConvertCuesToKeyframeData(
             MorphTargetValues.FindOrAdd(*MorphTargetNamePtr);
 
         // 四帧：0.0 → 1.0 → 1.0 → 0.0
-        Frames.Add(SecondsToFrameNumber(T0, TickResolution, DisplayRate));
-        Values.Add(0.0f);
-
         Frames.Add(SecondsToFrameNumber(T1, TickResolution, DisplayRate));
-        Values.Add(1.0f);
+        Values.Add(0.0f);
 
         Frames.Add(SecondsToFrameNumber(T2, TickResolution, DisplayRate));
         Values.Add(1.0f);
 
         Frames.Add(SecondsToFrameNumber(T3, TickResolution, DisplayRate));
+        Values.Add(1.0f);
+
+        Frames.Add(SecondsToFrameNumber(T4, TickResolution, DisplayRate));
         Values.Add(0.0f);
     }
 
@@ -683,32 +955,45 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
                     "section"));
     }
 
-    // Step 3: 只清理目标 morph target 对应的 Float Channel
-    // 对每个 morph target，用 bReconstructChannel=true
-    // 重新创建通道，清空旧关键帧
-    TSet<FString> TargetMorphTargets;
-    for (const FMorphTargetKeyframeData& Data : KeyframeData) {
-        TargetMorphTargets.Add(Data.MorphTargetName);
-    }
+    // Step 3: 清理 lip_sync control 下所有 float channel 的关键帧数据
+    // 从 ControlRigInstance 的 Hierarchy 中获取 lip_sync 的所有子级 float
+    // animation channel，对每个 channel 用 bReconstructChannel=true 重建，
+    // 从而清空旧关键帧，确保不会被之前写入的数据干扰
+    {
+        URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
+        int32 ClearedCount = 0;
 
-    int32 ClearedCount = 0;
-    for (const FString& MorphTargetName : TargetMorphTargets) {
-        FName ChannelFName(*MorphTargetName);
-        if (Section->HasScalarParameter(ChannelFName)) {
-            // bReconstructChannel=true 会删除旧通道并重建，从而清空所有关键帧
-            Section->AddScalarParameter(ChannelFName, TOptional<float>(0.0f),
-                                        true);
-            ClearedCount++;
-        } else {
-            Section->AddScalarParameter(ChannelFName, TOptional<float>(0.0f),
-                                        false);
+        if (RigHierarchy) {
+            FRigElementKey LipSyncKey(*RootControlName,
+                                      ERigElementType::Control);
+            TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys(false);
+            for (const FRigElementKey& Key : AllKeys) {
+                if (Key.Type != ERigElementType::Control) continue;
+
+                FRigElementKey ParentKey = RigHierarchy->GetFirstParent(Key);
+                if (ParentKey != LipSyncKey) continue;
+
+                const FRigControlElement* ControlElement =
+                    RigHierarchy->Find<FRigControlElement>(Key);
+                if (!ControlElement || !ControlElement->IsAnimationChannel())
+                    continue;
+                if (ControlElement->Settings.ControlType !=
+                    ERigControlType::Float)
+                    continue;
+
+                FName ChannelFName = Key.Name;
+                // bReconstructChannel=true 删除旧通道并重建，清空所有关键帧
+                Section->AddScalarParameter(ChannelFName,
+                                            TOptional<float>(0.0f), true);
+                ClearedCount++;
+            }
         }
-    }
 
-    UE_LOG(LogTemp, Log,
-           TEXT("[LipSyncUtility] WriteLipSyncToControlRig: Cleared/recreated "
-                "%d channels"),
-           ClearedCount);
+        UE_LOG(LogTemp, Log,
+               TEXT("[LipSyncUtility] WriteLipSyncToControlRig: Cleared %d "
+                    "float channels under '%s'"),
+               ClearedCount, *RootControlName);
+    }
 
     // Step 4: 计算帧数范围
     FFrameNumber MinFrame(MAX_int32);
@@ -728,7 +1013,7 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
         UInstrumentMorphTargetUtility::WriteMorphTargetKeyframes(Section,
                                                                  KeyframeData);
 
-    // Step 6: 更新 Section Range
+    // Step 6: 扩展 Section Range（而非覆盖），始终从零帧开始
     if (bHasFrames) {
         FFrameRate TickResolution = MovieScene->GetTickResolution();
         FFrameRate DisplayRate = MovieScene->GetDisplayRate();
@@ -736,11 +1021,17 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
             FramePadding * TickResolution.Numerator * DisplayRate.Denominator /
             (TickResolution.Denominator * DisplayRate.Numerator);
 
-        Section->SetRange(
-            TRange<FFrameNumber>(MinFrame, MaxFrame + PaddingInInternalFrames));
+        // 扩展已有范围（而非覆盖），始终从零帧开始
+        FFrameNumber NewEnd = MaxFrame + PaddingInInternalFrames;
+        if (!Section->GetRange().IsEmpty() &&
+            Section->GetRange().HasUpperBound()) {
+            NewEnd =
+                FMath::Max(Section->GetRange().GetUpperBoundValue(), NewEnd);
+        }
+        Section->SetRange(TRange<FFrameNumber>(FFrameNumber(0), NewEnd));
         UE_LOG(LogTemp, Log,
-               TEXT("[LipSyncUtility] Set section range to [%d, %d)"),
-               MinFrame.Value, (MaxFrame + PaddingInInternalFrames).Value);
+               TEXT("[LipSyncUtility] Expanded section range to [0, %d)"),
+               NewEnd.Value);
     }
 
     // Step 7: 标记修改并刷新
@@ -781,7 +1072,7 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
 
 int32 ULipSyncUtility::GenerateLipSyncFromJson(
     ASkeletalMeshActor* Performer, UControlRigBlueprint* ControlRigBlueprint,
-    const FString& JsonFilePath) {
+    const FString& FilePath) {
     if (!Performer) {
         UE_LOG(
             LogTemp, Error,
@@ -797,13 +1088,14 @@ int32 ULipSyncUtility::GenerateLipSyncFromJson(
         return 0;
     }
 
-    // Step 1: 解析 JSON 文件
+    // Step 1: 自动检测格式并解析口型文件（支持 .json 和 .tsv）
     TArray<FLipSyncMouthCue> Cues;
     float Duration = 0.0f;
-    if (!ParseLipSyncJson(JsonFilePath, Cues, Duration)) {
+    if (!ParseLipSyncFile(FilePath, Cues, Duration)) {
         UE_LOG(LogTemp, Error,
                TEXT("[LipSyncUtility] GenerateLipSyncFromJson: Failed to parse "
-                    "JSON"));
+                    "file: %s"),
+               *FilePath);
         return 0;
     }
 
@@ -832,13 +1124,15 @@ int32 ULipSyncUtility::GenerateLipSyncFromJson(
     const FFrameRate DisplayRate =
         LevelSequence->GetMovieScene()->GetDisplayRate();
 
-    // Step 5: 转换 Cues → KeyframeData
+    // Step 5: 转换 Cues → KeyframeData（部分映射缺失时只跳过无映射的口型）
     TArray<FMorphTargetKeyframeData> KeyframeData;
-    if (!ConvertCuesToKeyframeData(Cues, Mapping, TickResolution, DisplayRate,
-                                   KeyframeData)) {
+    ConvertCuesToKeyframeData(Cues, Mapping, TickResolution, DisplayRate,
+                              KeyframeData);
+
+    if (KeyframeData.Num() == 0) {
         UE_LOG(LogTemp, Error,
-               TEXT("[LipSyncUtility] GenerateLipSyncFromJson: Failed to "
-                    "convert cues to keyframe data"));
+               TEXT("[LipSyncUtility] GenerateLipSyncFromJson: No keyframe "
+                    "data generated (check mapping configuration)"));
         return 0;
     }
 

@@ -11,7 +11,7 @@ USTRUCT(BlueprintType, Blueprintable)
 struct MUSICDOLLCOMMON_API FLipSyncMappingPair {
     GENERATED_BODY()
 
-    /** 口型字母：A ~ H, X */
+    /** 口型字母：A ~ K, X（兼容 Lisa 8 符号 + Cherry 12 符号） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lip Sync Mapping")
     FString Phoneme;
 
@@ -47,7 +47,7 @@ struct MUSICDOLLCOMMON_API FLipSyncMouthCue {
     UPROPERTY()
     float End = 0.0f;
 
-    /** 口型字母：A ~ H, X */
+    /** 口型字母：A ~ K, X（兼容 Lisa 8 符号 + Cherry 12 符号） */
     UPROPERTY()
     FString Value;
 

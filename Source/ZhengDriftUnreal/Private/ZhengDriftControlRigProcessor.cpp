@@ -234,23 +234,15 @@ bool UZhengDriftControlRigProcessor::SaveLeftHandState(
         const FString& CtrlName = Pair.Key;
         const FString& RecName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T)) {
             UE_LOG(LogTemp, Warning,
                    TEXT("SaveLeftHandState [ZhengDrift]: Controller '%s' not "
                         "found"),
                    *CtrlName);
             continue;
         }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
 
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -303,23 +295,15 @@ bool UZhengDriftControlRigProcessor::SaveRightHandState(
         const FString& CtrlName = Pair.Key;
         const FString& RecName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T)) {
             UE_LOG(LogTemp, Warning,
                    TEXT("SaveRightHandState [ZhengDrift]: Controller '%s' not "
                         "found"),
                    *CtrlName);
             continue;
         }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
 
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -394,28 +378,15 @@ bool UZhengDriftControlRigProcessor::LoadState(
                 continue;
             }
 
-            FRigElementKey Key(*CtrlName, ERigElementType::Control);
-            if (!ControlRig->GetHierarchy()->Contains(Key)) {
-                Failed++;
-                continue;
-            }
-
-            FRigControlElement* Elem =
-                ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-            if (!Elem) {
-                Failed++;
-                continue;
-            }
-
             FTransform NewT;
             NewT.SetLocation(FoundT->Location);
             NewT.SetRotation(FoundT->Rotation);
 
-            FRigControlValue NewVal;
-            NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                    Elem->Settings.PrimaryAxis);
-            ControlRig->GetHierarchy()->SetControlValue(
-                Elem, NewVal, ERigControlValueType::Current);
+            if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                    ControlRig->GetHierarchy(), CtrlName, NewT)) {
+                Failed++;
+                continue;
+            }
 
             Loaded++;
         }
@@ -540,17 +511,10 @@ void UZhengDriftControlRigProcessor::SaveStringPositionStates(
         // Pair.Value 是控制器名（也是 RecorderTransforms 的键），例如 "s0head"
         const FString& CtrlName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) continue;
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T))
+            continue;
 
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -584,28 +548,15 @@ void UZhengDriftControlRigProcessor::ApplyStringPositionToControlRig(
             continue;
         }
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
-            Failed++;
-            continue;
-        }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) {
-            Failed++;
-            continue;
-        }
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, NewT)) {
+            Failed++;
+            continue;
+        }
         Applied++;
     }
 
@@ -653,11 +604,11 @@ void UZhengDriftControlRigProcessor::LoadStringPositionStates(
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, NewT)) {
+            Failed++;
+            continue;
+        }
         Loaded++;
     }
 
@@ -678,17 +629,10 @@ void UZhengDriftControlRigProcessor::SaveFootControllerStates(
     for (const auto& Pair : ZhengDriftActor->FootControllers) {
         const FString& CtrlName = Pair.Value;
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) continue;
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            Elem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
-                                          Elem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, T))
+            continue;
 
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
@@ -721,28 +665,15 @@ void UZhengDriftControlRigProcessor::LoadFootControllerStates(
             continue;
         }
 
-        FRigElementKey Key(*CtrlName, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(Key)) {
-            Failed++;
-            continue;
-        }
-
-        FRigControlElement* Elem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(Key);
-        if (!Elem) {
-            Failed++;
-            continue;
-        }
-
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
         NewT.SetRotation(FoundT->Rotation);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, Elem->Settings.ControlType,
-                                Elem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            Elem, NewVal, ERigControlValueType::Current);
+        if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+                ControlRig->GetHierarchy(), CtrlName, NewT)) {
+            Failed++;
+            continue;
+        }
         Loaded++;
     }
 
@@ -813,17 +744,10 @@ void UZhengDriftControlRigProcessor::CheckAndSaveBilinearHelpers(
         const FString& SrcCtrl = HP.Key;
         const FString& DestName = HP.Value;
 
-        FRigElementKey SrcKey(*SrcCtrl, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(SrcKey)) continue;
-
-        FRigControlElement* SrcElem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(SrcKey);
-        if (!SrcElem) continue;
-
-        FRigControlValue Val = ControlRig->GetHierarchy()->GetControlValue(
-            SrcElem, ERigControlValueType::Current);
-        FTransform T = Val.GetAsTransform(SrcElem->Settings.ControlType,
-                                          SrcElem->Settings.PrimaryAxis);
+        FTransform T;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), SrcCtrl, T))
+            continue;
 
         // 只保存 location
         FZhengDriftRecorderTransform RecT;
@@ -892,22 +816,12 @@ void UZhengDriftControlRigProcessor::CheckAndLoadBilinearHelpers(
             ZhengDriftActor->RecorderTransforms.Find(SrcName);
         if (!FoundT) continue;
 
-        FRigElementKey DestKey(*DestCtrl, ERigElementType::Control);
-        if (!ControlRig->GetHierarchy()->Contains(DestKey)) continue;
-
-        FRigControlElement* DestElem =
-            ControlRig->GetHierarchy()->Find<FRigControlElement>(DestKey);
-        if (!DestElem) continue;
-
         // 只应用 location
         FTransform NewT;
         NewT.SetLocation(FoundT->Location);
 
-        FRigControlValue NewVal;
-        NewVal.SetFromTransform(NewT, DestElem->Settings.ControlType,
-                                DestElem->Settings.PrimaryAxis);
-        ControlRig->GetHierarchy()->SetControlValue(
-            DestElem, NewVal, ERigControlValueType::Current);
+        FInstrumentControlRigUtility::SetControlLocalTransform(
+            ControlRig->GetHierarchy(), DestCtrl, NewT);
     }
 
     UE_LOG(LogTemp, Warning,

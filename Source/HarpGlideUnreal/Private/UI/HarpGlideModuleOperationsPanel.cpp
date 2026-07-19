@@ -330,7 +330,7 @@ void SHarpGlideModuleOperationsPanel::CreateOperationWidgets() {
                 HarpGlideActor->AnimationFilePath = NewPath;
             }
         },
-        true)];
+        false)];
 
     Container->AddSlot().AutoHeight().Padding(5.0f)
         [SNew(SButton)

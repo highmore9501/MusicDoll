@@ -24,7 +24,7 @@ class SINGERUNREAL_API ASingerUnreal : public AInstrumentBase {
 
     // ===== Lip Sync 配置 =====
 
-    /** Lip Sync JSON 文件路径（由开源 Lip Sync 项目生成） */
+    /** Lip Sync 文件路径（支持 .json 的 Lisa 格式或 .tsv 的 Cherry 格式） */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lip Sync")
     FString LipSyncJsonPath;
 

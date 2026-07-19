@@ -7,7 +7,6 @@
 #include "UI/CommonPanelUtility.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -247,49 +246,17 @@ void SStringFlowModuleOperationsPanel::CreateOperationWidgets() {
         5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
         TEXT("Animation File"))];
 
-    TSharedPtr<SEditableTextBox> AnimationFilePathBox;
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SHorizontalBox) +
-         SHorizontalBox::Slot().FillWidth(1.0f).Padding(5.0f, 0.0f)
-             [SAssignNew(AnimationFilePathBox, SEditableTextBox)
-                  .Text_Lambda([this]() -> FText {
-                      if (StringFlowActor.IsValid()) {
-                          return FText::FromString(
-                              StringFlowActor->AnimationFilePath);
-                      }
-                      return FText::FromString(TEXT(""));
-                  })
-                  .OnTextCommitted_Lambda([this](const FText& InText,
-                                                 ETextCommit::Type CommitType) {
-                      if (CommitType == ETextCommit::OnEnter ||
-                          CommitType == ETextCommit::OnUserMovedFocus) {
-                          if (StringFlowActor.IsValid()) {
-                              StringFlowActor->AnimationFilePath =
-                                  InText.ToString();
-                              StringFlowActor->Modify();
-                          }
-                      }
-                  })] +
-         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f, 0.0f, 0.0f)
-             [SNew(SButton)
-                  .Text(LOCTEXT("BrowseButton", "Browse"))
-                  .OnClicked_Lambda([this, AnimationFilePathBox]() -> FReply {
-                      if (!StringFlowActor.IsValid()) {
-                          return FReply::Handled();
-                      }
-
-                      FString FilePath;
-                      if (FCommonPanelUtility::BrowseForFile(
-                              TEXT(".string_flow"), FilePath, false)) {
-                          if (AnimationFilePathBox.IsValid()) {
-                              AnimationFilePathBox->SetText(
-                                  FText::FromString(FilePath));
-                              StringFlowActor->AnimationFilePath = FilePath;
-                              StringFlowActor->Modify();
-                          }
-                      }
-                      return FReply::Handled();
-                  })]];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Animation File Path"), StringFlowActor->AnimationFilePath,
+        TEXT("AnimationFilePath"), TEXT(".string_flow"),
+        [this](const FString& NewPath) {
+            if (StringFlowActor.IsValid()) {
+                StringFlowActor->Modify();
+                StringFlowActor->AnimationFilePath = NewPath;
+            }
+        },
+        false)];
 
     // Animation Generation Section
     Container->AddSlot().AutoHeight().Padding(

@@ -333,9 +333,10 @@ void UBeatBloomControlRigProcessor::LoadBilinearHelperState(
                                  LeftHandData->Location,
                                  LeftHandData->Rotation);
         UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Loaded H_L from state '%s' at Loc(%.2f, %.2f, %.2f)"),
-               *StateSuffix, LeftHandData->Location.X,
-               LeftHandData->Location.Y, LeftHandData->Location.Z);
+               TEXT("BeatBloom: Loaded H_L from state '%s' at Loc(%.2f, %.2f, "
+                    "%.2f)"),
+               *StateSuffix, LeftHandData->Location.X, LeftHandData->Location.Y,
+               LeftHandData->Location.Z);
     } else {
         UE_LOG(LogTemp, Warning,
                TEXT("BeatBloom: Left_Hand_%s not found in RecorderTransforms"),
@@ -351,7 +352,8 @@ void UBeatBloomControlRigProcessor::LoadBilinearHelperState(
                                  RightHandData->Location,
                                  RightHandData->Rotation);
         UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Loaded H_R from state '%s' at Loc(%.2f, %.2f, %.2f)"),
+               TEXT("BeatBloom: Loaded H_R from state '%s' at Loc(%.2f, %.2f, "
+                    "%.2f)"),
                *StateSuffix, RightHandData->Location.X,
                RightHandData->Location.Y, RightHandData->Location.Z);
     } else {
@@ -368,30 +370,26 @@ void UBeatBloomControlRigProcessor::LoadBilinearHelperState(
         FRigElementKey HeadControlKey(TEXT("Head_Control"),
                                       ERigElementType::Control);
         if (ControlRig->GetHierarchy()->Contains(HeadControlKey)) {
-            FRigControlElement* HeadControlElem =
-                ControlRig->GetHierarchy()->Find<FRigControlElement>(HeadControlKey);
-            if (HeadControlElem) {
-                FTransform NewT;
-                NewT.SetLocation(HeadControlData->Location);
-                FRigControlValue NewVal;
-                NewVal.SetFromTransform(NewT,
-                                        HeadControlElem->Settings.ControlType,
-                                        HeadControlElem->Settings.PrimaryAxis);
-                ControlRig->GetHierarchy()->SetControlValue(
-                    HeadControlElem, NewVal, ERigControlValueType::Current);
+            FTransform NewT;
+            NewT.SetLocation(HeadControlData->Location);
+            if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                    ControlRig->GetHierarchy(), TEXT("Head_Control"), NewT)) {
                 UE_LOG(LogTemp, Warning,
-                       TEXT("BeatBloom: Loaded Head_Control from state '%s' at Loc(%.2f, %.2f, %.2f)"),
+                       TEXT("BeatBloom: Loaded Head_Control from state '%s' at "
+                            "Loc(%.2f, %.2f, %.2f)"),
                        *StateSuffix, HeadControlData->Location.X,
-                       HeadControlData->Location.Y, HeadControlData->Location.Z);
+                       HeadControlData->Location.Y,
+                       HeadControlData->Location.Z);
             }
         } else {
             UE_LOG(LogTemp, Error,
                    TEXT("BeatBloom: Head_Control controller not found in rig"));
         }
     } else {
-        UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Head_Control_%s not found in RecorderTransforms"),
-               *StateSuffix);
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("BeatBloom: Head_Control_%s not found in RecorderTransforms"),
+            *StateSuffix);
     }
 
     UE_LOG(LogTemp, Warning,
@@ -627,18 +625,11 @@ bool UBeatBloomControlRigProcessor::ReadControllerTransform(
     URigHierarchy* RigHierarchy = ControlRig->GetHierarchy();
     if (!RigHierarchy) return false;
 
-    FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-    if (!RigHierarchy->Contains(ElementKey)) return false;
-
-    FRigControlElement* ControlElement =
-        RigHierarchy->Find<FRigControlElement>(ElementKey);
-    if (!ControlElement) return false;
-
-    FRigControlValue CurrentValue = RigHierarchy->GetControlValue(
-        ControlElement, ERigControlValueType::Current);
-    FTransform CurrentTransform =
-        CurrentValue.GetAsTransform(ControlElement->Settings.ControlType,
-                                    ControlElement->Settings.PrimaryAxis);
+    FTransform CurrentTransform;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            RigHierarchy, ControllerName, CurrentTransform)) {
+        return false;
+    }
 
     OutLocation = CurrentTransform.GetLocation();
     OutRotation = CurrentTransform.GetRotation();
@@ -664,18 +655,11 @@ bool UBeatBloomControlRigProcessor::WriteControllerTransform(
     URigHierarchy* RigHierarchy = ControlRig->GetHierarchy();
     if (!RigHierarchy) return false;
 
-    FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-    if (!RigHierarchy->Contains(ElementKey)) return false;
-
-    FRigControlElement* ControlElement =
-        RigHierarchy->Find<FRigControlElement>(ElementKey);
-    if (!ControlElement) return false;
-
-    FRigControlValue CurrentValue = RigHierarchy->GetControlValue(
-        ControlElement, ERigControlValueType::Current);
-    FTransform CurrentTransform =
-        CurrentValue.GetAsTransform(ControlElement->Settings.ControlType,
-                                    ControlElement->Settings.PrimaryAxis);
+    FTransform CurrentTransform;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            RigHierarchy, ControllerName, CurrentTransform)) {
+        return false;
+    }
 
     // 构建新 Transform
     FTransform NewTransform = CurrentTransform;
@@ -695,14 +679,8 @@ bool UBeatBloomControlRigProcessor::WriteControllerTransform(
         NewTransform.SetRotation(Rotation);
     }
 
-    FRigControlValue NewValue;
-    NewValue.SetFromTransform(NewTransform,
-                              ControlElement->Settings.ControlType,
-                              ControlElement->Settings.PrimaryAxis);
-
-    RigHierarchy->SetControlValue(ControlElement, NewValue,
-                                  ERigControlValueType::Current);
-    return true;
+    return FInstrumentControlRigUtility::SetControlLocalTransform(
+        RigHierarchy, ControllerName, NewTransform);
 }
 
 bool UBeatBloomControlRigProcessor::ControlExists(URigHierarchy* RigHierarchy,

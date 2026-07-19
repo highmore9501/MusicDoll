@@ -19,12 +19,10 @@ namespace KeyRippleAnimationHelper {
  */
 static const TSet<FString>& GetValidKeyRippleControllerNames() {
     static const TSet<FString> ValidControllerNames = {
-        TEXT("H_L"),          TEXT("H_R"),         TEXT("H_rotation_L"),
-        TEXT("H_rotation_R"), TEXT("HP_L"),        TEXT("HP_R"),
-        TEXT("0_L"),          TEXT("1_L"),         TEXT("2_L"),
-        TEXT("3_L"),          TEXT("4_L"),         TEXT("5_R"),
-        TEXT("6_R"),          TEXT("7_R"),         TEXT("8_R"),
-        TEXT("9_R"),          TEXT("Head_Control")};
+        TEXT("H_L"), TEXT("H_R"), TEXT("HP_L"),        TEXT("HP_R"),
+        TEXT("0_L"), TEXT("1_L"), TEXT("2_L"),         TEXT("3_L"),
+        TEXT("4_L"), TEXT("5_R"), TEXT("6_R"),         TEXT("7_R"),
+        TEXT("8_R"), TEXT("9_R"), TEXT("Head_Control")};
     return ValidControllerNames;
 }
 
@@ -192,18 +190,6 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
                     "Proceeding with animation generation."));
     }
 
-    // 6. 收集需要清理的控制器名称
-    TSet<FString> ControlNamesToClean;
-    KeyRippleAnimationHelper::CollectKeyRippleControllerNames(
-        KeyRippleActor, ControlNamesToClean);
-
-    // 7. 清空关键帧（使用通用方法）
-    UE_LOG(LogTemp, Warning,
-           TEXT("Clearing existing Control Rig keyframes before adding new "
-                "keyframes"));
-    UInstrumentAnimationUtility::ClearControlRigKeyframes(
-        LevelSequence, ControlRigInstance, ControlNamesToClean);
-
     UE_LOG(LogTemp, Warning, TEXT("Starting to process %d animation frames"),
            JsonArray.Num());
 
@@ -285,10 +271,27 @@ void UKeyRippleAnimationProcessor::GeneratePerformerAnimationDirect(
                 Rotation.Normalize();
                 Keyframe.Rotation = Rotation;
                 Keyframe.bHasRotation = true;
-                // H_rotation_L → H_L, H_rotation_R → H_R
-                FString TargetName =
-                    ControlName.Replace(TEXT("_rotation"), TEXT(""));
-                ControlKeyframeData.FindOrAdd(TargetName).Add(Keyframe);
+                ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
+                KeyframesAdded++;
+            } else if (DataArray.Num() == 7) {
+                // 合并格式 [x, y, z, w, i, j, k] → 位置+旋转合并写入 H_* 控制器
+                FVector Location;
+                Location.X = DataArray[0]->AsNumber();
+                Location.Y = DataArray[1]->AsNumber();
+                Location.Z = DataArray[2]->AsNumber();
+                Keyframe.Translation = Location;
+                Keyframe.bHasLocation = true;
+
+                FQuat Rotation;
+                Rotation.W = DataArray[3]->AsNumber();
+                Rotation.X = DataArray[4]->AsNumber();
+                Rotation.Y = DataArray[5]->AsNumber();
+                Rotation.Z = DataArray[6]->AsNumber();
+                Rotation.Normalize();
+                Keyframe.Rotation = Rotation;
+                Keyframe.bHasRotation = true;
+
+                ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
                 KeyframesAdded++;
             } else {
                 continue;

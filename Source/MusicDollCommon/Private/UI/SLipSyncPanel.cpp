@@ -20,10 +20,10 @@
 
 #define LOCTEXT_NAMESPACE "SLipSyncPanel"
 
-// ===== 固定口型字母列表 =====
-static const TArray<FString> FixedPhonemes = {TEXT("A"), TEXT("B"), TEXT("C"),
-                                              TEXT("D"), TEXT("E"), TEXT("F"),
-                                              TEXT("G"), TEXT("H"), TEXT("X")};
+// ===== 固定口型字母列表（兼容 Lisa 8 符号 + Cherry 12 符号）=====
+static const TArray<FString> FixedPhonemes = {
+    TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E"), TEXT("F"),
+    TEXT("G"), TEXT("H"), TEXT("I"), TEXT("J"), TEXT("K"), TEXT("X")};
 
 void SLipSyncPanel::Construct(const FArguments& InArgs) {
     // 初始化 9 行固定映射
@@ -96,7 +96,15 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                                                  "Init Lip Sync Control"))
                                    .OnClicked(
                                        this, &SLipSyncPanel::
-                                                 OnInitLipSyncControlClicked)]]]
+                                                 OnInitLipSyncControlClicked)] +
+                          SHorizontalBox::Slot().AutoWidth().Padding(
+                              10.0f, 0.0f, 0.0f, 0.0f)
+                              [SNew(SButton)
+                                   .Text(LOCTEXT("ApplyMappingButton",
+                                                 "Apply Mapping to Rig"))
+                                   .OnClicked(this,
+                                              &SLipSyncPanel::
+                                                  OnApplyMappingToRigClicked)]]]
 
               // ===== 分隔线 =====
               + SVerticalBox::Slot().AutoHeight().Padding(
@@ -105,46 +113,46 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                     FLinearColor(0.3f, 0.3f, 0.3f, 1.0f))]]
 
               // ===== Generation 区域 =====
-              +
-              SVerticalBox::Slot().AutoHeight().Padding(10.0f)
-                  [SNew(SVerticalBox)
+              + SVerticalBox::Slot().AutoHeight().Padding(10.0f)
+                    [SNew(SVerticalBox)
 
-                   // 标题
-                   + SVerticalBox::Slot().AutoHeight().Padding(
-                         0.0f, 0.0f, 0.0f,
-                         5.0f)[SNew(STextBlock)
-                                   .Text(LOCTEXT("GenerationSectionTitle",
-                                                 "Lip Sync Generation"))
-                                   .Font(FAppStyle::GetFontStyle(
-                                       "DetailsView.CategoryFont"))]
+                     // 标题
+                     + SVerticalBox::Slot().AutoHeight().Padding(
+                           0.0f, 0.0f, 0.0f,
+                           5.0f)[SNew(STextBlock)
+                                     .Text(LOCTEXT("GenerationSectionTitle",
+                                                   "Lip Sync Generation"))
+                                     .Font(FAppStyle::GetFontStyle(
+                                         "DetailsView.CategoryFont"))]
 
-                   // 文件浏览行
-                   + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f,
-                                                               5.0f)
-                         [SNew(SHorizontalBox) +
-                          SHorizontalBox::Slot()
-                              .AutoWidth()
-                              .VAlign(VAlign_Center)
-                              .Padding(0.0f, 0.0f, 5.0f,
-                                       0.0f)[SNew(STextBlock)
-                                                 .Text(LOCTEXT("JsonFileLabel",
-                                                               "JSON File:"))] +
-                          SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-                              0.0f, 0.0f, 5.0f,
-                              0.0f)[SNew(SEditableTextBox)
-                                        .Text_Lambda([this]() -> FText {
-                                            return FText::FromString(
-                                                JsonFilePath);
-                                        })
-                                        .IsReadOnly(true)] +
-                          SHorizontalBox::Slot().AutoWidth()
-                              [SNew(SButton)
-                                   .Text(LOCTEXT("BrowseButton", "Browse"))
-                                   .OnClicked(this, &SLipSyncPanel::
-                                                        OnBrowseJsonClicked)]]
+                     // 文件浏览行
+                     + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f,
+                                                                 0.0f, 5.0f)
+                           [SNew(SHorizontalBox) +
+                            SHorizontalBox::Slot()
+                                .AutoWidth()
+                                .VAlign(VAlign_Center)
+                                .Padding(0.0f, 0.0f, 5.0f, 0.0f)
+                                    [SNew(STextBlock)
+                                         .Text(LOCTEXT("LipSyncFileLabel",
+                                                       "File:"))] +
+                            SHorizontalBox::Slot().FillWidth(1.0f).Padding(
+                                0.0f, 0.0f,
+                                5.0f, 0.0f)[SNew(SEditableTextBox)
+                                                .Text_Lambda([this]() -> FText {
+                                                    return FText::FromString(
+                                                        JsonFilePath);
+                                                })
+                                                .IsReadOnly(true)] +
+                            SHorizontalBox::Slot().AutoWidth()
+                                [SNew(SButton)
+                                     .Text(LOCTEXT("BrowseButton", "Browse"))
+                                     .OnClicked(this, &SLipSyncPanel::
+                                                          OnBrowseJsonClicked)]]
 
-                   // 解析结果
-                   + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f,
+                     // 解析结果
+                     +
+                     SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f,
                                                                5.0f)
                          [SNew(SBorder)
                               .BorderImage(
@@ -154,8 +162,9 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                                        .Text(FText::FromString(ParseResultText))
                                        .AutoWrapText(true)]]
 
-                   // 操作按钮行
-                   + SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f,
+                     // 操作按钮行
+                     +
+                     SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f,
                                                                0.0f)
                          [SNew(SHorizontalBox) +
                           SHorizontalBox::Slot().AutoWidth().Padding(
@@ -358,29 +367,47 @@ FReply SLipSyncPanel::OnInitLipSyncControlClicked() {
         return FReply::Handled();
     }
 
-    // 收集映射
-    TArray<FLipSyncMappingPair> ValidMapping;
-    for (const TSharedPtr<FLipSyncMappingPair>& Pair : MappingPairs) {
-        if (Pair.IsValid() && !Pair->MorphTargetName.IsEmpty()) {
-            ValidMapping.Add(*Pair);
-        }
-    }
+    const bool bInitSuccess =
+        ULipSyncUtility::InitializeLipSyncControl(ControlRigBlueprint.Get());
 
-    if (ValidMapping.Num() == 0) {
+    if (bInitSuccess) {
+        ShowNotification(LOCTEXT("InitControlSuccess",
+                                 "Lip sync control initialized successfully."),
+                         true);
+    } else {
         ShowNotification(
-            LOCTEXT("InitControlFailed_NoMapping",
-                    "No valid mappings. Please configure morph targets first."),
+            LOCTEXT("InitControlFailed",
+                    "Failed to initialize lip sync control. Check log for "
+                    "details."),
             false);
+    }
+    return FReply::Handled();
+}
+
+FReply SLipSyncPanel::OnApplyMappingToRigClicked() {
+    if (!EnsureControlRigBlueprintValid()) {
+        ShowNotification(LOCTEXT("ApplyMappingFailed_NoCRB",
+                                 "Failed: No ControlRigBlueprint found."),
+                         false);
         return FReply::Handled();
     }
 
-    const int32 ChannelCount = ULipSyncUtility::SetupLipSyncControl(
-        ControlRigBlueprint.Get(), ValidMapping);
+    const int32 ChannelCount =
+        ULipSyncUtility::ApplyMappingToRig(ControlRigBlueprint.Get());
 
-    ShowNotification(
-        FText::Format(LOCTEXT("InitControlSuccess",
-                              "Created lip_sync control with {0} channels."),
-                      FText::AsNumber(ChannelCount)));
+    if (ChannelCount > 0) {
+        ShowNotification(
+            FText::Format(LOCTEXT("ApplyMappingSuccess",
+                                  "Applied mapping: created {0} channels."),
+                          FText::AsNumber(ChannelCount)),
+            true);
+    } else {
+        ShowNotification(
+            LOCTEXT("ApplyMappingNoChannels",
+                    "No channels created. Check mapping is filled and "
+                    "Control Rig is compiled."),
+            false);
+    }
     return FReply::Handled();
 }
 
@@ -394,13 +421,15 @@ FReply SLipSyncPanel::OnBrowseJsonClicked() {
 
     TArray<FString> OutFiles;
     const bool bOpened = DesktopPlatform->OpenFileDialog(
-        nullptr, TEXT("Select Lip Sync JSON File"),
-        FPaths::GetPath(JsonFilePath), TEXT(""),
-        TEXT("JSON Files (*.json)|*.json"), EFileDialogFlags::None, OutFiles);
+        nullptr, TEXT("Select Lip Sync File"), FPaths::GetPath(JsonFilePath),
+        TEXT(""),
+        TEXT("Lip Sync Files (*.json, *.tsv)|*.json;*.tsv|JSON Files "
+             "(*.json)|*.json|TSV Files (*.tsv)|*.tsv"),
+        EFileDialogFlags::None, OutFiles);
 
     if (bOpened && OutFiles.Num() > 0) {
         JsonFilePath = OutFiles[0];
-        UE_LOG(LogTemp, Log, TEXT("[SLipSyncPanel] Selected JSON: %s"),
+        UE_LOG(LogTemp, Log, TEXT("[SLipSyncPanel] Selected file: %s"),
                *JsonFilePath);
     }
 
@@ -409,7 +438,7 @@ FReply SLipSyncPanel::OnBrowseJsonClicked() {
 
 FReply SLipSyncPanel::OnParsePreviewClicked() {
     if (JsonFilePath.IsEmpty()) {
-        ParseResultText = TEXT("No JSON file selected.");
+        ParseResultText = TEXT("No lip sync file selected.");
         if (ParseResultTextBlock.IsValid()) {
             ParseResultTextBlock->SetText(FText::FromString(ParseResultText));
         }
@@ -418,13 +447,13 @@ FReply SLipSyncPanel::OnParsePreviewClicked() {
 
     TArray<FLipSyncMouthCue> Cues;
     float Duration = 0.0f;
-    if (!ULipSyncUtility::ParseLipSyncJson(JsonFilePath, Cues, Duration)) {
-        ParseResultText = TEXT("Failed to parse JSON file.");
+    if (!ULipSyncUtility::ParseLipSyncFile(JsonFilePath, Cues, Duration)) {
+        ParseResultText = TEXT("Failed to parse lip sync file.");
         if (ParseResultTextBlock.IsValid()) {
             ParseResultTextBlock->SetText(FText::FromString(ParseResultText));
         }
-        ShowNotification(LOCTEXT("ParseFailed", "Failed to parse JSON file."),
-                         false);
+        ShowNotification(
+            LOCTEXT("ParseFailed", "Failed to parse lip sync file."), false);
         return FReply::Handled();
     }
 
@@ -461,7 +490,8 @@ FReply SLipSyncPanel::OnParsePreviewClicked() {
 FReply SLipSyncPanel::OnGenerateLipSyncClicked() {
     if (JsonFilePath.IsEmpty()) {
         ShowNotification(
-            LOCTEXT("GenerateFailed_NoFile", "No JSON file selected."), false);
+            LOCTEXT("GenerateFailed_NoFile", "No lip sync file selected."),
+            false);
         return FReply::Handled();
     }
 
