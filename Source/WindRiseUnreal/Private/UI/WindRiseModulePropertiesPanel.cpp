@@ -183,12 +183,23 @@ void SWindRiseModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateStringPropertyRow(
         TEXT("Instrument Type"), WindRise->InstrumentType,
-        TEXT("InstrumentType"), FSimpleDelegate())];
+        TEXT("InstrumentType"),
+        [this](const FString&, const FString& NewValue) {
+            if (WindRiseActor.IsValid()) {
+                WindRiseActor.Get()->InstrumentType = NewValue;
+                WindRiseActor.Get()->Modify();
+            }
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateStringPropertyRow(
         TEXT("Description"), WindRise->Description, TEXT("Description"),
-        FSimpleDelegate())];
+        [this](const FString&, const FString& NewValue) {
+            if (WindRiseActor.IsValid()) {
+                WindRiseActor.Get()->Description = NewValue;
+                WindRiseActor.Get()->Modify();
+            }
+        })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(

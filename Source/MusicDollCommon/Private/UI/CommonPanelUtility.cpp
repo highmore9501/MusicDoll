@@ -42,15 +42,30 @@ TSharedRef<SWidget> FCommonPanelUtility::CreateNumericPropertyRow(
 
 TSharedRef<SWidget> FCommonPanelUtility::CreateStringPropertyRow(
     const FString& PropertyName, const FString& Value,
-    const FString& PropertyPath, FSimpleDelegate OnValueChanged) {
+    const FString& PropertyPath,
+    TFunction<void(const FString&, const FString&)> OnValueChanged) {
     return SNew(SHorizontalBox) +
            SHorizontalBox::Slot().AutoWidth().Padding(
                5.0f)[SNew(STextBlock)
                          .Text(FText::FromString(PropertyName))
                          .MinDesiredWidth(150.0f)] +
            SHorizontalBox::Slot().FillWidth(1.0f).Padding(
-               5.0f,
-               0.0f)[SNew(SEditableTextBox).Text(FText::FromString(Value))];
+               5.0f, 0.0f)[SNew(SEditableTextBox)
+                               .Text(FText::FromString(Value))
+                               .OnTextCommitted_Lambda(
+                                   [PropertyPath, OnValueChanged](
+                                       const FText& InText,
+                                       ETextCommit::Type CommitType) {
+                                       if (CommitType == ETextCommit::OnEnter ||
+                                           CommitType ==
+                                               ETextCommit::OnUserMovedFocus) {
+                                           if (OnValueChanged) {
+                                               OnValueChanged(
+                                                   PropertyPath,
+                                                   InText.ToString());
+                                           }
+                                       }
+                                   })];
 }
 
 /**
@@ -112,7 +127,7 @@ TSharedRef<SWidget> FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
                              }
                              return FReply::Handled();
                          })];
-}
+};
 
 TSharedRef<SWidget> FCommonPanelUtility::CreateVector3PropertyRow(
     const FString& PropertyName, const FVector& Value,

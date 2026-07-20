@@ -319,6 +319,10 @@ void AWindRiseUnreal::ImportWindFile(const FString& FilePath) {
             ->TryGetStringField(TEXT("instrument_type"), InstrumentType);
         (*ConfigObj)->TryGetStringField(TEXT("description"), Description);
 
+        // is_unreal — Unreal 端导出的标记，目前仅用于标识，无功能逻辑
+        bool bIsUnreal = false;
+        (*ConfigObj)->TryGetBoolField(TEXT("is_unreal"), bIsUnreal);
+
         int32 MinVal = 60, MaxVal = 84;
         if ((*ConfigObj)->TryGetNumberField(TEXT("min_note"), MinVal))
             MinNote = MinVal;
@@ -482,6 +486,7 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
     ConfigObj->SetNumberField(TEXT("min_note"), MinNote);
     ConfigObj->SetNumberField(TEXT("max_note"), MaxNote);
     ConfigObj->SetStringField(TEXT("description"), Description);
+    ConfigObj->SetBoolField(TEXT("is_unreal"), true);
 
     TArray<TSharedPtr<FJsonValue>> FSKArr;
     for (const FString& Name : CharacterMorphTargets) {
@@ -494,10 +499,6 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
         ISKArr.Add(MakeShareable(new FJsonValueString(Name)));
     }
     ConfigObj->SetArrayField(TEXT("instrument_shape_keys"), ISKArr);
-
-    ConfigObj->SetStringField(
-        TEXT("instrument_mesh_name"),
-        InstrumentMesh ? InstrumentMesh->GetName() : TEXT(""));
 
     RootObj->SetObjectField(TEXT("config"), ConfigObj);
 

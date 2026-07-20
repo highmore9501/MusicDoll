@@ -272,92 +272,74 @@ FRigUnit_ArcDistributedIK_Execute() {
             return ResultQuat.GetNormalized();
         }
 
+        static FQuat CalculateBoneRotation(
+            const FVector& CurrentPosition, const FVector& NextPosition,
+            const FVector& PlaneNormal, const FVector& PrimaryAxis,
+            const FVector& SecondaryAxis, const FVector& MiddlePosition,
+            const FVector& PoleTarget, int32 AlgorithmType, bool bIsLastBone) {
+            FVector WorldPrimaryDir =
+                (NextPosition - CurrentPosition).GetSafeNormal();
+
+            FVector SecondaryAxisPoint = FindSecondaryAxisPointOnPlane(
+                CurrentPosition, PlaneNormal, WorldPrimaryDir, MiddlePosition,
+                PoleTarget, true, 50.0f);
+
+            FVector WorldSecondaryDir =
+                (CurrentPosition - SecondaryAxisPoint).GetSafeNormal();
+
+            FQuat Rotation = BuildRotationFromTwoAxes(
+                WorldPrimaryDir, WorldSecondaryDir, PrimaryAxis, SecondaryAxis,
+                PlaneNormal);
+
+            return Rotation;
+        }
+
         static void RebuildRotationsForChain(
             TArray<FCCDIKChainLink>& Chain, const TArray<float>& BoneLengths,
             const FVector& ReferencePlaneNormal, const FVector& PrimaryAxis,
             const FVector& SecondaryAxis, const FVector& PoleTarget,
             const FTransform& RootParentTransform, int32 AlgorithmType) {
-            if (Chain.Num() < 2) {
+            if (Chain.Num() < 1) {
                 return;
             }
 
-            // ============================================
-            // 根骨骼 (i=0): 将 SecondaryAxis 朝向 PoleTarget
-            // 根骨骼的世界旋转必然改变，它决定了整条链所在的弯曲平面
-            // ============================================
-            {
-                FVector RootPos = Chain[0].Transform.GetLocation();
-                FVector ChildPos = Chain[1].Transform.GetLocation();
-                FVector EffectorPos =
-                    Chain[Chain.Num() - 1].Transform.GetLocation();
+            FVector RootPosition = Chain[0].Transform.GetLocation();
+            FVector EffectorPosition =
+                Chain[Chain.Num() - 1].Transform.GetLocation();
+            FVector MiddlePosition = (RootPosition + EffectorPosition) * 0.5f;
+            float TotalChainLength =
+                CalculateBoneLength(RootPosition, EffectorPosition);
 
-                FVector WorldPrimaryDir = (ChildPos - RootPos).GetSafeNormal();
+            FVector DirectionToPole =
+                (PoleTarget - MiddlePosition).GetSafeNormal();
+            float PoleOffset = 0.1 * TotalChainLength;
 
-                // 计算偏向 PoleTarget 的参考中间点
-                FVector MidPoint = (RootPos + EffectorPos) * 0.5f;
-                FVector DirToPole = (PoleTarget - MidPoint).GetSafeNormal();
-                float TotalLen = FVector::Dist(RootPos, EffectorPos);
-                float PoleOffset = 0.1f * TotalLen;
+            bool bUseOriginalMiddlePosition = AlgorithmType == 2;
+            FVector AdjustedMiddlePosition =
+                bUseOriginalMiddlePosition
+                    ? MiddlePosition - 0.5f * PoleOffset * DirectionToPole
+                    : MiddlePosition - DirectionToPole * PoleOffset;
 
-                FVector AdjustedMid =
-                    (AlgorithmType == 2)
-                        ? MidPoint - 0.5f * PoleOffset * DirToPole
-                        : MidPoint - PoleOffset * DirToPole;
+            for (int32 i = 0; i < Chain.Num(); ++i) {
+                FVector CurrentPosition = Chain[i].Transform.GetLocation();
+                FVector NextPosition;
+                bool bIsLastBone = (i == Chain.Num() - 1);
 
-                FVector SecondaryAxisPoint = FindSecondaryAxisPointOnPlane(
-                    RootPos, ReferencePlaneNormal, WorldPrimaryDir, AdjustedMid,
-                    PoleTarget, true, 50.0f);
-                FVector WorldSecondaryDir =
-                    (RootPos - SecondaryAxisPoint).GetSafeNormal();
-
-                FQuat RootWorldRot = BuildRotationFromTwoAxes(
-                    WorldPrimaryDir, WorldSecondaryDir, PrimaryAxis,
-                    SecondaryAxis, ReferencePlaneNormal);
-
-                Chain[0].Transform.SetRotation(RootWorldRot);
-            }
-
-            // ============================================
-            // 非根骨骼 (i >= 1): 在局部空间中保留原始 twist
-            // 主轴方向由 IK 求解后的位置决定，但绕主轴的旋转不变
-            // ============================================
-            for (int32 i = 1; i < Chain.Num(); ++i) {
-                FQuat OrigLocalRot = Chain[i].LocalTransform.GetRotation();
-                FQuat NewParentWorldRot = Chain[i - 1].Transform.GetRotation();
-
-                FVector CurrentPos = Chain[i].Transform.GetLocation();
-                FVector NewWorldPrimaryDir;
                 if (i < Chain.Num() - 1) {
-                    NewWorldPrimaryDir =
-                        (Chain[i + 1].Transform.GetLocation() - CurrentPos)
-                            .GetSafeNormal();
+                    NextPosition = Chain[i + 1].Transform.GetLocation();
                 } else {
-                    // 末端骨骼：沿用前一根骨骼指向当前骨骼的方向
-                    NewWorldPrimaryDir =
-                        (CurrentPos - Chain[i - 1].Transform.GetLocation())
+                    FVector PrevToCurrent =
+                        (CurrentPosition - Chain[i - 1].Transform.GetLocation())
                             .GetSafeNormal();
+                    NextPosition = CurrentPosition + PrevToCurrent * 50.0f;
                 }
 
-                // 将新的世界主轴方向变换到新父骨骼的局部空间
-                FVector NewLocalPrimaryDir =
-                    NewParentWorldRot.UnrotateVector(NewWorldPrimaryDir);
+                FQuat NewRotation = CalculateBoneRotation(
+                    CurrentPosition, NextPosition, ReferencePlaneNormal,
+                    PrimaryAxis, SecondaryAxis, AdjustedMiddlePosition,
+                    PoleTarget, AlgorithmType, bIsLastBone);
 
-                // 原始局部主轴方向
-                FVector OrigLocalPrimaryDir =
-                    OrigLocalRot.RotateVector(PrimaryAxis);
-
-                // 局部 swing: 从旧主轴方向到新主轴方向的最短弧旋转
-                // FindBetweenNormals 的 twist 分量为零，因此不会改变绕主轴的值
-                FQuat SwingLocal = FQuat::FindBetweenNormals(
-                    OrigLocalPrimaryDir, NewLocalPrimaryDir);
-
-                // 新局部旋转 = swing * 原始旋转 → 局部 twist 完全保留
-                FQuat NewLocalRot = SwingLocal * OrigLocalRot;
-
-                // 新世界旋转
-                FQuat NewWorldRot = NewParentWorldRot * NewLocalRot;
-
-                Chain[i].Transform.SetRotation(NewWorldRot);
+                Chain[i].Transform.SetRotation(NewRotation);
             }
         }
 
@@ -791,6 +773,24 @@ FRigUnit_ArcDistributedIK_Execute() {
     Local::RebuildRotationsForChain(
         Chain, Data.BoneLengths, Data.ReferencePlaneNormal, PrimaryAxis,
         SecondAxis, PoleTarget, RootParentTransform, AlgorithmType);
+
+    // Apply effector rotation to the last joint
+    // After position/rotation solving, override the last bone's world rotation
+    // with the effector's rotation so the end joint matches the target
+    // orientation.
+    if (bPropagateToChildren) {
+        const int32 LastIndex = Chain.Num() - 1;
+        Chain[LastIndex].Transform.SetRotation(EffectorTransform.GetRotation());
+
+        if (bUseDebug) {
+            FQuat AppliedRot = EffectorTransform.GetRotation();
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[ArcDistributedIK] Applied effector rotation to "
+                        "last joint (%d): (%.2f, %.2f, %.2f, %.2f)"),
+                   LastIndex, AppliedRot.X, AppliedRot.Y, AppliedRot.Z,
+                   AppliedRot.W);
+        }
+    }
 
     // Phase 5: Write to hierarchy
     if (bUseDebug) {

@@ -436,6 +436,24 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
     static bool WriteActiveCurveFromFile(ASkeletalMeshActor* PerformerActor,
                                          const FString& ActivityCurveFilePath,
                                          ULevelSequence* LevelSequence);
+
+    // ===== Float Control 值设置 =====
+
+    /**
+     * 直接在 Sequencer 的 Control Rig 参数 Section 中设置 Float Control 的值。
+     *
+     * 等效于用户在 Sequencer UI 中调整该 Control 的当前值。
+     * 与直接修改 CR Hierarchy 不同，此方法修改的是 Sequencer 中的 Float
+     * Channel， 因此不会被 Sequencer 的后续评估覆盖。
+     *
+     * @param ControlRigInstance Control Rig 实例
+     * @param ControlName Float Control 的名称（如 Morph Target 名称）
+     * @param Value 要设置的新值
+     * @return 是否成功找到通道并设置了值
+     */
+    static bool SetControlRigFloatChannelValue(UControlRig* ControlRigInstance,
+                                               const FString& ControlName,
+                                               float Value);
 };
 
 // ========== 兼容性别名（向后兼容） ==========

@@ -2,6 +2,7 @@
 
 #include "Components/SkeletalMeshComponent.h"
 #include "ControlRig.h"
+#include "InstrumentAnimationUtility.h"
 #include "Rigs/RigHierarchy.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
@@ -100,6 +101,8 @@ void SMorphTargetAdjustPanel::RebuildSliders() {
                           .OnValueChanged_Lambda([this, Index](float NewValue) {
                               OnSliderValueChanged(Index, NewValue);
                           })
+                          .OnMouseCaptureEnd_Lambda(
+                              [this, Index]() { OnSliderCaptureEnd(Index); })
                           .MinValue(0.0f)
                           .MaxValue(1.0f)
                           .StepSize(0.01f)
@@ -139,12 +142,18 @@ void SMorphTargetAdjustPanel::SetFloatChannelValue(const FString& ChannelName,
         return;
     }
 
+    // 优先通过 Sequencer 的 Float Channel 设置值（避免被 Sequencer 覆盖）
+    if (UInstrumentAnimationUtility::SetControlRigFloatChannelValue(
+            ControlRig.Get(), ChannelName, Value)) {
+        return;  // Sequencer 方式成功，无需回退
+    }
+
+    // 回退：没有打开的 Sequence 时，直接修改 CR Hierarchy
     URigHierarchy* Hierarchy = ControlRig->GetHierarchy();
     if (!Hierarchy) {
         return;
     }
 
-    // 以 MT 名称作为 Float Channel Control 名称查找
     const FRigElementKey ChannelKey(FName(*ChannelName),
                                     ERigElementType::Control);
     if (!Hierarchy->Contains(ChannelKey)) {
@@ -170,11 +179,23 @@ void SMorphTargetAdjustPanel::OnSliderValueChanged(int32 Index,
         return;
     }
 
+    // 拖动中仅更新本地缓存，不操作 Sequencer / CR
+    // 最终值在 OnSliderCaptureEnd 中一次性应用
     CurrentValues[Index] = NewValue;
+}
 
-    // 通过 Control Rig Float Channel 驱动 Morph Target（而非直接
-    // SetMorphTarget）
-    SetFloatChannelValue(MorphTargetNames[Index], NewValue);
+void SMorphTargetAdjustPanel::OnSliderCaptureEnd(int32 Index) {
+    if (!MorphTargetNames.IsValidIndex(Index) || !SkelComp.IsValid()) {
+        return;
+    }
+
+    // 松开鼠标时，将最终值应用到 Sequencer Float Channel
+    SetFloatChannelValue(MorphTargetNames[Index], CurrentValues[Index]);
+
+    // 触发 Control Rig 评估，使变更立即生效
+    if (ControlRig.IsValid()) {
+        ControlRig->Evaluate_AnyThread();
+    }
 }
 
 void SMorphTargetAdjustPanel::OnResetClicked(int32 Index) {
@@ -184,6 +205,11 @@ void SMorphTargetAdjustPanel::OnResetClicked(int32 Index) {
 
     CurrentValues[Index] = 0.0f;
     SetFloatChannelValue(MorphTargetNames[Index], 0.0f);
+
+    // 触发 Control Rig 评估，使重置立即生效
+    if (ControlRig.IsValid()) {
+        ControlRig->Evaluate_AnyThread();
+    }
     // 无需 RebuildSliders()，滑动条值已通过 Value_Lambda 动态绑定
 }
 
@@ -202,6 +228,11 @@ void SMorphTargetAdjustPanel::SetAllValues(const TArray<float>& InValues) {
         SetFloatChannelValue(MorphTargetNames[i], CurrentValues[i]);
     }
 
+    // 触发 Control Rig 评估，使加载的值立即生效
+    if (ControlRig.IsValid()) {
+        ControlRig->Evaluate_AnyThread();
+    }
+
     // 无需 RebuildSliders()，滑动条值已通过 Value_Lambda 动态绑定
 }
 
@@ -209,6 +240,11 @@ void SMorphTargetAdjustPanel::ResetAll() {
     for (int32 i = 0; i < MorphTargetNames.Num(); ++i) {
         CurrentValues[i] = 0.0f;
         SetFloatChannelValue(MorphTargetNames[i], 0.0f);
+    }
+
+    // 触发 Control Rig 评估，使重置立即生效
+    if (ControlRig.IsValid()) {
+        ControlRig->Evaluate_AnyThread();
     }
 
     // 无需 RebuildSliders()，滑动条值已通过 Value_Lambda 动态绑定

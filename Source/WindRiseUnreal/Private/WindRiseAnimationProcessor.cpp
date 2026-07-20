@@ -59,22 +59,73 @@ void UWindRiseAnimationProcessor::GenerateAnimationFromWindRise(
         return;
     }
 
-    // ── ① 生成手部动画 ──
+    // ── ① 生成手部 Control Rig 动画 ──
     GenerateHandAnimation(WindRiseActor, LeftHandPath, RightHandPath,
                           LevelSequence);
 
-    // ── ② 生成人物 MT 动画（写入 Breath_Control） ──
+    // ── ② 生成人物 MT 动画（写入 Breath_Control，共用一个 Section） ──
     GenerateCharacterMorphTargetAnimation(WindRiseActor, CharSKPath,
                                           LevelSequence);
 
-    // ── ③ 生成乐器 MT 动画（写入 wind_root） ──
+    // ── ③ 生成乐器 MT 动画（写入 wind_root，独立的 ControlRig） ──
     GenerateInstrumentMorphTargetAnimation(WindRiseActor, InstSKPath,
                                            LevelSequence);
 
     // ── ④ 写入活动曲线（如果有） ──
-    if (!ActivityPath.IsEmpty() && WindRiseActor->SkeletalMeshActor) {
-        UInstrumentAnimationUtility::WriteActiveCurveFromFile(
-            WindRiseActor->SkeletalMeshActor, ActivityPath, LevelSequence);
+    // WindRise 专用逻辑：写入 controller_root_offset 的 Transform
+    //   曲线值=1 → FTransform::Identity（活动，位置归零，回到绑定姿势）
+    //   曲线值=0 → RestOffset（不活动，回到休息偏移状态）
+    if (!ActivityPath.IsEmpty()) {
+        FString ActJson;
+        if (FFileHelper::LoadFileToString(ActJson, *ActivityPath)) {
+            TArray<TSharedPtr<FJsonValue>> ActFrames;
+            TSharedRef<TJsonReader<>> ActReader =
+                TJsonReaderFactory<>::Create(ActJson);
+            if (FJsonSerializer::Deserialize(ActReader, ActFrames) &&
+                ActFrames.Num() > 0) {
+                UControlRig* PerformerCR =
+                    WindRiseActor->GetCachedControlRig(TEXT("Performer"));
+                if (PerformerCR) {
+                    TMap<FString, TArray<FAnimationKeyframe>> OffsetData;
+                    TArray<FAnimationKeyframe>& OffsetKeys =
+                        OffsetData.FindOrAdd(TEXT("controller_root_offset"));
+
+                    for (const auto& EntryVal : ActFrames) {
+                        TSharedPtr<FJsonObject> Entry = EntryVal->AsObject();
+                        if (!Entry.IsValid()) continue;
+
+                        double FrameDouble = 0.0, Value = 0.0;
+                        Entry->TryGetNumberField(TEXT("frame"), FrameDouble);
+                        Entry->TryGetNumberField(TEXT("value"), Value);
+
+                        FAnimationKeyframe KF;
+                        KF.FrameNumber = FMath::RoundToInt((float)FrameDouble);
+
+                        if (FMath::IsNearlyEqual((float)Value, 1.0f)) {
+                            // 活动 → 零变换（归零到绑定姿势）
+                            KF.Translation = FVector::ZeroVector;
+                            KF.Rotation = FQuat::Identity;
+                        } else {
+                            // 不活动 → RestOffset（休息偏移）
+                            KF.Translation =
+                                WindRiseActor->RestOffset.GetLocation();
+                            KF.Rotation =
+                                WindRiseActor->RestOffset.GetRotation();
+                        }
+                        KF.bHasLocation = true;
+                        KF.bHasRotation = true;
+
+                        OffsetKeys.Add(KF);
+                    }
+
+                    if (OffsetKeys.Num() > 0) {
+                        FBatchInsertKeyframesSettings Settings;
+                        UInstrumentAnimationUtility::BatchInsertControlRigKeys(
+                            LevelSequence, PerformerCR, OffsetData, Settings);
+                    }
+                }
+            }
+        }
     }
 
     UE_LOG(LogTemp, Log,
@@ -168,9 +219,16 @@ bool UWindRiseAnimationProcessor::GenerateCharacterMorphTargetAnimation(
     if (!FJsonSerializer::Deserialize(R, Keyframes)) return false;
 
     // 整理为 FMorphTargetKeyframeData
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error,
+               TEXT("WindRiseAnimProcessor: MovieScene is null"));
+        return false;
+    }
+    FFrameRate TickRes = MovieScene->GetTickResolution();
+    FFrameRate DispRate = MovieScene->GetDisplayRate();
+
     TMap<FString, FMorphTargetKeyframeData> MTDataMap;
-    FFrameRate TickRes(60000, 1);
-    FFrameRate DispRate(30, 1);
 
     for (const auto& KF : Keyframes) {
         const TSharedPtr<FJsonObject>* Obj = nullptr;
@@ -223,9 +281,16 @@ bool UWindRiseAnimationProcessor::GenerateInstrumentMorphTargetAnimation(
     TSharedRef<TJsonReader<>> R = TJsonReaderFactory<>::Create(AnimJson);
     if (!FJsonSerializer::Deserialize(R, Keyframes)) return false;
 
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error,
+               TEXT("WindRiseAnimProcessor: MovieScene is null"));
+        return false;
+    }
+    FFrameRate TickRes = MovieScene->GetTickResolution();
+    FFrameRate DispRate = MovieScene->GetDisplayRate();
+
     TMap<FString, FMorphTargetKeyframeData> MTDataMap;
-    FFrameRate TickRes(60000, 1);
-    FFrameRate DispRate(30, 1);
 
     for (const auto& KF : Keyframes) {
         const TSharedPtr<FJsonObject>* Obj = nullptr;

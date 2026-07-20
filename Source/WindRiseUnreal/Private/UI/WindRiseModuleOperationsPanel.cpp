@@ -178,8 +178,8 @@ void SWindRiseModuleOperationsPanel::CreateOperationWidgets() {
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
-        TEXT(".wind_rise File"), TEXT(""), TEXT("WindRiseFilePath"),
-        TEXT(".wind_rise"),
+        TEXT(".wind_rise File"), WindRiseActor->AnimationFilePath,
+        TEXT("WindRiseFilePath"), TEXT(".wind_rise"),
         [this](const FString& NewPath) {
             if (WindRiseActor.IsValid()) {
                 WindRiseActor.Get()->AnimationFilePath = NewPath;

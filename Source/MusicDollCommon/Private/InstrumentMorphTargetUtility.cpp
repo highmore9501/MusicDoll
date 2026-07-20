@@ -510,40 +510,49 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
         return 0;
     }
 
-    // 删除所有现有 Sections 并创建新的（与材质动画处理保持一致）
+    // 复用第一个已有 Section（或创建新的 Section）
+    // 不再删除整个 Section，只清理本次要写入的 Morph Target 通道的旧关键帧。
+    // 与 BatchInsertControlRigKeys 的处理方式保持一致。
     TArray<UMovieSceneSection*> AllExistingSections =
         ControlRigTrack->GetAllSections();
 
+    UMovieSceneSection* Section = nullptr;
     if (AllExistingSections.Num() > 0) {
-        // 删除所有现有 Section 以确保完全清理
-        UE_LOG(
-            LogTemp, Warning,
-            TEXT(
-                "[InstrumentMorphTargetUtility] Removing %d existing sections"),
-            AllExistingSections.Num());
+        Section = AllExistingSections[0];
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentMorphTargetUtility] Reusing existing section "
+                    "for morph target animation"));
 
-        for (UMovieSceneSection* Section : AllExistingSections) {
-            if (Section) {
-                ControlRigTrack->RemoveSection(*Section);
+        // 只清理本次要写入的 Morph Target 通道，不清除其他通道（如手部控制器）
+        int32 AutoClearedCount = 0;
+        for (const FMorphTargetKeyframeData& Data : KeyframeData) {
+            FMovieSceneFloatChannel* Channel =
+                UInstrumentAnimationUtility::FindFloatChannel(
+                    Section, Data.MorphTargetName);
+            if (Channel) {
+                Channel->Reset();
+                AutoClearedCount++;
             }
         }
+        UE_LOG(LogTemp, Log,
+               TEXT("[InstrumentMorphTargetUtility] Auto-cleared %d morph "
+                    "target channels before writing"),
+               AutoClearedCount);
+
+    } else {
+        // 没有现有 Section，创建新的
+        Section = ControlRigTrack->CreateNewSection();
+        if (!Section) {
+            UE_LOG(LogTemp, Error,
+                   TEXT("[InstrumentMorphTargetUtility] Failed to create new "
+                        "Section for Morph Target animation"));
+            return 0;
+        }
+        ControlRigTrack->AddSection(*Section);
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentMorphTargetUtility] Created new section for "
+                    "morph target animation"));
     }
-
-    // 创建新的 Section
-    UMovieSceneSection* Section = ControlRigTrack->CreateNewSection();
-    if (!Section) {
-        UE_LOG(
-            LogTemp, Error,
-            TEXT("[InstrumentMorphTargetUtility] Failed to create new Section "
-                 "for Morph Target animation"));
-        return 0;
-    }
-
-    ControlRigTrack->AddSection(*Section);
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("[InstrumentMorphTargetUtility] Created new section for morph "
-                "target animation"));
 
     // 计算帧数范围
     FFrameNumber MinFrame(MAX_int32);
@@ -575,7 +584,8 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
             (TickResolution.Denominator * DisplayRate.Numerator);
 
         FFrameNumber NewEnd = MaxFrame + PaddingInInternalFrames;
-        if (!Section->GetRange().IsEmpty()) {
+        if (!Section->GetRange().IsEmpty() &&
+            Section->GetRange().HasUpperBound()) {
             NewEnd =
                 FMath::Max(Section->GetRange().GetUpperBoundValue(), NewEnd);
         }

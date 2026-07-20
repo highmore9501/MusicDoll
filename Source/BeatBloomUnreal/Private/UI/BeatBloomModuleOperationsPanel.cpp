@@ -30,6 +30,7 @@ void SBeatBloomModuleOperationsPanel::SetActor(AActor* InActor) {
     if (BeatBloomActor.IsValid()) {
         UpdateDrumKitOptions();
     }
+    RefreshOperations();
 }
 
 bool SBeatBloomModuleOperationsPanel::CanHandleActor(
@@ -39,6 +40,20 @@ bool SBeatBloomModuleOperationsPanel::CanHandleActor(
 
 void SBeatBloomModuleOperationsPanel::CreateOperationWidgets() {
     TSharedPtr<SVerticalBox> Container = GetOperationContainer();
+    if (!Container.IsValid()) {
+        return;
+    }
+
+    Container->ClearChildren();
+
+    if (!BeatBloomActor.IsValid()) {
+        Container->AddSlot().AutoHeight().Padding(
+            5.0f)[SNew(STextBlock)
+                      .Text(LOCTEXT("NoActorSelected",
+                                    "No BeatBloom Actor Selected"))
+                      .ColorAndOpacity(FLinearColor::Yellow)];
+        return;
+    }
 
     // Hand State Configuration Section
     Container->AddSlot().AutoHeight().Padding(
@@ -703,23 +718,25 @@ FReply SBeatBloomModuleOperationsPanel::OnLoadState() {
 void SBeatBloomModuleOperationsPanel::RefreshOperations() {
     // 此功能已移至属性面板，操作面板只负责使用已加载的配置
     // 用户应先在属性面板中加载 .drumkit 配置文件
-    if (!BeatBloomActor.IsValid()) {
-        return;
+    if (BeatBloomActor.IsValid()) {
+        ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
+
+        // 检查是否已加载 drumkit 配置
+        if (BeatBloom->DrumKitConfig.Components.Num() == 0) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("BeatBloom: No drumkit config loaded. Please load a "
+                        ".drumkit file in Properties panel first."));
+        } else {
+            // 刷新下拉菜单选项
+            UpdateDrumKitOptions();
+            UE_LOG(LogTemp, Warning,
+                   TEXT("BeatBloom: Drumkit options refreshed from loaded "
+                        "config"));
+        }
     }
 
-    ABeatBloomUnreal* BeatBloom = BeatBloomActor.Get();
-
-    // 检查是否已加载 drumkit 配置
-    if (BeatBloom->DrumKitConfig.Components.Num() == 0) {
-        UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: No drumkit config loaded. Please load a "
-                    ".drumkit file in Properties panel first."));
-    } else {
-        // 刷新下拉菜单选项
-        UpdateDrumKitOptions();
-        UE_LOG(LogTemp, Warning,
-               TEXT("BeatBloom: Drumkit options refreshed from loaded config"));
-    }
+    // 重建 UI 控件（借鉴 FretDance 的模式，确保在 Actor 设置后刷新完整 UI）
+    CreateOperationWidgets();
 }
 
 // ===== 动画生成 =====

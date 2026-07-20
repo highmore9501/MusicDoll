@@ -281,6 +281,16 @@ const FSlateBrush* SMusicDollMainPanel::GetSelectedActorIcon() const {
         return FMusicDollStyle::Get()->GetBrush("MusicDoll.ZhengDrift.Icon");
     }
 
+    // 检查是否为 HarpGlide
+    if (Actor->IsA<AHarpGlideUnreal>()) {
+        return FMusicDollStyle::Get()->GetBrush("MusicDoll.HarpGlide.Icon");
+    }
+
+    // 检查是否为 WindRise
+    if (Actor->IsA<AWindRiseUnreal>()) {
+        return FMusicDollStyle::Get()->GetBrush("MusicDoll.WindRise.Icon");
+    }
+
     // 默认情况
     return FMusicDollStyle::Get()->GetBrush("MusicDoll.Icon");
 }

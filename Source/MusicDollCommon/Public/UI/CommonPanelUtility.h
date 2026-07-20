@@ -18,7 +18,8 @@ class MUSICDOLLCOMMON_API FCommonPanelUtility {
      * @param PropertyName Display name for the property
      * @param Value Current numeric value
      * @param PropertyPath Internal property identifier
-     * @param OnValueChanged Callback when value changes, receives (PropertyPath, NewValue)
+     * @param OnValueChanged Callback when value changes, receives
+     * (PropertyPath, NewValue)
      */
     static TSharedRef<SWidget> CreateNumericPropertyRow(
         const FString& PropertyName, int32 Value, const FString& PropertyPath,
@@ -33,7 +34,8 @@ class MUSICDOLLCOMMON_API FCommonPanelUtility {
      */
     static TSharedRef<SWidget> CreateStringPropertyRow(
         const FString& PropertyName, const FString& Value,
-        const FString& PropertyPath, FSimpleDelegate OnValueChanged);
+        const FString& PropertyPath,
+        TFunction<void(const FString&, const FString&)> OnValueChanged);
 
     /**
      * Create a file path property row widget with browse button - Enhanced

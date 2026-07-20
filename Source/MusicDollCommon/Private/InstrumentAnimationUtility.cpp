@@ -1257,7 +1257,8 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
 
         // 扩展 Section 范围（而非覆盖），始终从零帧开始
         FFrameNumber NewEnd = MaxFrame + PaddingInInternalFrames;
-        if (!Section->GetRange().IsEmpty()) {
+        if (!Section->GetRange().IsEmpty() &&
+            Section->GetRange().HasUpperBound()) {
             NewEnd =
                 FMath::Max(Section->GetRange().GetUpperBoundValue(), NewEnd);
         }
@@ -1703,6 +1704,95 @@ bool UInstrumentAnimationUtility::WriteActiveCurveFromFile(
            TEXT("[InstrumentAnimationUtility] WriteActiveCurveFromFile: "
                 "Successfully wrote %d keyframes for active_curve"),
            FrameNumbers.Num());
+    return true;
+}
+
+bool UInstrumentAnimationUtility::SetControlRigFloatChannelValue(
+    UControlRig* ControlRigInstance, const FString& ControlName, float Value) {
+    if (!ControlRigInstance) {
+        return false;
+    }
+
+    // 1. 获取当前 Level Sequence
+    ULevelSequence* LevelSequence = GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(
+            LogTemp, Warning,
+            TEXT("SetControlRigFloatChannelValue: No active Level Sequence"));
+        return false;
+    }
+
+    // 2. 查找 Control Rig Track
+    UMovieSceneControlRigParameterTrack* ControlRigTrack =
+        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
+                                                         ControlRigInstance);
+    if (!ControlRigTrack) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SetControlRigFloatChannelValue: ControlRig track not "
+                    "found for ControlName='%s'"),
+               *ControlName);
+        return false;
+    }
+
+    // 3. 获取 Section
+    TArray<UMovieSceneSection*> Sections = ControlRigTrack->GetAllSections();
+    if (Sections.Num() == 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SetControlRigFloatChannelValue: No sections in ControlRig "
+                    "track"));
+        return false;
+    }
+
+    UMovieSceneSection* Section = Sections[0];
+    if (!Section) {
+        return false;
+    }
+
+    // 4. 查找 Float Channel（尝试多种命名模式）
+    FMovieSceneFloatChannel* Channel = FindFloatChannel(Section, ControlName);
+    if (!Channel) {
+        // 回退：尝试 ControlName.Float 模式
+        FString AltName = ControlName + TEXT(".Float");
+        Channel = FindFloatChannel(Section, AltName);
+    }
+
+    if (!Channel) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("SetControlRigFloatChannelValue: Float channel not found "
+                    "for '%s' in section. Dumping available channels:"),
+               *ControlName);
+        LogAvailableChannels(Section);
+        return false;
+    }
+
+    // 5. 设置通道默认值（等效于用户在 Sequencer 中调整 Control 的当前值）
+    Channel->SetDefault(Value);
+
+    // 6. 标记修改并通知 Sequencer 刷新
+    Section->Modify();
+    ControlRigTrack->Modify();
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (MovieScene) {
+        MovieScene->Modify();
+    }
+    LevelSequence->MarkPackageDirty();
+
+#if WITH_EDITOR
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::TrackValueChanged);
+                ActiveSequencer->ForceEvaluate();
+            }
+        }
+    }
+#endif
+
     return true;
 }
 

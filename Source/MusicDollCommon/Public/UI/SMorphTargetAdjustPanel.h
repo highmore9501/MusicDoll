@@ -10,8 +10,8 @@ class UControlRig;
  * 通用 Morph Target 调整面板
  * 显示 MT 名称列表 + 滑动条 + Reset 按钮
  *
- * 通过 Control Rig Hierarchy 设置 Float Channel 的值来驱动 Morph Target，
- * 而非直接调用 SkelComp->SetMorphTarget()。
+ * 拖动滑动条时仅更新本地缓存，松开鼠标后才通过 Sequencer Float Channel
+ * 写入最终值，避免连续评估导致的人物复位。
  *
  * 用法：
  *   auto Panel = SNew(SMorphTargetAdjustPanel).Title(TEXT("Character MT"));
@@ -51,8 +51,11 @@ class MUSICDOLLCOMMON_API SMorphTargetAdjustPanel : public SCompoundWidget {
     /** 重建所有滑动条 */
     void RebuildSliders();
 
-    /** 单个 MT 值变更回调 */
+    /** 单个 MT 值变更回调（拖动中只更新本地缓存） */
     void OnSliderValueChanged(int32 Index, float NewValue);
+
+    /** 松开鼠标时应用最终值 */
+    void OnSliderCaptureEnd(int32 Index);
 
     /** 单个 MT Reset 按钮 */
     void OnResetClicked(int32 Index);
