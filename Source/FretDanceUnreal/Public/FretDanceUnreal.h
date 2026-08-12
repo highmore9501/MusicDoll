@@ -189,7 +189,7 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
     bool bUseVibratoBar = false;
 
     // ========== 控制器映射 ==========
-    // 左手手掌控制器 (H_L, HP_L, T_L, TP_L)
+    // 左手手掌控制器 (H_L, HP_L, T_L)
     UPROPERTY()
     TMap<FString, FString> LeftHandControllers;
 

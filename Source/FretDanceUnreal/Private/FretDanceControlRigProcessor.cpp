@@ -98,10 +98,11 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
 
     // 3. 创建左手控制器
     // H_L / HP_L → controller_root_offset
-    // 手指 (T_L, I_L, M_L, R_L, P_L) + TP_L → H_L
+    // 手指 (T_L, I_L, M_L, R_L, P_L) → H_L
+    // 注意：TP_L（拇指 pole）不在此创建，统一由 5.6 创建到 ext_T_L 下
     TArray<FString> LeftControllers = {
-        TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("TP_L"),
-        TEXT("I_L"), TEXT("M_L"),  TEXT("R_L"), TEXT("P_L"),
+        TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("I_L"),
+        TEXT("M_L"), TEXT("R_L"),  TEXT("P_L"),
     };
 
     for (const FString& ControllerName : LeftControllers) {
@@ -109,7 +110,7 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         if (ControllerName == TEXT("H_L") || ControllerName == TEXT("HP_L")) {
             ParentName = TEXT("controller_root_offset");
         } else {
-            // 手指和拇指 pole → 挂在手掌下
+            // 手指 → 挂在手掌下
             ParentName = TEXT("H_L");
         }
 
@@ -150,6 +151,56 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
                 CreatedCount++;
             }
         }
+    }
+
+    // 5.5 创建辅助控件（ext_）— 每个手指一个，与手指控件同级
+    //     极向量控件（pole）将重挂到对应的 ext_ 控件下面（见 5.6）
+    const TArray<FString> LeftFingerNames = {
+        TEXT("T_L"), TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")};
+    const TArray<FString> RightFingerNames = {
+        TEXT("T_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")};
+
+    // 左手 ext 全部挂在 H_L 下
+    for (const FString& FingerName : LeftFingerNames) {
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, ExtName,
+                                                  TEXT("H_L"));
+    }
+    // 右手 ext 挂在手指的父级下（电吉他 I_R 父级为 T_R，其余为 H_R）
+    for (const FString& FingerName : RightFingerNames) {
+        FString ParentName = TEXT("H_R");
+        if (FingerName == TEXT("I_R") &&
+            FretDanceActor->InstrumentType ==
+                EFretDanceInstrumentType::ELECTRIC_GUITAR) {
+            ParentName = TEXT("T_R");
+        }
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, ExtName,
+                                                  ParentName);
+    }
+
+    // 5.6 创建/重挂极向量控件（pole）— 挂到对应的 ext_ 控件下面
+    //     已存在的 pole（旧蓝图挂在手掌下）会自动 reparent 到 ext_ 下
+    //     拇指 pole 为 TP_X，其余为 <手指>_pole
+    struct FPoleMapping {
+        FString PoleName;
+        FString ExtName;
+    };
+    const TArray<FPoleMapping> PoleMappings = {
+        {TEXT("TP_L"), TEXT("ext_T_L")},      // 左手拇指
+        {TEXT("I_L_pole"), TEXT("ext_I_L")},  // 左手食指
+        {TEXT("M_L_pole"), TEXT("ext_M_L")},  // 左手中指
+        {TEXT("R_L_pole"), TEXT("ext_R_L")},  // 左手无名指
+        {TEXT("P_L_pole"), TEXT("ext_P_L")},  // 左手小指
+        {TEXT("TP_R"), TEXT("ext_T_R")},      // 右手拇指
+        {TEXT("I_R_pole"), TEXT("ext_I_R")},  // 右手食指
+        {TEXT("M_R_pole"), TEXT("ext_M_R")},  // 右手中指
+        {TEXT("R_R_pole"), TEXT("ext_R_R")},  // 右手无名指
+        {TEXT("P_R_pole"), TEXT("ext_P_R")},  // 右手小指
+    };
+    for (const FPoleMapping& Pole : PoleMappings) {
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                  Pole.PoleName, Pole.ExtName);
     }
 
     // 6. 创建指板位置控制器（改为挂在 controller_root_offset 下）
@@ -274,11 +325,12 @@ bool UFretDanceControlRigProcessor::SaveState(
     UE_LOG(LogTemp, Warning, TEXT("Current Right Hand: State=%s"),
            *UEnum::GetValueAsString(FretDanceActor->CurrentRightHandState));
 
-    // 先重新初始化所有记录器键名（确保新增加的键名也被加入）
-    // 这样即使旧实例没有保存过某些状态，RecorderTransforms 中也存在默认值
-    FretDanceActor->RecorderTransforms.Empty();
+    // 注意：这里不再清空 RecorderTransforms。
+    // SaveState 只针对要写入的键做 add-or-update（下方各子函数使用
+    // FindOrAdd 覆盖对应键），不清空整体，避免丢失之前保存过的记录。
+    // 下面的初始化逻辑只为缺失的键补齐默认值，已保存的键保持原值。
 
-    // 初始化左手记录器
+    // 初始化左手记录器（只补缺失键）
     for (const auto& Pair : FretDanceActor->LeftHandPositionRecorders) {
         for (int32 i = 0; i < Pair.Value.Num(); ++i) {
             FString KeyName = Pair.Value[i];
@@ -339,6 +391,24 @@ bool UFretDanceControlRigProcessor::SaveState(
                Pair.Value.Location.Z, Pair.Value.Rotation.X,
                Pair.Value.Rotation.Y, Pair.Value.Rotation.Z,
                Pair.Value.Rotation.W);
+    }
+
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Left: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       Right: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       FretPos: P0,P1,P2,P3,P4 (5) — 共 19 个
+        UControlRig* CR = GetControlRig(FretDanceActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),  TEXT("HP_L"), TEXT("T_L"), TEXT("I_L"),
+                TEXT("M_L"),  TEXT("R_L"),  TEXT("P_L"), TEXT("H_R"),
+                TEXT("HP_R"), TEXT("T_R"),  TEXT("I_R"), TEXT("M_R"),
+                TEXT("R_R"),  TEXT("P_R"),  TEXT("P0"),  TEXT("P1"),
+                TEXT("P2"),   TEXT("P3"),   TEXT("P4"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
     }
 
     UE_LOG(LogTemp, Warning, TEXT("✅ SaveState completed."));
@@ -680,11 +750,27 @@ bool UFretDanceControlRigProcessor::LoadState(
         UE_LOG(LogTemp, Warning, TEXT("⚠️ No fret positions loaded"));
     }
 
-    // 重新评估 Control Rig 以传播变更（约束、IK 等）
-    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-    if (ControlRig) {
-        ControlRig->Evaluate_AnyThread();
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成（它使用新写入的目标关键帧）。
+
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Left: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       Right: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       FretPos: P0,P1,P2,P3,P4 (5) — 共 19 个
+        UControlRig* CR = GetControlRig(FretDanceActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),  TEXT("HP_L"), TEXT("T_L"), TEXT("I_L"),
+                TEXT("M_L"),  TEXT("R_L"),  TEXT("P_L"), TEXT("H_R"),
+                TEXT("HP_R"), TEXT("T_R"),  TEXT("I_R"), TEXT("M_R"),
+                TEXT("R_R"),  TEXT("P_R"),  TEXT("P0"),  TEXT("P1"),
+                TEXT("P2"),   TEXT("P3"),   TEXT("P4"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
     }
 
     UE_LOG(LogTemp, Warning, TEXT("=== LoadState Summary ==="));
@@ -938,6 +1024,30 @@ TArray<FString> UFretDanceControlRigProcessor::GetExpectedControllerNames(
         }
     }
 
+    // 辅助控件（ext_）— 每个手指一个，与手指控件同级
+    const TArray<FString> LeftFingerNames = {
+        TEXT("T_L"), TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")};
+    const TArray<FString> RightFingerNames = {
+        TEXT("T_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")};
+    for (const FString& FingerName : LeftFingerNames) {
+        ExpectedControllers.Add(FString::Printf(TEXT("ext_%s"), *FingerName));
+    }
+    for (const FString& FingerName : RightFingerNames) {
+        ExpectedControllers.Add(FString::Printf(TEXT("ext_%s"), *FingerName));
+    }
+
+    // 极向量控件（pole）— 挂到对应 ext_ 下（拇指为 TP_X）
+    // 左手拇指 TP_L 已在上方左手控制器中列出
+    ExpectedControllers.Add(TEXT("TP_R"));
+    for (const FString& FingerName :
+         {TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")}) {
+        ExpectedControllers.Add(FString::Printf(TEXT("%s_pole"), *FingerName));
+    }
+    for (const FString& FingerName :
+         {TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")}) {
+        ExpectedControllers.Add(FString::Printf(TEXT("%s_pole"), *FingerName));
+    }
+
     // 添加指板位置控制器
     for (const auto& FretPair : FretDanceActor->GuitarFretPositions) {
         ExpectedControllers.Add(FretPair.Value);
@@ -955,8 +1065,21 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
     // 注意：ControllerRootName 现在是 "controller_root_offset"
     Hierarchy.Add(TEXT("H_R"), ControllerRootName);   // 右手掌（根级）
     Hierarchy.Add(TEXT("HP_R"), ControllerRootName);  // 右手掌枢轴
-    Hierarchy.Add(TEXT("T_R"), TEXT("H_R"));          // 右手拇指
-    Hierarchy.Add(TEXT("TP_R"), TEXT("H_R"));         // 右手拇指枢轴
+    // 注意：TP_R（拇指 pole）不在层级 map 中创建，统一由 SetupControllers
+    // 的 5.6 极向量逻辑创建到 ext_T_R 下
+
+    // T_R（右手拇指）父级按乐器区分（依据 Rust animator）：
+    // - 指弹/bass：Rust 指弹分支会对手指做手掌局部坐标转换
+    //   （palm_rot.inverse()*(v-palm_pos)），因此 T_R 是手掌子级 → H_R
+    // - 电吉他：Rust 电吉他分支不对手指做手掌局部坐标转换，
+    //   T_R 与 H_R 同在世界空间，因此 T_R 是手掌平级 → controller_root_offset
+    if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
+        Hierarchy.Add(TEXT("T_R"),
+                      ControllerRootName);  // 右手拇指（电吉他：手掌平级）
+    } else {
+        Hierarchy.Add(TEXT("T_R"),
+                      TEXT("H_R"));  // 右手拇指（指弹/bass：手掌子级）
+    }
 
     // 电吉他的特殊层级结构
     if (InstrumentType == EFretDanceInstrumentType::ELECTRIC_GUITAR) {
@@ -972,17 +1095,8 @@ UFretDanceControlRigProcessor::GetRightHandControllerHierarchy(
     Hierarchy.Add(TEXT("R_R"), TEXT("H_R"));  // 右手无名指
     Hierarchy.Add(TEXT("P_R"), TEXT("H_R"));  // 右手小指
 
-    // 为其它右手手指添加pole_target
-    Hierarchy.Add(TEXT("I_R_pole"), TEXT("H_R"));  // 右手食指
-    Hierarchy.Add(TEXT("M_R_pole"), TEXT("H_R"));  // 右手中指
-    Hierarchy.Add(TEXT("R_R_pole"), TEXT("H_R"));  // 右手无名指
-    Hierarchy.Add(TEXT("P_R_pole"), TEXT("H_R"));  // 右手小指
-
-    // 顺便在这里也为每个左手手指添加pole_target
-    Hierarchy.Add(TEXT("I_L_pole"), TEXT("H_L"));  // 左手食指
-    Hierarchy.Add(TEXT("M_L_pole"), TEXT("H_L"));  // 左手中指
-    Hierarchy.Add(TEXT("R_L_pole"), TEXT("H_L"));  // 左手无名指
-    Hierarchy.Add(TEXT("P_L_pole"), TEXT("H_L"));  // 左手小指
+    // 注意：所有手指极向量（I/M/R/P_X_pole 与拇指 TP_X）不再在此 map 中创建，
+    // 统一由 SetupControllers 的 5.6 极向量逻辑创建到对应的 ext_ 控件下。
 
     return Hierarchy;
 }

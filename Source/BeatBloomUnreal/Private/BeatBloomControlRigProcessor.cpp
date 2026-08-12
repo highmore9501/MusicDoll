@@ -492,6 +492,27 @@ void UBeatBloomControlRigProcessor::SaveAllState(
     SaveFootState(BeatBloomActor);
     SaveHeadControlState(BeatBloomActor);
 
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Hand: H_L,HP_L,H_rotation_L, H_R,HP_R,H_rotation_R (6)
+        //       Foot: F_L,F_R,F_rotation_L,F_rotation_R (4)
+        //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
+        //       — 默认共 11 个
+        UControlRig* CR =
+            BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),          TEXT("HP_L"),
+                TEXT("H_rotation_L"), TEXT("H_R"),
+                TEXT("HP_R"),         TEXT("H_rotation_R"),
+                TEXT("F_L"),          TEXT("F_R"),
+                TEXT("F_rotation_L"), TEXT("F_rotation_R"),
+                TEXT("Head_Control"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
+    }
+
     UE_LOG(LogTemp, Warning, TEXT("BeatBloom: SaveAllState completed"));
 }
 
@@ -586,11 +607,30 @@ void UBeatBloomControlRigProcessor::LoadState(
         }
     }
 
-    // 重新评估 Control Rig 以传播变更（约束、IK 等）
-    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-    if (ControlRig) {
-        ControlRig->Evaluate_AnyThread();
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成（它使用新写入的目标关键帧）。
+
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Hand: H_L,HP_L,H_rotation_L, H_R,HP_R,H_rotation_R (6)
+        //       Foot: F_L,F_R,F_rotation_L,F_rotation_R (4)
+        //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
+        //       — 默认共 11 个
+        UControlRig* CR =
+            BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),          TEXT("HP_L"),
+                TEXT("H_rotation_L"), TEXT("H_R"),
+                TEXT("HP_R"),         TEXT("H_rotation_R"),
+                TEXT("F_L"),          TEXT("F_R"),
+                TEXT("F_rotation_L"), TEXT("F_rotation_R"),
+                TEXT("Head_Control"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
     }
 
     UE_LOG(LogTemp, Warning,

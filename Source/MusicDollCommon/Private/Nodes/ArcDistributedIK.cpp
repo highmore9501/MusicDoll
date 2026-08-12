@@ -51,6 +51,14 @@ FRigUnit_ArcDistributedIK_Execute() {
             return PlaneNormal.GetSafeNormal();
         }
 
+        static float ExtractTwistAngle(const FQuat& LocalRotation,
+                                       const FVector& LocalAxis) {
+            FVector VecPart(LocalRotation.X, LocalRotation.Y, LocalRotation.Z);
+            float Projection =
+                FVector::DotProduct(VecPart, LocalAxis.GetSafeNormal());
+            return 2.0f * FMath::Atan2(Projection, LocalRotation.W);
+        }
+
         static FArcDistributedIKData GatherChainData(
             const TArray<FCCDIKChainLink>& Chain,
             const FVector& EffectorPosition, const FVector& PoleTarget) {
@@ -298,7 +306,8 @@ FRigUnit_ArcDistributedIK_Execute() {
             TArray<FCCDIKChainLink>& Chain, const TArray<float>& BoneLengths,
             const FVector& ReferencePlaneNormal, const FVector& PrimaryAxis,
             const FVector& SecondaryAxis, const FVector& PoleTarget,
-            const FTransform& RootParentTransform, int32 AlgorithmType) {
+            const FTransform& RootParentTransform, int32 AlgorithmType,
+            bool bNegativePole) {
             if (Chain.Num() < 1) {
                 return;
             }
@@ -312,6 +321,12 @@ FRigUnit_ArcDistributedIK_Execute() {
 
             FVector DirectionToPole =
                 (PoleTarget - MiddlePosition).GetSafeNormal();
+            if (bNegativePole) {
+                DirectionToPole = -DirectionToPole;
+            }
+
+            FVector EffectiveSecondaryAxis =
+                bNegativePole ? -SecondaryAxis : SecondaryAxis;
             float PoleOffset = 0.1 * TotalChainLength;
 
             bool bUseOriginalMiddlePosition = AlgorithmType == 2;
@@ -336,7 +351,7 @@ FRigUnit_ArcDistributedIK_Execute() {
 
                 FQuat NewRotation = CalculateBoneRotation(
                     CurrentPosition, NextPosition, ReferencePlaneNormal,
-                    PrimaryAxis, SecondaryAxis, AdjustedMiddlePosition,
+                    PrimaryAxis, EffectiveSecondaryAxis, AdjustedMiddlePosition,
                     PoleTarget, AlgorithmType, bIsLastBone);
 
                 Chain[i].Transform.SetRotation(NewRotation);
@@ -634,6 +649,10 @@ FRigUnit_ArcDistributedIK_Execute() {
     FArcDistributedIKData Data = Local::GatherChainData(
         Chain, EffectorTransform.GetLocation(), PoleTarget);
 
+    if (bNegativePole) {
+        Data.ReferencePlaneNormal = -Data.ReferencePlaneNormal;
+    }
+
     if (bUseDebug) {
         UE_LOG(LogControlRig, Warning,
                TEXT("[ArcDistributedIK] Phase 1 - Data Gathering Complete. "
@@ -722,6 +741,31 @@ FRigUnit_ArcDistributedIK_Execute() {
     }
 
     // Phase 3: Position calculation
+
+    // --- 使用渐进旋转：记录初始局部主轴扭转角 + 计算混合百分比 ---
+    TArray<float> InitialTwistAngles;
+    TArray<float> TwistBlendPercentages;
+    if (bUseProgressiveTwist) {
+        InitialTwistAngles.SetNum(Chain.Num());
+        TwistBlendPercentages.SetNum(Chain.Num());
+
+        float AccumulatedToChild = 0.0f;
+        for (int32 i = 0; i < Chain.Num(); ++i) {
+            InitialTwistAngles[i] = Local::ExtractTwistAngle(
+                Chain[i].LocalTransform.GetRotation(), PrimaryAxis);
+
+            if (i < Chain.Num() - 1) {
+                AccumulatedToChild += Data.BoneLengths[i];
+            }
+            // 混合百分比 = 1 - (从根到当前骨骼的子级的累计长度) / 总长度
+            // 根骨骼保留最多原始扭转，末端方向逐渐减少至 0
+            TwistBlendPercentages[i] =
+                (Data.TotalChainLength > 0.0f)
+                    ? 1.0f - AccumulatedToChild / Data.TotalChainLength
+                    : 0.0f;
+        }
+    }
+
     if (AlgorithmType == 1) {
         if (bUseDebug) {
             UE_LOG(
@@ -770,9 +814,10 @@ FRigUnit_ArcDistributedIK_Execute() {
                TEXT("[ArcDistributedIK] Entering Phase 4 - "
                     "RebuildRotationsForChain"));
     }
-    Local::RebuildRotationsForChain(
-        Chain, Data.BoneLengths, Data.ReferencePlaneNormal, PrimaryAxis,
-        SecondAxis, PoleTarget, RootParentTransform, AlgorithmType);
+    Local::RebuildRotationsForChain(Chain, Data.BoneLengths,
+                                    Data.ReferencePlaneNormal, PrimaryAxis,
+                                    SecondAxis, PoleTarget, RootParentTransform,
+                                    AlgorithmType, bNegativePole);
 
     // Apply effector rotation to the last joint
     // After position/rotation solving, override the last bone's world rotation
@@ -789,6 +834,47 @@ FRigUnit_ArcDistributedIK_Execute() {
                         "last joint (%d): (%.2f, %.2f, %.2f, %.2f)"),
                    LastIndex, AppliedRot.X, AppliedRot.Y, AppliedRot.Z,
                    AppliedRot.W);
+        }
+    }
+
+    // --- 使用渐进旋转：主轴扭转回调 ---
+    if (bUseProgressiveTwist) {
+        for (int32 i = 0; i < Chain.Num() - 1; ++i) {
+            const float Blend = TwistBlendPercentages[i];
+            if (Blend <= 0.0f) {
+                continue;
+            }
+
+            // 当前局部旋转（使用已更新的父级旋转，确保层级级联正确）
+            FQuat ParentWorldRot = (i == 0)
+                                       ? RootParentTransform.GetRotation()
+                                       : Chain[i - 1].Transform.GetRotation();
+            FQuat CurrentLocalRot =
+                ParentWorldRot.Inverse() * Chain[i].Transform.GetRotation();
+
+            float CurrentTwist =
+                Local::ExtractTwistAngle(CurrentLocalRot, PrimaryAxis);
+
+            // 计算最短角度差（避免因角度环绕导致 180° 翻转）
+            float TwistDelta = InitialTwistAngles[i] - CurrentTwist;
+            TwistDelta = FMath::Fmod(TwistDelta + PI, 2.0f * PI);
+            if (TwistDelta < 0.0f) {
+                TwistDelta += 2.0f * PI;
+            }
+            TwistDelta -= PI;
+
+            float CorrectionAngle = Blend * TwistDelta;
+
+            if (!FMath::IsNearlyZero(CorrectionAngle, 1e-6f)) {
+                // 用骨骼当前局部空间中的主轴方向作为旋转轴，
+                // 确保修正只影响径向扭转，不改变骨骼朝向
+                FVector CurrentPrimaryAxisInParent =
+                    CurrentLocalRot.RotateVector(PrimaryAxis);
+                FQuat TwistCorrection(CurrentPrimaryAxisInParent,
+                                      CorrectionAngle);
+                FQuat NewLocalRot = TwistCorrection * CurrentLocalRot;
+                Chain[i].Transform.SetRotation(ParentWorldRot * NewLocalRot);
+            }
         }
     }
 

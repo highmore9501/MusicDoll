@@ -196,6 +196,16 @@ void AWindRiseUnreal::SaveNoteState(int32 MidiNote) {
     NoteStates.Add(MidiNote, State);
     Modify();
 
+    // ── ⑤ 在 Sequencer 中为手部控件写入关键帧 ──
+    {  // 影响 HandControllers: H_L, HP_L, T_L, I_L, M_L, R_L, P_L,
+        //                    H_R, HP_R, T_R, I_R, M_R, R_R, P_R (14 个)
+        TArray<FString> CtrlNames;
+        for (const auto& Pair : HandControllers) {
+            CtrlNames.Add(Pair.Value);
+        }
+        UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR, CtrlNames);
+    }
+
     UE_LOG(LogTemp, Log,
            TEXT("WindRiseUnreal: Saved state for %s (%d) - %d controllers, "
                 "%d char MT, %d inst MT"),
@@ -214,14 +224,23 @@ void AWindRiseUnreal::LoadNoteState(int32 MidiNote) {
     // ── ① 恢复控制器变换 ──
     UControlRig* CR = GetCachedControlRig(TEXT("Performer"));
     UWindRiseControlRigProcessor::RestoreControllers(this, CR, *State);
-    if (CR) {
-        CR->Evaluate_AnyThread();
+    // 注意：这里不能调用 Evaluate_AnyThread()，否则 Sequencer 会用当前帧
+    // 的旧关键帧覆盖刚恢复的目标值；传播由 InsertCurrentPoseKeyframes 完成。
+
+    // ── ② 在 Sequencer 中为手部控件写入关键帧 ──
+    {  // 影响 HandControllers: H_L, HP_L, T_L, I_L, M_L, R_L, P_L,
+        //                    H_R, HP_R, T_R, I_R, M_R, R_R, P_R (14 个)
+        TArray<FString> CtrlNames;
+        for (const auto& Pair : HandControllers) {
+            CtrlNames.Add(Pair.Value);
+        }
+        UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR, CtrlNames);
     }
 
-    // ── ② 恢复人物 MT ──
+    // ── ③ 恢复人物 MT ──
     UWindRiseControlRigProcessor::RestoreCharacterMorphTargets(this, *State);
 
-    // ── ③ 恢复乐器 MT ──
+    // ── ④ 恢复乐器 MT ──
     UWindRiseMusicInstrumentProcessor::RestoreInstrumentMorphTargets(this,
                                                                      *State);
 

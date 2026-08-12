@@ -4,8 +4,10 @@
 #include "ControlRig.h"
 #include "InstrumentAnimationUtility.h"
 #include "Rigs/RigHierarchy.h"
+#include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SSlider.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -14,19 +16,49 @@
 
 void SMorphTargetAdjustPanel::Construct(const FArguments& InArgs) {
     PanelTitle = InArgs._Title;
+    bIsExpanded = false;
 
-    ChildSlot.Padding(5.0f)[SNew(SVerticalBox)
-                            // 标题
-                            + SVerticalBox::Slot().AutoHeight().Padding(
-                                  0.0f, 0.0f, 0.0f,
-                                  5.0f)[SNew(STextBlock)
-                                            .Text(FText::FromString(PanelTitle))
-                                            .Font(FAppStyle::GetFontStyle(
-                                                "DetailsView.CategoryFont"))]
+    ChildSlot.Padding(5.0f)
+        [SNew(SVerticalBox)
 
-                            // 提示信息或滑动条容器
-                            + SVerticalBox::Slot().AutoHeight()[SAssignNew(
-                                  SliderContainer, SVerticalBox)]];
+         // 可点击的标题栏（带展开/收缩箭头）
+         + SVerticalBox::Slot().AutoHeight()
+               [SNew(SButton)
+                    .ButtonStyle(FCoreStyle::Get(), "NoBorder")
+                    .OnClicked(this, &SMorphTargetAdjustPanel::OnTitleClicked)
+                    .Cursor(EMouseCursor::Hand)
+                        [SNew(SHorizontalBox)
+
+                         // 展开/收缩箭头
+                         + SHorizontalBox::Slot()
+                               .AutoWidth()
+                               .VAlign(VAlign_Center)
+                               .Padding(0.0f, 0.0f, 4.0f, 0.0f)
+                                   [SNew(STextBlock)
+                                        .Text_Lambda([this]() {
+                                            return FText::FromString(
+                                                bIsExpanded ? TEXT("\u25BC ")
+                                                            : TEXT("\u25B6 "));
+                                        })
+                                        .Font(FAppStyle::GetFontStyle(
+                                            "DetailsView.CategoryFont"))]
+
+                         // 标题文字
+                         + SHorizontalBox::Slot()
+                               .FillWidth(1.0f)
+                               .VAlign(VAlign_Center)
+                               .Padding(0.0f, 0.0f, 0.0f, 5.0f)
+                                   [SNew(STextBlock)
+                                        .Text(FText::FromString(PanelTitle))
+                                        .Font(FAppStyle::GetFontStyle(
+                                            "DetailsView.CategoryFont"))]]]
+
+         // 滑动条容器（可收缩）
+         + SVerticalBox::Slot().AutoHeight()
+               [SAssignNew(SliderContentBox, SBox).Visibility_Lambda([this]() {
+                   return bIsExpanded ? EVisibility::Visible
+                                      : EVisibility::Collapsed;
+               })[SAssignNew(SliderContainer, SVerticalBox)]]];
 }
 
 void SMorphTargetAdjustPanel::SetMorphTargets(
@@ -234,6 +266,11 @@ void SMorphTargetAdjustPanel::SetAllValues(const TArray<float>& InValues) {
     }
 
     // 无需 RebuildSliders()，滑动条值已通过 Value_Lambda 动态绑定
+}
+
+FReply SMorphTargetAdjustPanel::OnTitleClicked() {
+    bIsExpanded = !bIsExpanded;
+    return FReply::Handled();
 }
 
 void SMorphTargetAdjustPanel::ResetAll() {

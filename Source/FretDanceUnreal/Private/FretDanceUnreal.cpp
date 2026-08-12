@@ -160,7 +160,6 @@ void AFretDanceUnreal::InitializeControllersAndRecorders() {
     LeftHandControllers.Add("left_hand_controller", "H_L");
     LeftHandControllers.Add("left_hand_ik_pivot_controller", "HP_L");
     LeftHandControllers.Add("left_thumb_controller", "T_L");
-    LeftHandControllers.Add("left_thumb_ik_pivot_controller", "TP_L");
 
     // 初始化右手控制器映射
     RightHandControllers.Empty();
@@ -252,7 +251,6 @@ AFretDanceUnreal::GetRightFingerControllersForInstrumentType() const {
 
     // 所有乐器类型都包含完整的右手手指控制器
     Result.Add("right_thumb_controller", "T_R");
-    Result.Add("right_thumb_ik_pivot_controller", "TP_R");
     Result.Add("right_index_controller", "I_R");
     Result.Add("right_middle_controller", "M_R");
     Result.Add("right_ring_controller", "R_R");
@@ -527,8 +525,8 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
     TArray<FString> AllRightHandStates = {TEXT("low"),  TEXT("end"),
                                           TEXT("high"), TEXT("release"),
                                           TEXT("up"),   TEXT("down")};
-    TArray<FString> RightHandFingerKeys = {TEXT("p"), TEXT("tp"), TEXT("i"),
-                                           TEXT("m"), TEXT("a"),  TEXT("ch")};
+    TArray<FString> RightHandFingerKeys = {TEXT("p"), TEXT("i"), TEXT("m"),
+                                           TEXT("a"), TEXT("ch")};
 
     for (const FString& State : AllRightHandStates) {
         bool bIsVibrato = (State == TEXT("release") || State == TEXT("up") ||
@@ -834,6 +832,16 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
         // 这样无论 JSON 中的键名是旧格式还是新格式，都能正确导入
         for (const auto& JsonEntry : RightHandPositionsObj->Values) {
             const FString& JsonKeyName = JsonEntry.Key;
+
+            // 跳过拇指 pole (TP_R)
+            // 数据（tplow/tpend/tphigh/tprelease/tpup/tpdown）
+            if (JsonKeyName.StartsWith(TEXT("tp"), ESearchCase::IgnoreCase)) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("  [R-Hand] Skip thumb pole key: %s"),
+                       *JsonKeyName);
+                continue;
+            }
+
             TSharedPtr<FJsonObject> ControlObj =
                 RightHandPositionsObj->GetObjectField(*JsonKeyName);
 
@@ -1288,10 +1296,11 @@ void AFretDanceUnreal::GenerateRightHandRecorderEntries(
     OutEntries.Empty();
 
     TArray<FString> RightHandStates = {TEXT("low"), TEXT("end"), TEXT("high")};
-    TArray<TPair<FString, FString>> FingerMappings = {
-        {TEXT("p"), TEXT("p")}, {TEXT("tp"), TEXT("tp")},
-        {TEXT("i"), TEXT("i")}, {TEXT("m"), TEXT("m")},
-        {TEXT("a"), TEXT("a")}, {TEXT("ch"), TEXT("ch")}};
+    TArray<TPair<FString, FString>> FingerMappings = {{TEXT("p"), TEXT("p")},
+                                                      {TEXT("i"), TEXT("i")},
+                                                      {TEXT("m"), TEXT("m")},
+                                                      {TEXT("a"), TEXT("a")},
+                                                      {TEXT("ch"), TEXT("ch")}};
 
     for (const FString& State : RightHandStates) {
         OutEntries.Add({State + TEXT("_h"),
@@ -1518,7 +1527,6 @@ AFretDanceUnreal::GetRightHandControllerToRecorderMapping(
     ControllerToKeySuffix.Add("H_R", "_h");
     ControllerToKeySuffix.Add("HP_R", "_hp");
     ControllerToKeySuffix.Add("T_R", "_p");
-    ControllerToKeySuffix.Add("TP_R", "_tp");
     ControllerToKeySuffix.Add("I_R", "_i");
     ControllerToKeySuffix.Add("M_R", "_m");
     ControllerToKeySuffix.Add("R_R", "_a");

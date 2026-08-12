@@ -1,5 +1,7 @@
 #include "LipSyncUtility.h"
 
+#include "Channels/MovieSceneChannelProxy.h"
+#include "Channels/MovieSceneFloatChannel.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
 #include "ControlRigCreationUtility.h"
@@ -1066,6 +1068,163 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
            WrittenTargets);
 
     return WrittenTargets;
+}
+
+// ===== 关键帧清理 =====
+
+bool ULipSyncUtility::ClearLipSyncKeyframes(ASkeletalMeshActor* Performer,
+                                            const FString& RootControlName) {
+    if (!Performer) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: Performer is "
+                    "null"));
+        return false;
+    }
+
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: No active "
+                    "LevelSequence"));
+        return false;
+    }
+
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: MovieScene is "
+                    "null"));
+        return false;
+    }
+
+    // 获取 ControlRig 实例
+    if (!GEngine) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: GEngine not "
+                    "available"));
+        return false;
+    }
+
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: CacheSubsystem "
+                    "not available"));
+        return false;
+    }
+
+    UControlRig* ControlRigInstance =
+        CacheSubsystem->GetControlRig(Performer, LevelSequence);
+    if (!ControlRigInstance) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: Failed to get "
+                    "ControlRigInstance"));
+        return false;
+    }
+
+    // 查找 ControlRig 轨道
+    UMovieSceneControlRigParameterTrack* ControlRigTrack =
+        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
+                                                         ControlRigInstance);
+    if (!ControlRigTrack) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: Failed to find "
+                    "ControlRig track"));
+        return false;
+    }
+
+    // 查找已有的 Section
+    UMovieSceneControlRigParameterSection* Section = nullptr;
+    TArray<UMovieSceneSection*> AllSections = ControlRigTrack->GetAllSections();
+    for (UMovieSceneSection* S : AllSections) {
+        UMovieSceneControlRigParameterSection* CRSection =
+            Cast<UMovieSceneControlRigParameterSection>(S);
+        if (CRSection) {
+            Section = CRSection;
+            break;
+        }
+    }
+
+    if (!Section) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("[LipSyncUtility] ClearLipSyncKeyframes: No existing "
+                    "section found"));
+        return false;
+    }
+
+    // 清空 RootControlName 下所有 Float Animation Channel 的关键帧
+    URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
+    int32 ClearedCount = 0;
+
+    if (RigHierarchy) {
+        FRigElementKey RootKey(*RootControlName, ERigElementType::Control);
+        TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys(false);
+        for (const FRigElementKey& Key : AllKeys) {
+            if (Key.Type != ERigElementType::Control) continue;
+
+            FRigElementKey ParentKey = RigHierarchy->GetFirstParent(Key);
+            if (ParentKey != RootKey) continue;
+
+            const FRigControlElement* ControlElement =
+                RigHierarchy->Find<FRigControlElement>(Key);
+            if (!ControlElement || !ControlElement->IsAnimationChannel())
+                continue;
+            if (ControlElement->Settings.ControlType != ERigControlType::Float)
+                continue;
+
+            // 通过通道代理找到已有 Float Channel 并 Reset() 清空关键帧
+            // 注意：AddScalarParameter 对已有通道无效（HasScalarParameter 返回
+            // true 时跳过）
+            FMovieSceneChannelProxy& ChannelProxy = Section->GetChannelProxy();
+            TArrayView<FMovieSceneFloatChannel*> FloatChannels =
+                ChannelProxy.GetChannels<FMovieSceneFloatChannel>();
+            for (FMovieSceneFloatChannel* FloatChannel : FloatChannels) {
+                if (!FloatChannel) continue;
+                UE::MovieScene::FControlRigChannelMetaData MetaData =
+                    Section->GetChannelMetaData(FloatChannel);
+                if (MetaData && MetaData.GetControlName() == Key.Name) {
+                    FloatChannel->Reset();
+                    ClearedCount++;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 通知 Sequencer 刷新
+    Section->Modify();
+    ControlRigTrack->Modify();
+    MovieScene->Modify();
+    LevelSequence->MarkPackageDirty();
+
+#if WITH_EDITOR
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (UInstrumentAnimationUtility::GetActiveLevelSequenceAndSequencer(
+                ActiveLevelSequence, ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                ActiveSequencer->ForceEvaluate();
+            }
+        }
+    }
+
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+#endif
+
+    UE_LOG(LogTemp, Log,
+           TEXT("[LipSyncUtility] ClearLipSyncKeyframes: Cleared %d float "
+                "channels under '%s'"),
+           ClearedCount, *RootControlName);
+
+    return ClearedCount > 0;
 }
 
 // ===== 完整写入流程 =====

@@ -37,6 +37,23 @@ class MUSICDOLLCOMMON_API FControlRigCreationUtility {
                               const FString& ParentName = TEXT(""));
 
     /**
+     * 确保控制器存在且挂在指定父级下
+     * 若控制器不存在则创建；若已存在但父级不匹配则自动 reparent
+     *
+     * @param ControlRigBlueprint Control Rig 蓝图对象
+     * @param ControlName 控制器名称
+     * @param ExpectedParentName 期望的父控制器名称（可为空，表示无父级）
+     * @return 是否成功
+     *
+     * @note 与 CreateControl 的区别：CreateControl 对已存在的控制器直接返回
+     *       true（不检查/修正父级）；EnsureControl 会校验并修正父级。
+     *       主要用于 ext_ 辅助控件 / pole 极向量控件等需要保证父级正确的情况。
+     */
+    static bool EnsureControl(UControlRigBlueprint* ControlRigBlueprint,
+                              const FString& ControlName,
+                              const FString& ExpectedParentName = TEXT(""));
+
+    /**
      * 根据控制器名称确定合适的形状
      * 用于简化形状选择逻辑
      *

@@ -454,6 +454,26 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
     static bool SetControlRigFloatChannelValue(UControlRig* ControlRigInstance,
                                                const FString& ControlName,
                                                float Value);
+
+    // ===== 当前姿态关键帧写入 =====
+
+    /**
+     * 为指定控件的当前位置在 Sequencer 中写入关键帧
+     *
+     * 读取 Control Rig Hierarchy 中各控件的当前 Local Transform，
+     * 并在 Level Sequence 的当前播放头位置写入位置(X/Y/Z)和旋转(X/Y/Z)关键帧。
+     *
+     * 典型用途：SaveState / LoadState 后锁定控件位置，
+     * 防止后续 Morph Target 调整导致 Sequence 刷新时将控件复位到默认值。
+     *
+     * 注意：此方法不清理已有关键帧，仅在当前帧位置添加/覆盖关键帧。
+     *
+     * @param ControlRig Control Rig 实例
+     * @param ControlNames 需要写入关键帧的控件名称列表
+     * @return 成功写入关键帧的控件数量
+     */
+    static int32 InsertCurrentPoseKeyframes(
+        UControlRig* ControlRig, const TArray<FString>& ControlNames);
 };
 
 // ========== 兼容性别名（向后兼容） ==========

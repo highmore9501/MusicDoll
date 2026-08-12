@@ -61,8 +61,7 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
     if (CreateController(Blueprint, TEXT("controller_root"), TEXT("base_root")))
         CreatedCount++;
 
-    // 2. 左手控制器（8 个主控制器 + 4 个 pole）
-    // 主控制器直接挂在 controller_root 下
+    // 2. 左手控制器（主控制器直接挂在 controller_root 下）
     const TArray<FString> LeftMain = {
         TEXT("H_L"),
         TEXT("HP_L"),
@@ -72,14 +71,36 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
             CreatedCount++;
     }
 
-    // 子控制器挂在对应手掌（H_L）下
-    const TArray<FString> LeftPole = {
-        TEXT("T_L"),      TEXT("I_L"),      TEXT("M_L"),      TEXT("R_L"),
-        TEXT("P_L"),      TEXT("I_L_pole"), TEXT("M_L_pole"), TEXT("R_L_pole"),
-        TEXT("P_L_pole"), TEXT("TP_L"),
-    };
-    for (const FString& Name : LeftPole) {
+    // 手指挂在对应手掌（H_L）下
+    const TArray<FString> LeftFingers = {TEXT("T_L"), TEXT("I_L"), TEXT("M_L"),
+                                         TEXT("R_L"), TEXT("P_L")};
+    for (const FString& Name : LeftFingers) {
         if (CreateController(Blueprint, Name, TEXT("H_L"))) CreatedCount++;
+    }
+
+    // 辅助控件（ext_）— 每个手指一个，与手指同级（都挂 H_L）
+    for (const FString& Name : LeftFingers) {
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, FString::Printf(TEXT("ext_%s"), *Name), TEXT("H_L")))
+            CreatedCount++;
+    }
+
+    // 极向量（pole）— 重挂到对应 ext_ 下（拇指 pole 为 TP_L，其余 <手指>_pole）
+    const TArray<FString> LeftPoles = {
+        TEXT("TP_L"),     TEXT("I_L_pole"), TEXT("M_L_pole"),
+        TEXT("R_L_pole"), TEXT("P_L_pole"),
+    };
+    for (const FString& Name : LeftPoles) {
+        FString FingerName = Name;
+        if (FingerName.StartsWith(TEXT("TP"))) {
+            // TP_L → T_L
+            FingerName = TEXT("T") + FingerName.Mid(2);
+        } else if (FingerName.EndsWith(TEXT("_pole"))) {
+            FingerName = FingerName.LeftChop(5);
+        }
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, Name, FString::Printf(TEXT("ext_%s"), *FingerName)))
+            CreatedCount++;
     }
 
     // 3. 右手控制器（8 个主 + 4 个 pole）
@@ -92,13 +113,36 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
             CreatedCount++;
     }
 
-    const TArray<FString> RightPole = {
-        TEXT("T_R"),      TEXT("I_R"),      TEXT("M_R"),      TEXT("R_R"),
-        TEXT("P_R"),      TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
-        TEXT("P_R_pole"), TEXT("TP_R"),
-    };
-    for (const FString& Name : RightPole) {
+    // 手指挂在对应手掌（H_R）下
+    const TArray<FString> RightFingers = {TEXT("T_R"), TEXT("I_R"), TEXT("M_R"),
+                                          TEXT("R_R"), TEXT("P_R")};
+    for (const FString& Name : RightFingers) {
         if (CreateController(Blueprint, Name, TEXT("H_R"))) CreatedCount++;
+    }
+
+    // 辅助控件（ext_）— 每个手指一个，与手指同级（都挂 H_R）
+    for (const FString& Name : RightFingers) {
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, FString::Printf(TEXT("ext_%s"), *Name), TEXT("H_R")))
+            CreatedCount++;
+    }
+
+    // 极向量（pole）— 重挂到对应 ext_ 下（拇指 pole 为 TP_R，其余 <手指>_pole）
+    const TArray<FString> RightPoles = {
+        TEXT("TP_R"),     TEXT("I_R_pole"), TEXT("M_R_pole"),
+        TEXT("R_R_pole"), TEXT("P_R_pole"),
+    };
+    for (const FString& Name : RightPoles) {
+        FString FingerName = Name;
+        if (FingerName.StartsWith(TEXT("TP"))) {
+            // TP_R → T_R
+            FingerName = TEXT("T") + FingerName.Mid(2);
+        } else if (FingerName.EndsWith(TEXT("_pole"))) {
+            FingerName = FingerName.LeftChop(5);
+        }
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, Name, FString::Printf(TEXT("ext_%s"), *FingerName)))
+            CreatedCount++;
     }
 
     // 4. 脚部控制器（主控挂 controller_root，pole 挂对应主控）
@@ -342,6 +386,28 @@ bool UZhengDriftControlRigProcessor::SaveState(
         }
     }
 
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftHand: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       RightHand: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       Foot: F_L,F_L_pole,F_R,F_R_pole (4)
+        //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
+        //       — 共 19 个
+        UControlRig* CR = GetControlRig(ZhengDriftActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),          TEXT("HP_L"), TEXT("T_L"),
+                TEXT("I_L"),          TEXT("M_L"),  TEXT("R_L"),
+                TEXT("P_L"),          TEXT("H_R"),  TEXT("HP_R"),
+                TEXT("T_R"),          TEXT("I_R"),  TEXT("M_R"),
+                TEXT("R_R"),          TEXT("P_R"),  TEXT("F_L"),
+                TEXT("F_L_pole"),     TEXT("F_R"),  TEXT("F_R_pole"),
+                TEXT("Head_Control"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
+    }
+
     return bLeft && bRight;
 }
 
@@ -411,10 +477,32 @@ bool UZhengDriftControlRigProcessor::LoadState(
     // 检测四态并将双线性辅助记录器数据应用到控制器
     CheckAndLoadBilinearHelpers(ZhengDriftActor, ControlRig);
 
-    // 重新评估 Control Rig 以传播变更（约束、IK 等）
-    // 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-    // 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-    ControlRig->Evaluate_AnyThread();
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成。
+
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftHand: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       RightHand: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       Foot: F_L,F_L_pole,F_R,F_R_pole (4)
+        //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
+        //       — 共 19 个
+        UControlRig* CR = GetControlRig(ZhengDriftActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),          TEXT("HP_L"), TEXT("T_L"),
+                TEXT("I_L"),          TEXT("M_L"),  TEXT("R_L"),
+                TEXT("P_L"),          TEXT("H_R"),  TEXT("HP_R"),
+                TEXT("T_R"),          TEXT("I_R"),  TEXT("M_R"),
+                TEXT("R_R"),          TEXT("P_R"),  TEXT("F_L"),
+                TEXT("F_L_pole"),     TEXT("F_R"),  TEXT("F_R_pole"),
+                TEXT("Head_Control"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("ZhengDrift LoadState: Loaded=%d Failed=%d"),
            Loaded, Failed);
@@ -490,12 +578,24 @@ TArray<FString> UZhengDriftControlRigProcessor::GetExpectedControllerNames(
     for (const auto& Pair : Actor->FootControllers) Names.Add(Pair.Value);
     for (const auto& Pair : Actor->TargetControllers) Names.Add(Pair.Value);
 
+    // 辅助控件（ext_）— 每个手指一个，与手指同级
+    const TArray<FString> LeftFingerNames = {
+        TEXT("T_L"), TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")};
+    const TArray<FString> RightFingerNames = {
+        TEXT("T_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")};
+    for (const FString& Name : LeftFingerNames) {
+        Names.Add(FString::Printf(TEXT("ext_%s"), *Name));
+    }
+    for (const FString& Name : RightFingerNames) {
+        Names.Add(FString::Printf(TEXT("ext_%s"), *Name));
+    }
+
     // 弦位置控制器（63 个）
     for (const auto& Pair : Actor->StringPositionRecorders)
         Names.Add(Pair.Value);
 
     return Names;
-    // 总计：2 + 12 + 12 + 4 + 3 + 63 = 96
+    // 总计：2 + 12 + 12 + 4 + 3 + 10(ext) + 63 = 106
 }
 
 // ============================================================

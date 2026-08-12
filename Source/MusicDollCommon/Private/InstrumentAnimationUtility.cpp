@@ -1012,8 +1012,14 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
 
     // 自动清理：在写入前清除本次要写入的控制器通道的旧关键帧
     // 这样调用方无需再单独调用 ClearControlRigKeyframes
+    // 清除后会将通道默认值设为 Control 的初始（rest pose）值，而非 0
     {
         int32 AutoClearedCount = 0;
+
+        // 获取 ControlRig Hierarchy 以读取各 control 的初始值
+        URigHierarchy* RigHierarchy =
+            ControlRigInstance ? ControlRigInstance->GetHierarchy() : nullptr;
+
         for (const auto& ControlPair : ControlKeyframeData) {
             const FString& ControlName = ControlPair.Key;
             FString Prefix = ControlName + TEXT(".");
@@ -1031,34 +1037,64 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
             FMovieSceneFloatChannel* RotZ = FindFloatChannel(
                 Section, *FString::Printf(TEXT("%sRotation.Z"), *Prefix));
 
+            // 读取该 control 的初始（rest pose）transform
+            FVector InitialLoc = FVector::ZeroVector;
+            FRotator InitialRot = FRotator::ZeroRotator;
+            if (RigHierarchy) {
+                FRigElementKey ControlKey(*ControlName,
+                                          ERigElementType::Control);
+                if (RigHierarchy->Contains(ControlKey)) {
+                    FRigControlElement* ControlElement =
+                        RigHierarchy->Find<FRigControlElement>(ControlKey);
+                    if (ControlElement) {
+                        FRigControlValue InitialValue =
+                            RigHierarchy->GetControlValue(
+                                ControlElement, ERigControlValueType::Initial);
+                        FTransform InitialTransform =
+                            InitialValue.GetAsTransform(
+                                ControlElement->Settings.ControlType,
+                                ControlElement->Settings.PrimaryAxis);
+                        InitialLoc = InitialTransform.GetLocation();
+                        InitialRot = InitialTransform.GetRotation().Rotator();
+                    }
+                }
+            }
+
+            // Reset 后设置默认值为 control 的初始值，而非 0
             if (LocX) {
                 LocX->Reset();
+                LocX->SetDefault(InitialLoc.X);
                 AutoClearedCount++;
             }
             if (LocY) {
                 LocY->Reset();
+                LocY->SetDefault(InitialLoc.Y);
                 AutoClearedCount++;
             }
             if (LocZ) {
                 LocZ->Reset();
+                LocZ->SetDefault(InitialLoc.Z);
                 AutoClearedCount++;
             }
             if (RotX) {
                 RotX->Reset();
+                RotX->SetDefault(InitialRot.Roll);
                 AutoClearedCount++;
             }
             if (RotY) {
                 RotY->Reset();
+                RotY->SetDefault(InitialRot.Pitch);
                 AutoClearedCount++;
             }
             if (RotZ) {
                 RotZ->Reset();
+                RotZ->SetDefault(InitialRot.Yaw);
                 AutoClearedCount++;
             }
         }
         UE_LOG(LogTemp, Log,
                TEXT("[COMMON] BatchInsert: Auto-cleared %d channels for %d "
-                    "controllers before writing"),
+                    "controllers before writing, defaults set to rest pose"),
                AutoClearedCount, ControlKeyframeData.Num());
     }
 
@@ -1810,4 +1846,247 @@ bool UInstrumentAnimationUtility::IsInRenderingScenario() {
         }
     }
     return false;
+}
+
+// ===== 当前姿态关键帧写入 =====
+
+/** 清除 Float Channel 上指定帧的所有关键帧（避免同帧堆叠） */
+static void RemoveKeysAtFrame(FMovieSceneFloatChannel* Channel,
+                              FFrameNumber Frame) {
+    if (!Channel) return;
+
+    auto Data = Channel->GetData();
+    const TArrayView<const FFrameNumber> Times = Data.GetTimes();
+
+    TArray<FKeyHandle> KeysToRemove;
+    for (int32 i = 0; i < Times.Num(); ++i) {
+        if (Times[i] == Frame) {
+            KeysToRemove.Add(Data.GetHandle(i));
+        }
+    }
+
+    if (KeysToRemove.Num() > 0) {
+        Channel->DeleteKeys(KeysToRemove);
+    }
+}
+
+int32 UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+    UControlRig* ControlRig, const TArray<FString>& ControlNames) {
+    if (!ControlRig) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: ControlRig is null"));
+        return 0;
+    }
+
+    if (ControlNames.Num() == 0) {
+        return 0;
+    }
+
+    // 1. 获取 LevelSequence 和 Sequencer
+    ULevelSequence* LevelSequence = nullptr;
+    TSharedPtr<ISequencer> Sequencer = nullptr;
+    if (!GetActiveLevelSequenceAndSequencer(LevelSequence, Sequencer)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: No active Level Sequence"));
+        return 0;
+    }
+
+    UMovieScene* MovieScene = LevelSequence->GetMovieScene();
+    if (!MovieScene) {
+        UE_LOG(LogTemp, Error,
+               TEXT("InsertCurrentPoseKeyframes: MovieScene is null"));
+        return 0;
+    }
+
+    // 2. 获取当前播放头帧号
+    // 注意：必须用 GetLocalTime()（序列本地时间），不能用 GetGlobalTime()。
+    // GetGlobalTime() 返回的是全局时间，包含序列在 master timeline 上的偏移，
+    // 用它作为关键帧时间戳会把关键帧写到播放范围外的错误位置（日志中曾出现
+    // frame 987600），导致加载的状态无法呈现，并会异常扩展 Section 范围，
+    // 使控件在某个关键帧之后被“锁死”在保存状态。
+    FFrameNumber CurrentFrame(0);
+    if (Sequencer.IsValid()) {
+        CurrentFrame = Sequencer->GetLocalTime().Time.FrameNumber;
+    }
+
+    // 3. 查找 Control Rig Parameter Track
+    UMovieSceneControlRigParameterTrack* ControlRigTrack =
+        FControlRigSequencerHelpers::FindControlRigTrack(LevelSequence,
+                                                         ControlRig);
+    if (!ControlRigTrack) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: ControlRig track not found "
+                    "for '%s'"),
+               *ControlRig->GetName());
+        return 0;
+    }
+
+    TArray<UMovieSceneSection*> Sections = ControlRigTrack->GetAllSections();
+    if (Sections.Num() == 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: No sections in ControlRig "
+                    "track"));
+        return 0;
+    }
+
+    // 优先选择与当前播放头相交的 Section，避免在存在多个 Section 时把关键帧
+    // 写进求值不会读取的 Section，导致加载的状态无法呈现。
+    UMovieSceneSection* Section = nullptr;
+    for (UMovieSceneSection* S : Sections) {
+        if (S && S->GetRange().Contains(CurrentFrame)) {
+            Section = S;
+            break;
+        }
+    }
+    if (!Section) {
+        Section = Sections[0];
+    }
+    if (!Section) {
+        return 0;
+    }
+
+    // 4. 读取 CR Hierarchy
+    URigHierarchy* RigHierarchy = ControlRig->GetHierarchy();
+    if (!RigHierarchy) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: No RigHierarchy"));
+        return 0;
+    }
+
+    // 注意：这里不能调用 Evaluate_AnyThread()。
+    // 在 Sequencer 环境中，Evaluate 会触发 Sequencer 用当前帧的旧关键帧
+    // 覆盖 hierarchy 中刚由 SaveState/LoadState 写入的值，导致写入的关键帧
+    // 变成 sequence 当前帧的状态而不是目标状态。直接读取当前 hierarchy 值即可。
+    int32 SuccessCount = 0;
+
+    for (const FString& ControlName : ControlNames) {
+        // 4a. 读取当前 Transform
+        FTransform CurrentTransform;
+        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                RigHierarchy, ControlName, CurrentTransform)) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("InsertCurrentPoseKeyframes: Control '%s' not found in "
+                        "hierarchy"),
+                   *ControlName);
+            continue;
+        }
+
+        FString Prefix = ControlName + TEXT(".");
+
+        // 4b. 查找 Location / Rotation 通道
+        FMovieSceneFloatChannel* LocX = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sLocation.X"), *Prefix));
+        FMovieSceneFloatChannel* LocY = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sLocation.Y"), *Prefix));
+        FMovieSceneFloatChannel* LocZ = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sLocation.Z"), *Prefix));
+        FMovieSceneFloatChannel* RotX = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sRotation.X"), *Prefix));
+        FMovieSceneFloatChannel* RotY = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sRotation.Y"), *Prefix));
+        FMovieSceneFloatChannel* RotZ = FindFloatChannel(
+            Section, *FString::Printf(TEXT("%sRotation.Z"), *Prefix));
+
+        if (!LocX || !LocY || !LocZ || !RotX || !RotY || !RotZ) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("InsertCurrentPoseKeyframes: Missing channels for "
+                        "control '%s', skipping"),
+                   *ControlName);
+            continue;
+        }
+
+        // 4c. 读取当前 Transform 的 Location / Rotation（用于写入）
+        FVector Loc = CurrentTransform.GetLocation();
+        FRotator Rot = CurrentTransform.GetRotation().Rotator();
+
+        // 4d. 先清除当前帧旧键（避免反复调用导致同帧堆叠）
+        RemoveKeysAtFrame(LocX, CurrentFrame);
+        RemoveKeysAtFrame(LocY, CurrentFrame);
+        RemoveKeysAtFrame(LocZ, CurrentFrame);
+        RemoveKeysAtFrame(RotX, CurrentFrame);
+        RemoveKeysAtFrame(RotY, CurrentFrame);
+        RemoveKeysAtFrame(RotZ, CurrentFrame);
+
+        // 4e. 写入新关键帧
+        // 必须使用标准 Sequencer API AddKeyToChannel 逐个写入，不能用
+        // AddKeys（批量）。引擎源码证明：FMovieSceneFloatChannel::AddKeys
+        // 的实现是直接把新帧 Append 到关键帧列表末尾（不排序），头文件注释
+        // 明确要求 "times must be greater than last time and increasing"，
+        // 违反时通道排序被破坏，随后的 Evaluate 用二分查找会读错值
+        // （曾观察到新帧被追加到列表末尾：last3=6411600,6483600,617600）。
+        // AddKeyToChannel 内部走 InsertKeyInternal（Algo::UpperBound 排序
+        // 插入）→ AddCubicKey/AddLinearKey/AddConstantKey，始终维持通道
+        // 有序，与 Sequencer 手动加键行为完全一致。
+        // 注意：此重载（FMovieSceneFloatChannel* 版本）声明在全局命名空间，
+        // 需用 :: 前缀限定，避免与 UE::MovieScene 命名空间内的默认模板实现
+        // 混淆。
+        ::AddKeyToChannel(LocX, CurrentFrame, Loc.X,
+                          EMovieSceneKeyInterpolation::Auto);
+        ::AddKeyToChannel(LocY, CurrentFrame, Loc.Y,
+                          EMovieSceneKeyInterpolation::Auto);
+        ::AddKeyToChannel(LocZ, CurrentFrame, Loc.Z,
+                          EMovieSceneKeyInterpolation::Auto);
+        ::AddKeyToChannel(RotX, CurrentFrame, Rot.Roll,
+                          EMovieSceneKeyInterpolation::Auto);
+        ::AddKeyToChannel(RotY, CurrentFrame, Rot.Pitch,
+                          EMovieSceneKeyInterpolation::Auto);
+        ::AddKeyToChannel(RotZ, CurrentFrame, Rot.Yaw,
+                          EMovieSceneKeyInterpolation::Auto);
+
+        SuccessCount++;
+    }
+
+    if (SuccessCount == 0) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("InsertCurrentPoseKeyframes: No controls were keyframed"));
+        return 0;
+    }
+
+    // 5. 扩展 Section 范围以包含当前帧
+    if (!Section->GetRange().IsEmpty() && Section->GetRange().HasUpperBound()) {
+        FFrameNumber CurrentEnd = Section->GetRange().GetUpperBoundValue();
+        if (CurrentFrame > CurrentEnd) {
+            Section->SetRange(TRange<FFrameNumber>(
+                Section->GetRange().GetLowerBoundValue(), CurrentFrame));
+        }
+    }
+
+    // 6. 标记修改
+    Section->Modify();
+    ControlRigTrack->Modify();
+    MovieScene->Modify();
+    LevelSequence->MarkPackageDirty();
+
+#if WITH_EDITOR
+    // 7. 通知 Sequencer 刷新
+    // 注意：必须使用 MovieSceneStructureItemsChanged 而非 TrackValueChanged。
+    // TrackValueChanged 只做局部失效，Sequencer 求值模板可能仍使用旧的通道
+    // 数据缓存，导致“写入了关键帧但求值仍读到旧值”。而
+    // MovieSceneStructureItemsChanged 会触发完整的评估模板重建，
+    // 确保 ForceEvaluate 使用新写入的关键帧（参考 BatchInsertControlRigKeys）。
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+
+    {
+        TSharedPtr<ISequencer> ActiveSequencer = nullptr;
+        ULevelSequence* ActiveLevelSequence = nullptr;
+        if (GetActiveLevelSequenceAndSequencer(ActiveLevelSequence,
+                                               ActiveSequencer)) {
+            if (ActiveSequencer.IsValid() &&
+                ActiveLevelSequence == LevelSequence) {
+                ActiveSequencer->NotifyMovieSceneDataChanged(
+                    EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
+                ActiveSequencer->ForceEvaluate();
+            }
+        }
+    }
+
+    ULevelSequenceEditorBlueprintLibrary::RefreshCurrentLevelSequence();
+#endif
+
+    UE_LOG(LogTemp, Log,
+           TEXT("InsertCurrentPoseKeyframes: Keyframed %d controls at frame "
+                "%d"),
+           SuccessCount, CurrentFrame.Value);
+
+    return SuccessCount;
 }

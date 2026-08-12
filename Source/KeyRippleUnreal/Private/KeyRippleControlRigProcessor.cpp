@@ -5,6 +5,7 @@
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
 #include "KeyRippleControlRigHelper.h"
 #include "KeyRipplePianoProcessor.h"
@@ -335,9 +336,19 @@ void UKeyRippleControlRigProcessor::SaveState(
         KeyRippleActor, RigHierarchy, KeyRippleActor->HandControllers,
         SavedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelper::SaveControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, SavedCount,
-        FailedCount, false, true);
+    {
+        // TargetPoints 中仅 Head_Control 需要保存状态，
+        // Mid_Hand 由 Control Rig 根据 H_L/H_R 自动计算，
+        // Look_At 通过父子关系跟随 Mid_Hand，均不需要保存
+        TMap<FString, FString> HeadControlOnly;
+        if (const FString* HeadCtrlName =
+                KeyRippleActor->TargetPoints.Find(TEXT("head_position"))) {
+            HeadControlOnly.Add(TEXT("head_position"), *HeadCtrlName);
+        }
+        FKeyRippleControlRigHelper::SaveControllers(
+            KeyRippleActor, RigHierarchy, HeadControlOnly, SavedCount,
+            FailedCount, false, true);
+    }
 
     UE_LOG(LogTemp, Warning,
            TEXT("Processing state-independent controllers..."));
@@ -349,6 +360,31 @@ void UKeyRippleControlRigProcessor::SaveState(
     FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("SaveState"), SavedCount, FailedCount,
         KeyRippleActor->RecorderTransforms.Num());
+
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Finger: {0..N-1}_L, {0..N-1}_R (默认 10 个)
+        //       Hand: H_L,HP_L,H_R,HP_R (4)
+        //       Target: Head_Control (仅，Mid_Hand/Look_At 不需要)
+        //       KeyBoard: black_key,highest_white_key,lowest_white_key,
+        //                 lowest_white_key_end,normal_hand_expand_position,
+        //                 wide_expand_hand_position (6) — 默认共 21 个
+        if (ControlRigInstance) {
+            TSet<FString> CtrlNames;
+            for (const auto& P : KeyRippleActor->FingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : KeyRippleActor->HandControllers)
+                CtrlNames.Add(P.Value);
+            // TargetPoints: 仅 Head_Control 需要写入关键帧
+            if (const FString* HeadCtrlName =
+                    KeyRippleActor->TargetPoints.Find(TEXT("head_position"))) {
+                CtrlNames.Add(*HeadCtrlName);
+            }
+            for (const auto& P : KeyRippleActor->KeyBoardPositions)
+                CtrlNames.Add(P.Value);
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+                ControlRigInstance, CtrlNames.Array());
+        }
+    }
 
     if (KeyRippleActor) {
         KeyRippleActor->MarkPackageDirty();
@@ -449,9 +485,17 @@ void UKeyRippleControlRigProcessor::LoadState(
         KeyRippleActor, RigHierarchy, KeyRippleActor->HandControllers,
         LoadedCount, FailedCount, false, true);
 
-    FKeyRippleControlRigHelper::LoadControllers(
-        KeyRippleActor, RigHierarchy, KeyRippleActor->TargetPoints, LoadedCount,
-        FailedCount, false, true);
+    {
+        // TargetPoints 中仅 Head_Control 需要加载状态
+        TMap<FString, FString> HeadControlOnly;
+        if (const FString* HeadCtrlName =
+                KeyRippleActor->TargetPoints.Find(TEXT("head_position"))) {
+            HeadControlOnly.Add(TEXT("head_position"), *HeadCtrlName);
+        }
+        FKeyRippleControlRigHelper::LoadControllers(
+            KeyRippleActor, RigHierarchy, HeadControlOnly, LoadedCount,
+            FailedCount, false, true);
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("Loading state-independent controllers..."));
 
@@ -459,12 +503,35 @@ void UKeyRippleControlRigProcessor::LoadState(
         KeyRippleActor, RigHierarchy, KeyRippleActor->KeyBoardPositions,
         LoadedCount, FailedCount, false, false);
 
-// 重新评估 Control Rig 以传播变更（约束、IK 等）
-// 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-// 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-if (ControlRigInstance) {
-    ControlRigInstance->Evaluate_AnyThread();
-}
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成。
+
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 Finger: {0..N-1}_L, {0..N-1}_R (默认 10 个)
+        //       Hand: H_L,HP_L,H_R,HP_R (4)
+        //       Target: Head_Control (仅，Mid_Hand/Look_At 不需要)
+        //       KeyBoard: black_key,highest_white_key,lowest_white_key,
+        //                 lowest_white_key_end,normal_hand_expand_position,
+        //                 wide_expand_hand_position (6) — 默认共 21 个
+        if (ControlRigInstance) {
+            TSet<FString> CtrlNames;
+            for (const auto& P : KeyRippleActor->FingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : KeyRippleActor->HandControllers)
+                CtrlNames.Add(P.Value);
+            // TargetPoints: 仅 Head_Control 需要写入关键帧
+            if (const FString* HeadCtrlName =
+                    KeyRippleActor->TargetPoints.Find(TEXT("head_position"))) {
+                CtrlNames.Add(*HeadCtrlName);
+            }
+            for (const auto& P : KeyRippleActor->KeyBoardPositions)
+                CtrlNames.Add(P.Value);
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+                ControlRigInstance, CtrlNames.Array());
+        }
+    }
 
     FKeyRippleControlRigHelper::LogStandardEnd(
         TEXT("LoadState"), LoadedCount, FailedCount,
@@ -548,86 +615,156 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         return;
     }
 
-    // 第3步：遍历所有其他控制器，创建父级为controller_root的控制器
-    // 将TSet转换为TArray并排序，确保pole控制器最后处理
-    TArray<FString> SortedControllerNames = AllControllerNames.Array();
-    SortedControllerNames.Sort([](const FString& A, const FString& B) {
-        // pole控制器排在后面
-        bool bAIsPole = A.StartsWith(TEXT("pole_"));
-        bool bBIsPole = B.StartsWith(TEXT("pole_"));
+    // 第3步：在 base_root → controller_root 层级下，按依赖顺序创建各子控制器
+    // 创建顺序：手掌控制器 → Mid_Hand → 手指控制器 → 辅助控件(ext_) →
+    // 其余目标点 → 极向量控制器(pole_) → 键盘位置
+    // 注意：base_root 和 controller_root 已在第1、2步中创建完成
 
-        if (bAIsPole && !bBIsPole) return false;  // A是pole，B不是，A排后面
-        if (!bAIsPole && bBIsPole) return true;   // A不是pole，B是，A排前面
-
-        return A < B;  // 都是pole或都不是pole，按字典序排列
-    });
-
-    // 遍历所有其他控制器名称，检查是否存在，如果不存在则创建
-    for (const FString& ControllerName : SortedControllerNames) {
+    // 3a. 创建手掌控制器（H_L, H_R, HP_L, HP_R）— 作为手指和 pole 的父级
+    for (const auto& Pair : KeyRippleActor->HandControllers) {
+        const FString& ControllerName = Pair.Value;
         FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        bool bExists = RigHierarchy->Contains(ElementKey);
-
-        if (!bExists) {
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
             UE_LOG(LogTemp, Warning,
-                   TEXT("Controller %s does not exist, creating as child of "
-                        "controller_root..."),
+                   TEXT("Created hand controller %s under controller_root"),
                    *ControllerName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Hand controller %s already exists"),
+                   *ControllerName);
+        }
+    }
 
-            // 确定父控制器并创建控制器
-            FString ParentControllerName = TEXT("controller_root");
+    // 3b. 创建 Mid_Hand（作为 Look_At 的父级，必须在 Look_At 之前创建）
+    for (const auto& Pair : KeyRippleActor->TargetPoints) {
+        if (!Pair.Value.Equals(TEXT("Mid_Hand"))) continue;
+        FRigElementKey ElementKey(*(Pair.Value), ERigElementType::Control);
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, Pair.Value, TEXT("controller_root"));
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Created Mid_Hand under controller_root"));
+        } else {
+            UE_LOG(LogTemp, Warning, TEXT("✅ Mid_Hand already exists"));
+        }
+        break;
+    }
 
-            if (ControllerName.Equals(TEXT("Look_At"))) {
-                ParentControllerName = TEXT("Mid_Hand");
-                UE_LOG(LogTemp, Warning,
-                       TEXT("Setting parent %s for controller %s"),
-                       *ParentControllerName, *ControllerName);
-            } else {
-                // 检查是否为手指或 pole 控制器，都需要挂到对应手掌下
-                FString RelatedFingerControllerName;
+    // 3c. 创建手指控制器（0_L, 0_R, ...）— 挂在对应手掌下（H_L 或 H_R）
+    for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
+        const FString& ControllerName = FingerPair.Value;
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FString HandSuffix =
+                ControllerName.EndsWith(TEXT("_L")) ? TEXT("_L") : TEXT("_R");
+            FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ControllerName, ParentName);
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Created finger controller %s under %s"),
+                   *ControllerName, *ParentName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Finger controller %s already exists"),
+                   *ControllerName);
+        }
+    }
 
-                if (ControllerName.StartsWith(TEXT("pole_"))) {
-                    // pole 控制器：通过 pole_ 后缀数字找到对应手指控制器
-                    FString PoleFingerNumber =
-                        ControllerName.Mid(5);  // 去掉 "pole_" 前缀
+    // 3d. 创建辅助控件（ext_）— 每个手指一个，与手指控件一样挂在对应手掌下
+    //     极向量控件（pole_）将绑定在对应的 ext_ 控件下面（见 3f）
+    for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
+        const FString& FingerControllerName = FingerPair.Value;
+        FString ExtControllerName =
+            FString::Printf(TEXT("ext_%s"), *FingerControllerName);
+        FRigElementKey ExtElementKey(*ExtControllerName,
+                                     ERigElementType::Control);
+        if (!RigHierarchy->Contains(ExtElementKey)) {
+            FString HandSuffix = FingerControllerName.EndsWith(TEXT("_L"))
+                                     ? TEXT("_L")
+                                     : TEXT("_R");
+            FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ExtControllerName, ParentName);
+            UE_LOG(LogTemp, Warning, TEXT("Created ext controller %s under %s"),
+                   *ExtControllerName, *ParentName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Ext controller %s already exists"),
+                   *ExtControllerName);
+        }
+    }
 
-                    for (const auto& FingerPair :
-                         KeyRippleActor->FingerControllers) {
-                        if (FingerPair.Key == PoleFingerNumber) {
-                            RelatedFingerControllerName = FingerPair.Value;
-                            break;
-                        }
-                    }
-                } else {
-                    // 手指控制器：直接匹配 FingerControllers 的值
-                    for (const auto& FingerPair :
-                         KeyRippleActor->FingerControllers) {
-                        if (FingerPair.Value == ControllerName) {
-                            RelatedFingerControllerName = ControllerName;
-                            break;
-                        }
-                    }
-                }
+    // 3e. 创建其余目标点控制器（Mid_Hand 已在 3b 中创建，此处跳过）
+    //     Look_At 挂在 Mid_Hand 下，其余挂在 controller_root 下
+    for (const auto& Pair : KeyRippleActor->TargetPoints) {
+        const FString& ControllerName = Pair.Value;
+        if (ControllerName.Equals(TEXT("Mid_Hand"))) continue;  // 已在 3b 创建
 
-                if (!RelatedFingerControllerName.IsEmpty()) {
-                    FString HandSuffix =
-                        RelatedFingerControllerName.EndsWith(TEXT("_L"))
-                            ? TEXT("_L")
-                            : TEXT("_R");
-                    ParentControllerName = FString::Printf(
-                        TEXT("H%s"), *HandSuffix);  // 例如 "H_L" 或 "H_R"
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FString ParentName = ControllerName.Equals(TEXT("Look_At"))
+                                     ? TEXT("Mid_Hand")
+                                     : TEXT("controller_root");
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ControllerName, ParentName);
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Created target controller %s under %s"),
+                   *ControllerName, *ParentName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Target controller %s already exists"),
+                   *ControllerName);
+        }
+    }
 
-                    UE_LOG(LogTemp, Warning,
-                           TEXT("Found related finger controller %s, setting "
-                                "hand controller %s as parent for %s"),
-                           *RelatedFingerControllerName, *ParentControllerName,
-                           *ControllerName);
+    // 3f. 创建极向量控制器（pole_0, pole_1, ...）— 挂在对应的 ext_ 控件下面
+    for (const FString& ControllerName : AllControllerNames) {
+        if (!ControllerName.StartsWith(TEXT("pole_"))) continue;
+
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FString PoleFingerNumber =
+                ControllerName.Mid(5);  // 去掉 "pole_" 前缀
+            FString RelatedFingerControllerName;
+
+            for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
+                if (FingerPair.Key == PoleFingerNumber) {
+                    RelatedFingerControllerName = FingerPair.Value;
+                    break;
                 }
             }
 
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, ParentControllerName);
+            if (!RelatedFingerControllerName.IsEmpty()) {
+                FString ParentName = FString::Printf(
+                    TEXT("ext_%s"), *RelatedFingerControllerName);
+                FControlRigCreationUtility::CreateControl(
+                    ControlRigBlueprint, ControllerName, ParentName);
+                UE_LOG(LogTemp, Warning,
+                       TEXT("Created pole controller %s under %s"),
+                       *ControllerName, *ParentName);
+            }
         } else {
-            UE_LOG(LogTemp, Warning, TEXT("✅ Controller %s already exists"),
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Pole controller %s already exists"),
+                   *ControllerName);
+        }
+    }
+
+    // 3g. 创建键盘位置控制器（KeyBoardPositions）— 挂在 controller_root 下
+    for (const auto& Pair : KeyRippleActor->KeyBoardPositions) {
+        const FString& ControllerName = Pair.Value;
+        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
+        if (!RigHierarchy->Contains(ElementKey)) {
+            FControlRigCreationUtility::CreateControl(
+                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Created keyboard controller %s under controller_root"),
+                   *ControllerName);
+        } else {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("✅ Keyboard controller %s already exists"),
                    *ControllerName);
         }
     }

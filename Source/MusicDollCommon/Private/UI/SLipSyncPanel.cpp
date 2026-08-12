@@ -170,11 +170,11 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                           SHorizontalBox::Slot().AutoWidth().Padding(
                               0.0f, 0.0f, 10.0f, 0.0f)
                               [SNew(SButton)
-                                   .Text(LOCTEXT("ParsePreviewButton",
-                                                 "Parse && Preview"))
+                                   .Text(LOCTEXT("ClearKeyFrameButton",
+                                                 "Clear Key Frame"))
                                    .OnClicked(
-                                       this,
-                                       &SLipSyncPanel::OnParsePreviewClicked)] +
+                                       this, &SLipSyncPanel::
+                                                 OnClearKeyFrameClicked)] +
                           SHorizontalBox::Slot().AutoWidth()
                               [SNew(SButton)
                                    .Text(LOCTEXT("GenerateLipSyncButton",
@@ -436,54 +436,42 @@ FReply SLipSyncPanel::OnBrowseJsonClicked() {
     return FReply::Handled();
 }
 
-FReply SLipSyncPanel::OnParsePreviewClicked() {
-    if (JsonFilePath.IsEmpty()) {
-        ParseResultText = TEXT("No lip sync file selected.");
-        if (ParseResultTextBlock.IsValid()) {
-            ParseResultTextBlock->SetText(FText::FromString(ParseResultText));
-        }
-        return FReply::Handled();
-    }
-
-    TArray<FLipSyncMouthCue> Cues;
-    float Duration = 0.0f;
-    if (!ULipSyncUtility::ParseLipSyncFile(JsonFilePath, Cues, Duration)) {
-        ParseResultText = TEXT("Failed to parse lip sync file.");
-        if (ParseResultTextBlock.IsValid()) {
-            ParseResultTextBlock->SetText(FText::FromString(ParseResultText));
-        }
+FReply SLipSyncPanel::OnClearKeyFrameClicked() {
+    if (!InstrumentActor.IsValid()) {
         ShowNotification(
-            LOCTEXT("ParseFailed", "Failed to parse lip sync file."), false);
+            LOCTEXT("ClearFailed_NoActor", "No instrument actor selected."),
+            false);
         return FReply::Handled();
     }
 
-    // 收集使用的口型种类
-    TSet<FString> UsedPhonemes;
-    for (const FLipSyncMouthCue& Cue : Cues) {
-        if (!Cue.Value.IsEmpty()) {
-            UsedPhonemes.Add(Cue.Value.ToUpper());
-        }
+    ASkeletalMeshActor* Performer = InstrumentActor->SkeletalMeshActor;
+    if (!Performer) {
+        ShowNotification(LOCTEXT("ClearFailed_NoPerformer",
+                                 "Instrument actor has no SkeletalMeshActor."),
+                         false);
+        return FReply::Handled();
     }
 
-    // 构建摘要文本
-    ParseResultText = FString::Printf(TEXT("Duration: %.2fs\nTotal Cues: %d\n"),
-                                      Duration, Cues.Num());
-
-    // 口型种类
-    FString PhonemesStr;
-    for (const FString& P : UsedPhonemes) {
-        if (!PhonemesStr.IsEmpty()) PhonemesStr += TEXT(", ");
-        PhonemesStr += P;
-    }
-    ParseResultText += FString::Printf(TEXT("Used Phonemes: %s"), *PhonemesStr);
-
-    if (ParseResultTextBlock.IsValid()) {
-        ParseResultTextBlock->SetText(FText::FromString(ParseResultText));
+    if (!EnsureControlRigBlueprintValid()) {
+        ShowNotification(
+            LOCTEXT("ClearFailed_NoCRB", "No ControlRigBlueprint found."),
+            false);
+        return FReply::Handled();
     }
 
-    ShowNotification(FText::Format(
-        LOCTEXT("ParseSuccess", "Parsed {0} cues, {1} phoneme types."),
-        FText::AsNumber(Cues.Num()), FText::AsNumber(UsedPhonemes.Num())));
+    const bool bCleared = ULipSyncUtility::ClearLipSyncKeyframes(Performer);
+
+    if (bCleared) {
+        ShowNotification(LOCTEXT("ClearSuccess",
+                                 "Lip sync key frames cleared successfully."),
+                         true);
+    } else {
+        ShowNotification(
+            LOCTEXT("ClearNoChannels",
+                    "No float channels found under lip_sync control."),
+            false);
+    }
+
     return FReply::Handled();
 }
 

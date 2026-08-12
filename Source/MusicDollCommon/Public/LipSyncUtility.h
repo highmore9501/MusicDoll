@@ -196,6 +196,24 @@ class MUSICDOLLCOMMON_API ULipSyncUtility : public UObject {
         ASkeletalMeshActor* Performer,
         UControlRigBlueprint* ControlRigBlueprint, const FString& FilePath);
 
+    // ===== 关键帧清理 =====
+
+    /**
+     * 清除 lip_sync Control 下所有 Float Channel 的关键帧数据
+     *
+     * 找到当前 LevelSequence 中演奏者对应的 ControlRig Track Section，
+     * 遍历 lip_sync Control 下所有 Float Animation Channel，
+     * 使用 bReconstructChannel=true 重建通道来清空所有关键帧。
+     * 不会影响 Control Rig 上其他轨道的数据。
+     *
+     * @param Performer 演奏者 SkeletalMeshActor
+     * @param RootControlName 目标 Control 名称（默认 "lip_sync"）
+     * @return 是否成功清除了至少一个通道的关键帧
+     */
+    static bool ClearLipSyncKeyframes(
+        ASkeletalMeshActor* Performer,
+        const FString& RootControlName = TEXT("lip_sync"));
+
    private:
     /** Lip Sync 映射变量名常量 */
     static const FName LipSyncMappingVariableName;

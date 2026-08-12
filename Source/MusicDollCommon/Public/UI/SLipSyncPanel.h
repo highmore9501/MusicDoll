@@ -91,8 +91,8 @@ class MUSICDOLLCOMMON_API SLipSyncPanel : public SCompoundWidget {
     /** 浏览 JSON 文件 */
     FReply OnBrowseJsonClicked();
 
-    /** 解析 & 预览 */
-    FReply OnParsePreviewClicked();
+    /** 清除关键帧 */
+    FReply OnClearKeyFrameClicked();
 
     /** 生成 Lip Sync 动画 */
     FReply OnGenerateLipSyncClicked();

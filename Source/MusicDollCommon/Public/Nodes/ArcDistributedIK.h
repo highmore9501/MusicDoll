@@ -8,7 +8,8 @@
 USTRUCT(meta = (DisplayName = "Arc Distributed IK With Pole Target",
                 Category = "Hierarchy", Keywords = "N-Bone,IK,Pole,Arc",
                 Version = "5.7"))
-struct MUSICDOLLCOMMON_API FRigUnit_ArcDistributedIK : public FRigUnit_CCDIKItemArray {
+struct MUSICDOLLCOMMON_API FRigUnit_ArcDistributedIK
+    : public FRigUnit_CCDIKItemArray {
     GENERATED_BODY()
 
     UPROPERTY(meta = (Input))
@@ -19,6 +20,12 @@ struct MUSICDOLLCOMMON_API FRigUnit_ArcDistributedIK : public FRigUnit_CCDIKItem
 
     UPROPERTY(meta = (Input))
     FVector SecondAxis = FVector(0.0f, 1.0f, 0.0f);
+
+    UPROPERTY(meta = (Input))
+    bool bNegativePole = false;
+
+    UPROPERTY(meta = (Input, DisplayName = "Use Progressive Twist"))
+    bool bUseProgressiveTwist = false;
 
     UPROPERTY(meta = (Input))
     bool bUseDebug = false;

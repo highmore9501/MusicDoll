@@ -111,6 +111,58 @@ bool FControlRigCreationUtility::CreateControl(
     return bSuccess;
 }
 
+bool FControlRigCreationUtility::EnsureControl(
+    UControlRigBlueprint* ControlRigBlueprint, const FString& ControlName,
+    const FString& ExpectedParentName) {
+    if (!ControlRigBlueprint || ControlName.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("EnsureControl: Invalid parameters - ControlRigBlueprint: "
+                    "%d, ControlName: %s"),
+               ControlRigBlueprint != nullptr, *ControlName);
+        return false;
+    }
+
+    URigHierarchy* RigHierarchy = nullptr;
+    URigHierarchyController* HierarchyController = nullptr;
+
+    if (!GetHierarchyAndController(ControlRigBlueprint, RigHierarchy,
+                                   HierarchyController)) {
+        return false;
+    }
+
+    FRigElementKey Key(*ControlName, ERigElementType::Control);
+
+    // 控件已存在 → 检查父级是否匹配，不匹配则 reparent
+    if (RigHierarchy->Contains(Key)) {
+        if (!ExpectedParentName.IsEmpty()) {
+            FRigElementKey CurrentParent = RigHierarchy->GetFirstParent(Key);
+            FRigElementKey ExpectedKey(*ExpectedParentName,
+                                       ERigElementType::Control);
+
+            if (CurrentParent != ExpectedKey) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("EnsureControl: '%s' parent is '%s', reparenting "
+                            "to '%s'"),
+                       *ControlName, *CurrentParent.Name.ToString(),
+                       *ExpectedParentName);
+
+                if (!HierarchyController->SetParent(Key, ExpectedKey, true,
+                                                    false)) {
+                    UE_LOG(LogTemp, Error,
+                           TEXT("EnsureControl: Failed to reparent '%s'"),
+                           *ControlName);
+                    return false;
+                }
+                ControlRigBlueprint->MarkPackageDirty();
+            }
+        }
+        return true;
+    }
+
+    // 控件不存在 → 创建
+    return CreateControl(ControlRigBlueprint, ControlName, ExpectedParentName);
+}
+
 bool FControlRigCreationUtility::CreateControlInternal(
     URigHierarchyController* HierarchyController, URigHierarchy* RigHierarchy,
     const FString& ControlName, const FRigElementKey& ParentKey,
@@ -346,7 +398,7 @@ TArray<FName> FControlRigCreationUtility::GetAvailableShapeNames(
 // ============================================================
 
 FString FControlRigCreationUtility::GetCommonSuffix(const FString& NameA,
-                                                     const FString& NameB) {
+                                                    const FString& NameB) {
     int32 MinLen = FMath::Min(NameA.Len(), NameB.Len());
     int32 SuffixLen = 0;
     for (int32 i = 1; i <= MinLen; ++i) {
@@ -365,7 +417,7 @@ FString FControlRigCreationUtility::GetCommonSuffix(const FString& NameA,
 // ============================================================
 
 int32 FControlRigCreationUtility::ParseControlIndex(const FString& Name,
-                                                     const FString& Suffix) {
+                                                    const FString& Suffix) {
     if (Suffix.IsEmpty() || !Name.EndsWith(Suffix)) return -1;
     FString Prefix = Name.LeftChop(Suffix.Len());
     // Prefix must end with digits, optionally start with 's'
@@ -465,10 +517,9 @@ int32 FControlRigCreationUtility::LinearDistributeControls(
         return -1;
     }
 
-    Candidates.Sort([](const TPair<int32, FRigElementKey>& A,
-                       const TPair<int32, FRigElementKey>& B) {
-        return A.Key < B.Key;
-    });
+    Candidates.Sort(
+        [](const TPair<int32, FRigElementKey>& A,
+           const TPair<int32, FRigElementKey>& B) { return A.Key < B.Key; });
 
     int32 MinIdx = FMath::Min(IndexA, IndexB);
     int32 MaxIdx = FMath::Max(IndexA, IndexB);
@@ -493,8 +544,8 @@ int32 FControlRigCreationUtility::LinearDistributeControls(
     auto GetControlLocation = [&](const FRigElementKey& Key) -> FVector {
         FRigControlElement* Elem = Hierarchy->Find<FRigControlElement>(Key);
         if (!Elem) return FVector::ZeroVector;
-        FRigControlValue Val = Hierarchy->GetControlValue(
-            Elem, ERigControlValueType::Current);
+        FRigControlValue Val =
+            Hierarchy->GetControlValue(Elem, ERigControlValueType::Current);
         FTransform T = Val.GetAsTransform(Elem->Settings.ControlType,
                                           Elem->Settings.PrimaryAxis);
         return T.GetLocation();
@@ -530,8 +581,8 @@ int32 FControlRigCreationUtility::LinearDistributeControls(
             Hierarchy->Find<FRigControlElement>(Pair.Value);
         if (!Elem) continue;
 
-        FRigControlValue CurrentVal = Hierarchy->GetControlValue(
-            Elem, ERigControlValueType::Current);
+        FRigControlValue CurrentVal =
+            Hierarchy->GetControlValue(Elem, ERigControlValueType::Current);
         FTransform CurrentTransform = CurrentVal.GetAsTransform(
             Elem->Settings.ControlType, Elem->Settings.PrimaryAxis);
         CurrentTransform.SetLocation(NewLocation);

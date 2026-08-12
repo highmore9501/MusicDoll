@@ -46,10 +46,13 @@ TSet<FString> FStringFlowControlRigHelper::GetAllControllerNames(
 
     for (const auto& Pair : StringFlowActor->LeftFingerControllers) {
         AllControllerNames.Add(Pair.Value);
+        // 辅助控件 ext_（与手指同级）
+        AllControllerNames.Add(FString::Printf(TEXT("ext_%s"), *Pair.Value));
     }
 
     for (const auto& Pair : StringFlowActor->RightFingerControllers) {
         AllControllerNames.Add(Pair.Value);
+        AllControllerNames.Add(FString::Printf(TEXT("ext_%s"), *Pair.Value));
     }
 
     for (const auto& Pair : StringFlowActor->LeftHandControllers) {
@@ -59,6 +62,10 @@ TSet<FString> FStringFlowControlRigHelper::GetAllControllerNames(
     for (const auto& Pair : StringFlowActor->RightHandControllers) {
         AllControllerNames.Add(Pair.Value);
     }
+
+    // 拇指辅助控件 ext_T_L / ext_T_R（拇指 pole 为 TP_L / TP_R）
+    AllControllerNames.Add(TEXT("ext_T_L"));
+    AllControllerNames.Add(TEXT("ext_T_R"));
 
     for (const auto& Pair : StringFlowActor->GuideLines) {
         AllControllerNames.Add(Pair.Value);

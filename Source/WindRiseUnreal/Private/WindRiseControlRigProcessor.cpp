@@ -115,52 +115,52 @@ void UWindRiseControlRigProcessor::InitializePerformerControlRig(
            TEXT("========== InitializePerformerControlRig Started =========="));
 
     // ── 1. 创建基础骨架：controller_root → controller_root_offset ──
+    static const FString BaseRootName = TEXT("base_root");
     static const FString RootName = TEXT("controller_root");
     static const FString OffsetName = TEXT("controller_root_offset");
 
-    if (!EnsureControl(CRBlueprint, RootName, TEXT(""))) return;
+    if (!EnsureControl(CRBlueprint, BaseRootName, TEXT(""))) return;
+    if (!EnsureControl(CRBlueprint, RootName, BaseRootName)) return;
     if (!EnsureControl(CRBlueprint, OffsetName, RootName)) return;
 
-    // ── 2. 创建手部控制器 ──
-    // H_L / H_R → controller_root_offset
-    // HP_L / HP_R → controller_root_offset (与 H_L/H_R 同级)
-    // 手指 (T_L, I_L, M_L, R_L, P_L) → H_L
-    // 手指 (T_R, I_R, M_R, R_R, P_R) → H_R
-    // Pole targets → 对应手掌 (与手指同级)
+    // ── 2. 创建手部控制器（全部平级，挂在 controller_root_offset 下） ──
+    // H_L / H_R / HP_L / HP_R / T_L / I_L / M_L / R_L / P_L / T_R / I_R / M_R /
+    // R_R / P_R 全部 → controller_root_offset
     for (const auto& Pair : WindRiseActor->HandControllers) {
-        const FString& CtrlName = Pair.Value;
-        FString ParentName;
-
-        if (CtrlName == TEXT("H_L") || CtrlName == TEXT("H_R") ||
-            CtrlName == TEXT("HP_L") || CtrlName == TEXT("HP_R")) {
-            // 手掌和 IK pivot → controller_root_offset
-            ParentName = OffsetName;
-        } else {
-            // 手指 → 对应手掌
-            // 命名约定: T_L → H_L, I_R → H_R
-            FString Side = CtrlName.Right(2);  // 取 "_L" 或 "_R"
-            ParentName = FString::Printf(TEXT("H%s"), *Side);
-        }
-
-        EnsureControl(CRBlueprint, CtrlName, ParentName);
+        EnsureControl(CRBlueprint, Pair.Value, OffsetName);
     }
 
-    // ── 3. 创建 Pole Target 控制器（挂在对应手掌下，与手指同级） ──
+    // ── 2.5 创建辅助控件（ext_）— 每个手指一个，与手指控件同级 ──
+    // WindRise 手指全部扁平挂在 controller_root_offset 下，故 ext 也挂该处
+    //     极向量控件（pole）将重挂到对应的 ext_ 控件下面（见第 3 步）
+    for (const auto& Pair : WindRiseActor->HandControllers) {
+        const FString& CtrlName = Pair.Value;  // 如 "T_L"
+        // 跳过手掌控制器（H_L / HP_L / H_R / HP_R），仅手指需要 ext
+        if (CtrlName.StartsWith(TEXT("H"))) {
+            continue;
+        }
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *CtrlName);
+        FControlRigCreationUtility::EnsureControl(CRBlueprint, ExtName,
+                                                  OffsetName);
+    }
+
+    // ── 3. 创建/重挂 Pole Target 控制器（重挂到对应 ext_ 控件下） ──
     for (const auto& Pair : WindRiseActor->PoleControllers) {
         const FString& CtrlName = Pair.Value;  // 如 "T_L_pole"
-        // 从 pole 名推断所属手掌: "T_L_pole" → "H_L"
-        FString Side = TEXT("_L");
-        if (CtrlName.Contains(TEXT("_R_"))) {
-            Side = TEXT("_R");
+        // 从 pole 名推导手指控件名: "T_L_pole" → "T_L" → ext_T_L
+        FString FingerName = CtrlName;
+        if (FingerName.EndsWith(TEXT("_pole"))) {
+            FingerName = FingerName.LeftChop(5);  // 去掉 "_pole"
         }
-        FString ParentName = FString::Printf(TEXT("H%s"), *Side);
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerName);
 
-        EnsureControl(CRBlueprint, CtrlName, ParentName);
+        FControlRigCreationUtility::EnsureControl(CRBlueprint, CtrlName,
+                                                  ExtName);
     }
 
-    // ── 4. 创建脚部控制器（挂在 controller_root 下，与 offset 同级） ──
+    // ── 4. 创建脚部控制器（挂在 base root 下，与 controller root 同级） ──
     for (const auto& Pair : WindRiseActor->FootControllers) {
-        EnsureControl(CRBlueprint, Pair.Value, RootName);
+        EnsureControl(CRBlueprint, Pair.Value, BaseRootName);
     }
 
     // ── 5. 创建头部控制器（挂在 controller_root 下） ──
@@ -168,11 +168,11 @@ void UWindRiseControlRigProcessor::InitializePerformerControlRig(
         EnsureControl(CRBlueprint, Pair.Value, RootName);
     }
 
-    // ── 6. 创建 Breath Control（挂在 controller_root 下） ──
+    // ── 6. 创建 Breath Control（挂在 base root 下） ──
     FString BreathCtrlName;
     for (const auto& Pair : WindRiseActor->BreathControl) {
         BreathCtrlName = Pair.Value;
-        EnsureControl(CRBlueprint, BreathCtrlName, RootName);
+        EnsureControl(CRBlueprint, BreathCtrlName, BaseRootName);
     }
 
     // ── 7. 在 Breath_Control 下创建 Morph Target Float Channels ──
@@ -307,8 +307,13 @@ void UWindRiseControlRigProcessor::CheckControlRigStatus(
         }
     };
 
-    for (const auto& Pair : WindRiseActor->HandControllers)
+    for (const auto& Pair : WindRiseActor->HandControllers) {
         CheckControl(Pair.Value);
+        // ext 辅助控件（仅手指有，手掌 H_L/HP_L/H_R/HP_R 除外）
+        if (!Pair.Value.StartsWith(TEXT("H"))) {
+            CheckControl(FString::Printf(TEXT("ext_%s"), *Pair.Value));
+        }
+    }
     for (const auto& Pair : WindRiseActor->PoleControllers)
         CheckControl(Pair.Value);
     for (const auto& Pair : WindRiseActor->FootControllers)

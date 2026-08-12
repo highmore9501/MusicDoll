@@ -145,8 +145,8 @@ void SWindRiseModulePropertiesPanel::DrawMorphTargetEditor(
                  SHorizontalBox::Slot().AutoWidth()
                      [SNew(SButton)
                           .Text(LOCTEXT("RemoveMT", "✕"))
-                          .OnClicked_Lambda([this, NameCopy]() -> FReply {
-                              return OnRemoveCharacterMorphTarget(NameCopy);
+                          .OnClicked_Lambda([OnRemove, NameCopy]() -> FReply {
+                              return OnRemove(NameCopy);
                           })
                           .ButtonStyle(FAppStyle::Get(),
                                        "FlatButton.Default")]];
@@ -345,6 +345,10 @@ FReply SWindRiseModulePropertiesPanel::OnAddCharacterMorphTarget() {
         return FReply::Handled();
     }
     AWindRiseUnreal* WindRise = WindRiseActor.Get();
+    // 防止添加已存在的 Morph Target
+    if (WindRise->CharacterMorphTargets.Contains(*SelectedCharacterMT)) {
+        return FReply::Handled();
+    }
     WindRise->CharacterMorphTargets.Add(*SelectedCharacterMT);
     WindRise->Modify();
     RefreshProperties();
@@ -365,6 +369,10 @@ FReply SWindRiseModulePropertiesPanel::OnAddInstrumentMorphTarget() {
         return FReply::Handled();
     }
     AWindRiseUnreal* WindRise = WindRiseActor.Get();
+    // 防止添加已存在的 Morph Target
+    if (WindRise->InstrumentMorphTargets.Contains(*SelectedInstrumentMT)) {
+        return FReply::Handled();
+    }
     WindRise->InstrumentMorphTargets.Add(*SelectedInstrumentMT);
     WindRise->Modify();
     RefreshProperties();

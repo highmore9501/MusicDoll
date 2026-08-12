@@ -81,8 +81,8 @@ bool UStringFlowControlRigProcessor::GetControlRigFromStringInstrument(
     }
 
     // 使用Subsystem获取ControlRig
-    OutControlRigInstance =
-        CacheSubsystem->GetControlRig(StringInstrumentActor, CurrentSequence, TEXT("violin_root"));
+    OutControlRigInstance = CacheSubsystem->GetControlRig(
+        StringInstrumentActor, CurrentSequence, TEXT("violin_root"));
     OutControlRigBlueprint = CacheSubsystem->GetControlRigBlueprint(
         StringInstrumentActor, CurrentSequence, TEXT("violin_root"));
 
@@ -155,7 +155,7 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
     // 添加特殊的实际控制器
     ExpectedObjects.Add(TEXT("String_Touch_Point"));
     ExpectedObjects.Add(TEXT("Bow_Controller"));
-    ExpectedObjects.Add(TEXT("Right_Hand_Tar")); 
+    ExpectedObjects.Add(TEXT("Right_Hand_Tar"));
 
     // 添加参考点控制器（这些是真实的控制器，不是记录器）
     // 注：mid_s* 和 f9_s* 由蓝图自动生成，不需要在这里验证
@@ -333,17 +333,20 @@ void UStringFlowControlRigProcessor::SetupControllers(
 
     // 预先收集右手控制器名称集合，用于判断父级
     TSet<FString> RightFingerControllerNames;
-    for (const auto& Pair : StringFlowActor->RightFingerControllers)
-    {
+    for (const auto& Pair : StringFlowActor->RightFingerControllers) {
         RightFingerControllerNames.Add(Pair.Value);
     }
     TSet<FString> RightHandControllerNames;
-    for (const auto& Pair : StringFlowActor->RightHandControllers)
-    {
+    for (const auto& Pair : StringFlowActor->RightHandControllers) {
         RightHandControllerNames.Add(Pair.Value);
     }
 
     for (const FString& ControllerName : SortedControllerNames) {
+        // ext_ 辅助控件不在循环中创建，统一由下方 ext 逻辑创建到手指父级下
+        if (ControllerName.StartsWith(TEXT("ext_"))) {
+            continue;
+        }
+
         FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
         if (RigHierarchy->Contains(ElementKey)) {
             UE_LOG(LogTemp, Warning, TEXT("✓ Controller '%s' already exists"),
@@ -352,20 +355,23 @@ void UStringFlowControlRigProcessor::SetupControllers(
         }
 
         // 右手手指/手掌控制器（除 HP_R 外）全部挂在 Bow_Controller 下
-        bool bIsRightHandCtrl = RightFingerControllerNames.Contains(ControllerName)
-                             || RightHandControllerNames.Contains(ControllerName);
-        FString ParentName = (bIsRightHandCtrl && ControllerName != TEXT("HP_R"))
-                             ? TEXT("Bow_Controller")
-                             : TEXT("controller_root");
+        bool bIsRightHandCtrl =
+            RightFingerControllerNames.Contains(ControllerName) ||
+            RightHandControllerNames.Contains(ControllerName);
+        FString ParentName =
+            (bIsRightHandCtrl && ControllerName != TEXT("HP_R"))
+                ? TEXT("Bow_Controller")
+                : TEXT("controller_root");
 
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, ControllerName, ParentName);
+        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
+                                                  ControllerName, ParentName);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Creating special controllers..."));
 
     // 创建 String_Touch_Point 控制器
-    FRigElementKey STPElementKey(TEXT("String_Touch_Point"), ERigElementType::Control);
+    FRigElementKey STPElementKey(TEXT("String_Touch_Point"),
+                                 ERigElementType::Control);
     if (!RigHierarchy->Contains(STPElementKey)) {
         FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
                                                   TEXT("String_Touch_Point"),
@@ -376,7 +382,8 @@ void UStringFlowControlRigProcessor::SetupControllers(
     }
 
     // 创建 Bow_Controller 控制器
-    FRigElementKey BowElementKey(TEXT("Bow_Controller"), ERigElementType::Control);
+    FRigElementKey BowElementKey(TEXT("Bow_Controller"),
+                                 ERigElementType::Control);
     if (!RigHierarchy->Contains(BowElementKey)) {
         FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
                                                   TEXT("Bow_Controller"),
@@ -387,7 +394,8 @@ void UStringFlowControlRigProcessor::SetupControllers(
     }
 
     // 创建 Right_Hand_Tar 控制器（作为 Bow_Controller 的子级）
-    FRigElementKey RHTElementKey(TEXT("Right_Hand_Tar"), ERigElementType::Control);
+    FRigElementKey RHTElementKey(TEXT("Right_Hand_Tar"),
+                                 ERigElementType::Control);
     if (!RigHierarchy->Contains(RHTElementKey)) {
         FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
                                                   TEXT("Right_Hand_Tar"),
@@ -397,26 +405,32 @@ void UStringFlowControlRigProcessor::SetupControllers(
                TEXT("✓ Controller 'Right_Hand_Tar' already exists"));
     }
 
-    // 设置 TP 控制器为 H 的子级
-    UE_LOG(LogTemp, Warning, TEXT("Setting TP controllers as children of H controllers..."));
-    
-    // 左手 TP_L -> H_L
-    FRigElementKey TPLKey(TEXT("TP_L"), ERigElementType::Control);
-    if (RigHierarchy->Contains(TPLKey)) {
-        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
-                                                  TEXT("TP_L"),
-                                                  TEXT("H_L"));
-        UE_LOG(LogTemp, Warning, TEXT("✓ Set TP_L as child of H_L"));
+    // 创建辅助控件（ext_）— 每个手指一个，与手指控件同级
+    //     极向量控件（pole）将重挂到对应的 ext_ 控件下面
+    // 左手：手指 1_L~4_L 与拇指 T_L 都挂在 controller_root 下
+    for (const auto& FingerPair : StringFlowActor->LeftFingerControllers) {
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerPair.Value);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, ExtName,
+                                                  TEXT("controller_root"));
     }
-    
-    // 右手 TP_R -> H_R
-    FRigElementKey TPRKey(TEXT("TP_R"), ERigElementType::Control);
-    if (RigHierarchy->Contains(TPRKey)) {
-        FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
-                                                  TEXT("TP_R"),
-                                                  TEXT("H_R"));
-        UE_LOG(LogTemp, Warning, TEXT("✓ Set TP_R as child of H_R"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("ext_T_L"), TEXT("controller_root"));
+    // 右手：手指 1_R~4_R 与拇指 T_R 都挂在 Bow_Controller 下
+    for (const auto& FingerPair : StringFlowActor->RightFingerControllers) {
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerPair.Value);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, ExtName,
+                                                  TEXT("Bow_Controller"));
     }
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("ext_T_R"), TEXT("Bow_Controller"));
+
+    // 拇指 pole（TP）— 重挂到对应的 ext_T 控件下面
+    // 左手 TP_L -> ext_T_L
+    FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, TEXT("TP_L"),
+                                              TEXT("ext_T_L"));
+    // 右手 TP_R -> ext_T_R
+    FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, TEXT("TP_R"),
+                                              TEXT("ext_T_R"));
 
     UE_LOG(LogTemp, Warning, TEXT("Creating pole controls for fingers..."));
 
@@ -424,21 +438,22 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FString FingerControlName = FingerPair.Value;
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
-        FString HandControlName = TEXT("H_L");
+        // 左手 pole 重挂到对应的 ext_ 控件下面
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerControlName);
 
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, PoleControlName, HandControlName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                  PoleControlName, ExtName);
     }
 
     for (const auto& FingerPair : StringFlowActor->RightFingerControllers) {
         FString FingerControlName = FingerPair.Value;
         FString PoleControlName =
             FString::Printf(TEXT("pole_%s"), *FingerControlName);
-        // 右手 pole 控制器挂在 Bow_Controller 下
-        FString HandControlName = TEXT("Bow_Controller");
+        // 右手 pole 重挂到对应的 ext_ 控件下面
+        FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerControlName);
 
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, PoleControlName, HandControlName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                  PoleControlName, ExtName);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Pole controls creation completed"));
@@ -580,6 +595,29 @@ void UStringFlowControlRigProcessor::SaveState(
     FStringFlowControlRigHelper::SaveStatelessOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftFinger: 1_L,2_L,3_L,4_L (4)
+        //       RightFinger: 1_R,2_R,3_R,4_R (4)
+        //       LeftHand: H_L,HP_L,T_L (3)
+        //       RightHand: H_R,HP_R,T_R (3)
+        //       GuideLine: violin_normal_line (1) — 共 15 个
+        if (ControlRigInstance) {
+            TSet<FString> CtrlNames;
+            for (const auto& P : StringFlowActor->LeftFingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->RightFingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->LeftHandControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->RightHandControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->GuideLines)
+                CtrlNames.Add(P.Value);
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+                ControlRigInstance, CtrlNames.Array());
+        }
+    }
+
     UE_LOG(LogTemp, Warning,
            TEXT("========== StringFlow SaveState Completed =========="));
     UE_LOG(LogTemp, Warning, TEXT("成功保存控制器数量: %d"), SavedCount);
@@ -607,16 +645,17 @@ void UStringFlowControlRigProcessor::SaveLeft(
                TEXT("SaveLeft: Attempting to re-register ControlRig..."));
         StringFlowActor->TriggerControlRigReregistration(
             TEXT("ControlRig not found during SaveLeft"));
-        
+
         // 重新尝试获取 ControlRig
         ControlRigInstance =
             StringFlowActor->GetCachedControlRig(TEXT("Performer"));
         ControlRigBlueprint =
             StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-        
+
         if (!ControlRigInstance || !ControlRigBlueprint) {
-            UE_LOG(LogTemp, Error,
-                   TEXT("Still failed to get ControlRig after re-registration"));
+            UE_LOG(
+                LogTemp, Error,
+                TEXT("Still failed to get ControlRig after re-registration"));
             return;
         }
     }
@@ -724,16 +763,17 @@ void UStringFlowControlRigProcessor::SaveRight(
                TEXT("SaveRight: Attempting to re-register ControlRig..."));
         StringFlowActor->TriggerControlRigReregistration(
             TEXT("ControlRig not found during SaveRight"));
-        
+
         // 重新尝试获取 ControlRig
         ControlRigInstance =
             StringFlowActor->GetCachedControlRig(TEXT("Performer"));
         ControlRigBlueprint =
             StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-        
+
         if (!ControlRigInstance || !ControlRigBlueprint) {
-            UE_LOG(LogTemp, Error,
-                   TEXT("Still failed to get ControlRig after re-registration"));
+            UE_LOG(
+                LogTemp, Error,
+                TEXT("Still failed to get ControlRig after re-registration"));
             return;
         }
     }
@@ -832,16 +872,17 @@ void UStringFlowControlRigProcessor::LoadState(
                TEXT("LoadState: Attempting to re-register ControlRig..."));
         StringFlowActor->TriggerControlRigReregistration(
             TEXT("ControlRig not found during LoadState"));
-        
+
         // 重新尝试获取 ControlRig
         ControlRigInstance =
             StringFlowActor->GetCachedControlRig(TEXT("Performer"));
         ControlRigBlueprint =
             StringFlowActor->GetCachedControlRigBlueprint(TEXT("Performer"));
-        
+
         if (!ControlRigInstance || !ControlRigBlueprint) {
-            UE_LOG(LogTemp, Error,
-                   TEXT("Still failed to get ControlRig after re-registration"));
+            UE_LOG(
+                LogTemp, Error,
+                TEXT("Still failed to get ControlRig after re-registration"));
             return;
         }
     }
@@ -934,15 +975,36 @@ void UStringFlowControlRigProcessor::LoadState(
     FStringFlowControlRigHelper::LoadStatelessOtherControllers(
         StringFlowActor, RigHierarchy, LoadedCount, FailedCount);
 
-// 重新评估 Control Rig 以传播变更（约束、IK 等）
-// 注意：不能调用 ForceEvaluate / RefreshCurrentLevelSequence，
-// 否则 Sequencer 会重新从轨道读取关键帧数据，覆盖刚写入的值
-if (ControlRigInstance) {
-    ControlRigInstance->Evaluate_AnyThread();
-}
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成。
 
-UE_LOG(LogTemp, Warning,
-       TEXT("========== StringFlow LoadState Summary =========="));
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftFinger: 1_L,2_L,3_L,4_L (4)
+        //       RightFinger: 1_R,2_R,3_R,4_R (4)
+        //       LeftHand: H_L,HP_L,T_L (3)
+        //       RightHand: H_R,HP_R,T_R (3)
+        //       GuideLine: violin_normal_line (1) — 共 15 个
+        if (ControlRigInstance) {
+            TSet<FString> CtrlNames;
+            for (const auto& P : StringFlowActor->LeftFingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->RightFingerControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->LeftHandControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->RightHandControllers)
+                CtrlNames.Add(P.Value);
+            for (const auto& P : StringFlowActor->GuideLines)
+                CtrlNames.Add(P.Value);
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+                ControlRigInstance, CtrlNames.Array());
+        }
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("========== StringFlow LoadState Summary =========="));
     UE_LOG(LogTemp, Warning, TEXT("Playing State -> String: %d, Fret: %d"),
            CurrentStringNum, CurrentFretNum);
     UE_LOG(LogTemp, Warning, TEXT("Successfully loaded: %d transforms"),

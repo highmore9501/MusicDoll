@@ -5,6 +5,7 @@
 
 class USkeletalMeshComponent;
 class UControlRig;
+class SBox;
 
 /**
  * 通用 Morph Target 调整面板
@@ -60,6 +61,9 @@ class MUSICDOLLCOMMON_API SMorphTargetAdjustPanel : public SCompoundWidget {
     /** 单个 MT Reset 按钮 */
     void OnResetClicked(int32 Index);
 
+    /** 切换展开/收缩 */
+    FReply OnTitleClicked();
+
     /** 名称列表 */
     TArray<FString> MorphTargetNames;
 
@@ -74,6 +78,12 @@ class MUSICDOLLCOMMON_API SMorphTargetAdjustPanel : public SCompoundWidget {
 
     /** 滑动条容器 */
     TSharedPtr<SVerticalBox> SliderContainer;
+
+    /** 滑动条区域的外层包装（用于控制可见性） */
+    TSharedPtr<SBox> SliderContentBox;
+
+    /** 是否展开显示滑动条 */
+    bool bIsExpanded = false;
 
     /** 当前值缓存 */
     TArray<float> CurrentValues;

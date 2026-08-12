@@ -83,6 +83,12 @@ TArray<FString> FKeyRippleControlRigHelper::GenerateStateDependentRecorders(
 
 void FKeyRippleControlRigHelper::InitializeControllerRecorderItem(
     AKeyRippleUnreal* KeyRippleActor, const FString& RecorderName) {
+    // 只补缺失的默认条目：已保存过的记录保持不变，绝不覆盖。
+    // 这样 Setup Player Control Rig 不会破坏用户已保存的 recorded transform。
+    if (KeyRippleActor->RecorderTransforms.Contains(RecorderName)) {
+        return;
+    }
+
     FRecorderTransform DefaultTransform;
     DefaultTransform.Location = FVector::ZeroVector;
     DefaultTransform.Rotation = FQuat::Identity;
@@ -111,7 +117,10 @@ void FKeyRippleControlRigHelper::AddControllerRecordersToTransforms(
 
 void FKeyRippleControlRigHelper::InitializeRecorderTransforms(
     AKeyRippleUnreal* KeyRippleActor) {
-    KeyRippleActor->RecorderTransforms.Empty();
+    // 注意：这里不再清空 RecorderTransforms。
+    // SetupAllObjects / Setup Player Control Rig 只负责创建和配置 Control Rig，
+    // 不应破坏用户通过 Save State 保存的记录。
+    // 该函数现在只为缺失的 recorder 补齐默认条目，已有记录保持原值。
 
     AddControllerRecordersToTransforms(KeyRippleActor,
                                        KeyRippleActor->FingerControllers, true);
@@ -119,8 +128,15 @@ void FKeyRippleControlRigHelper::InitializeRecorderTransforms(
     AddControllerRecordersToTransforms(KeyRippleActor,
                                        KeyRippleActor->HandControllers, true);
 
-    AddControllerRecordersToTransforms(KeyRippleActor,
-                                       KeyRippleActor->TargetPoints, true);
+    {
+        TMap<FString, FString> HeadControlOnly;
+        if (const FString* HeadCtrlName =
+                KeyRippleActor->TargetPoints.Find(TEXT("head_position"))) {
+            HeadControlOnly.Add(TEXT("head_position"), *HeadCtrlName);
+        }
+        AddControllerRecordersToTransforms(KeyRippleActor, HeadControlOnly,
+                                           true);
+    }
 
     AddControllerRecordersToTransforms(
         KeyRippleActor, KeyRippleActor->KeyBoardPositions, false);

@@ -25,17 +25,16 @@ static const TSet<FString>& GetValidFretDanceControllerNames() {
     static const TSet<FString> ValidControllers = []() {
         TSet<FString> ValidSet;
 
-        // 左手控制器 (9 个)
-        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("TP_L"),
-                         TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L")});
+        // 左手控制器 (7 个)
+        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("I_L"),
+                         TEXT("M_L"), TEXT("R_L"), TEXT("P_L")});
 
         // 右手控制器 (2-7 个，取决于乐器类型)
         // 基础右手控制器 (所有类型都有)
         ValidSet.Append({TEXT("H_R"), TEXT("HP_R"), TEXT("T_R")});
 
         // 指弹/Bass 特有的右手手指
-        ValidSet.Append(
-            {TEXT("TP_R"), TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")});
+        ValidSet.Append({TEXT("I_R"), TEXT("M_R"), TEXT("R_R"), TEXT("P_R")});
 
         return ValidSet;
     }();

@@ -75,12 +75,26 @@ int32 UHarpGlideControlRigProcessor::SetupControllers(
         if (CreateController(Blueprint, Name, TEXT("H_L"))) CreatedCount++;
     }
 
-    // 左手手指极向量 → H_L 下（不参与 Save/Load，仅手动调节手指弯曲方向）
+    // 左手辅助控件（ext_）— 每个手指一个，与手指同级（都挂 H_L）
+    for (const FString& Name : LeftFingers) {
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, FString::Printf(TEXT("ext_%s"), *Name), TEXT("H_L")))
+            CreatedCount++;
+    }
+
+    // 左手手指极向量 → 对应 ext_ 下（不参与 Save/Load，仅手动调节手指弯曲方向）
     const TArray<FString> LeftFingerPoles = {TEXT("T_L_pole"), TEXT("I_L_pole"),
                                              TEXT("M_L_pole"), TEXT("R_L_pole"),
                                              TEXT("P_L_pole")};
     for (const FString& Name : LeftFingerPoles) {
-        if (CreateController(Blueprint, Name, TEXT("H_L"))) CreatedCount++;
+        // 从 pole 名推导手指控件名: "T_L_pole" → "T_L" → ext_T_L
+        FString FingerName = Name;
+        if (FingerName.EndsWith(TEXT("_pole"))) {
+            FingerName = FingerName.LeftChop(5);
+        }
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, Name, FString::Printf(TEXT("ext_%s"), *FingerName)))
+            CreatedCount++;
     }
 
     // 3. 右手：同上对称
@@ -95,11 +109,25 @@ int32 UHarpGlideControlRigProcessor::SetupControllers(
         if (CreateController(Blueprint, Name, TEXT("H_R"))) CreatedCount++;
     }
 
+    // 右手辅助控件（ext_）— 每个手指一个，与手指同级（都挂 H_R）
+    for (const FString& Name : RightFingers) {
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, FString::Printf(TEXT("ext_%s"), *Name), TEXT("H_R")))
+            CreatedCount++;
+    }
+
     const TArray<FString> RightFingerPoles = {
         TEXT("T_R_pole"), TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
         TEXT("P_R_pole")};
     for (const FString& Name : RightFingerPoles) {
-        if (CreateController(Blueprint, Name, TEXT("H_R"))) CreatedCount++;
+        // 从 pole 名推导手指控件名: "T_R_pole" → "T_R" → ext_T_R
+        FString FingerName = Name;
+        if (FingerName.EndsWith(TEXT("_pole"))) {
+            FingerName = FingerName.LeftChop(5);
+        }
+        if (FControlRigCreationUtility::EnsureControl(
+                Blueprint, Name, FString::Printf(TEXT("ext_%s"), *FingerName)))
+            CreatedCount++;
     }
 
     // 4. 脚部控制器（F_L 和 FP_L 同级，均挂在 controller_root 下）
@@ -312,6 +340,30 @@ bool UHarpGlideControlRigProcessor::SaveState(
     AHarpGlideUnreal* HarpGlideActor) {
     bool bLeft = SaveLeftHandState(HarpGlideActor);
     bool bRight = SaveRightHandState(HarpGlideActor);
+
+    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftHand: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       RightHand: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       Foot: F_L,FP_L,F_R,FP_R (4)
+        //       Body: Head,Shoulder_Harp (2)
+        //       Target: Mid_Hand,Look_At 不需要写入关键帧
+        //       Pivot: harp_pivot (1) — 共 21 个
+        UControlRig* CR = GetPerformerControlRig(HarpGlideActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),  TEXT("HP_L"),          TEXT("T_L"),
+                TEXT("I_L"),  TEXT("M_L"),           TEXT("R_L"),
+                TEXT("P_L"),  TEXT("H_R"),           TEXT("HP_R"),
+                TEXT("T_R"),  TEXT("I_R"),           TEXT("M_R"),
+                TEXT("R_R"),  TEXT("P_R"),           TEXT("F_L"),
+                TEXT("FP_L"), TEXT("F_R"),           TEXT("FP_R"),
+                TEXT("Head"), TEXT("Shoulder_Harp"), TEXT("harp_pivot"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
+    }
+
     return bLeft && bRight;
 }
 
@@ -373,8 +425,33 @@ bool UHarpGlideControlRigProcessor::LoadState(
     // 加载脚部
     LoadFootControllerStates(HarpGlideActor, ControlRig);
 
-    // 重新评估 CR 以传播 IK 约束
-    ControlRig->Evaluate_AnyThread();
+    // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
+    // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
+    // 值的传播与最终求值由 InsertCurrentPoseKeyframes 末尾的 ForceEvaluate
+    // 完成。
+
+    // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
+    {  // 影响 LeftHand: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
+        //       RightHand: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
+        //       Foot: F_L,FP_L,F_R,FP_R (4)
+        //       Body: Head,Shoulder_Harp (2)
+        //       Target: Mid_Hand,Look_At 不需要写入关键帧
+        //       Pivot: harp_pivot (1) — 共 21 个
+        UControlRig* CR = GetPerformerControlRig(HarpGlideActor);
+        if (CR) {
+            TArray<FString> CtrlNames = {
+                TEXT("H_L"),  TEXT("HP_L"),          TEXT("T_L"),
+                TEXT("I_L"),  TEXT("M_L"),           TEXT("R_L"),
+                TEXT("P_L"),  TEXT("H_R"),           TEXT("HP_R"),
+                TEXT("T_R"),  TEXT("I_R"),           TEXT("M_R"),
+                TEXT("R_R"),  TEXT("P_R"),           TEXT("F_L"),
+                TEXT("FP_L"), TEXT("F_R"),           TEXT("FP_R"),
+                TEXT("Head"), TEXT("Shoulder_Harp"), TEXT("harp_pivot"),
+            };
+            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
+                                                                    CtrlNames);
+        }
+    }
 
     UE_LOG(LogTemp, Warning, TEXT("HarpGlide LoadState: Loaded=%d Failed=%d"),
            Loaded, Failed);
