@@ -1,5 +1,6 @@
 #include "Nodes/BlenderStyleIK.h"
 
+#include "Algo/Reverse.h"
 #include "AnimationCore.h"
 #include "ControlRig.h"
 #include "Math/UnrealMathSSE.h"
@@ -19,7 +20,7 @@ namespace BlenderIKImpl {
 
 constexpr int32 MaxBones = 24;  // 最多 24 根骨骼
 constexpr int32 MaxDoF = MaxBones * 3;
-constexpr int32 MaxTasks = 6;  // 位置(3) + 朝向(3)
+constexpr int32 MaxTasks = 6;  // 任务行数上限（当前只用位置任务 3 行）
 
 struct FBlenderSolver {
     int32 NumTasks = 0;  // m：任务行数（3 或 6）
@@ -296,38 +297,30 @@ FRigUnit_BlenderStyleIK_Execute() {
         return;
     }
 
-    // ---- 构建缓存的骨骼链（只包含 Items 本身，不含父级）----
+    // ---- 从末端骨骼沿父级链向上构建骨骼链（根在最前、末端在最后）----
     TArray<FCachedRigElement> CachedBones;
-    CachedBones.Reserve(Items.Num());
+    CachedBones.Reserve(ChainLength);
 
-    for (int32 i = 0; i < Items.Num(); ++i) {
-        const FRigElementKey& Key = Items[i];
-        if (!Hierarchy->Find<FRigBoneElement>(Key)) {
-            if (bUseDebug) {
-                UE_LOG(LogControlRig, Error,
-                       TEXT("[BlenderStyleIK] Item %d is not a bone."), i);
+    {
+        int32 CurIndex = Hierarchy->GetIndex(EndBone);
+        for (int32 i = 0; i < ChainLength && CurIndex != INDEX_NONE; ++i) {
+            const FRigElementKey Key = Hierarchy->GetKey(CurIndex);
+            if (!Hierarchy->Find<FRigBoneElement>(Key)) {
+                return;
             }
-            return;
+            CachedBones.Add(FCachedRigElement(Key, Hierarchy, true));
+            CurIndex = Hierarchy->GetFirstParent(CurIndex);
         }
-        CachedBones.Add(FCachedRigElement(Key, Hierarchy, true));
+        // 反转：根在最前、末端在最后
+        Algo::Reverse(CachedBones);
     }
 
     const int32 NumBones = CachedBones.Num();
     if (NumBones < 2) {
-        if (bUseDebug) {
-            UE_LOG(LogControlRig, Error,
-                   TEXT("[BlenderStyleIK] Need at least 2 bones, got %d"),
-                   NumBones);
-        }
         return;
     }
 
     if (NumBones > BlenderIKImpl::MaxBones) {
-        if (bUseDebug) {
-            UE_LOG(LogControlRig, Error,
-                   TEXT("[BlenderStyleIK] Too many bones: %d (max %d)"),
-                   NumBones, BlenderIKImpl::MaxBones);
-        }
         return;
     }
 
@@ -374,43 +367,10 @@ FRigUnit_BlenderStyleIK_Execute() {
         Basis[i] = (Rot[i - 1].Inverse() * Rot[i]).GetNormalized();
     }
 
-    // 链长/空间诊断：同时打印 GetGlobalTransform 与 GetLocalTransform 的
-    // 位置，验证 GetGlobalTransform 返回的到底是不是"同一坐标系下的全局
-    // 位置"。
-    //  - 若 GPos == LPos：GetGlobalTransform 实际返回的是骨骼自身局部坐标
-    //    （用户假设成立），则 Pos[i+1]-Pos[i] 是跨坐标系相减，LocalOffset
-    //    与链长全部错误，位置级联失真（一步甩飞根因）。
-    //  - 若 GPos != LPos：GetGlobalTransform 是真正的全局位置，需另找原因。
-    if (bUseDebug) {
-        for (int32 i = 0; i < NumBones; ++i) {
-            const FTransform GlobalT =
-                Hierarchy->GetGlobalTransform(CachedBones[i].GetKey());
-            const FTransform LocalT =
-                Hierarchy->GetLocalTransform(CachedBones[i].GetKey());
-            const FVector GP = GlobalT.GetLocation();
-            const FVector LP = LocalT.GetLocation();
-            const FVector GS = GlobalT.GetScale3D();
-            if (i < NumBones - 1) {
-                UE_LOG(LogControlRig, Warning,
-                       TEXT("[BlenderStyleIK] BONE%d GPos=(%.3f, %.3f, %.3f) "
-                            "LPos=(%.3f, %.3f, %.3f) Gscale=(%.4f, %.4f, "
-                            "%.4f) segLen=%.3f"),
-                       i, GP.X, GP.Y, GP.Z, LP.X, LP.Y, LP.Z, GS.X, GS.Y, GS.Z,
-                       LocalOffset[i].Size());
-            } else {
-                UE_LOG(LogControlRig, Warning,
-                       TEXT("[BlenderStyleIK] BONE%d GPos=(%.3f, %.3f, %.3f) "
-                            "LPos=(%.3f, %.3f, %.3f) Gscale=(%.4f, %.4f, "
-                            "%.4f)"),
-                       i, GP.X, GP.Y, GP.Z, LP.X, LP.Y, LP.Z, GS.X, GS.Y, GS.Z);
-            }
-        }
-    }
-
     const FVector GoalPosition = EffectorTransform.GetLocation();
     const FQuat GoalRotation = EffectorTransform.GetRotation();
 
-    // ---- 极点（PoleTarget / 副轴）----
+    // ---- 极点（PoleTarget）----
     // 不在求解前预旋转（预旋转会把链扭成病态构型、导致求解发散或末端
     // 无法到达 Effector），而是在位置求解（雅可比迭代）完成之后再沿
     // root->end 轴整体旋转整条链（见下方 "Pole 后旋转"）。根与末端都在
@@ -419,7 +379,9 @@ FRigUnit_BlenderStyleIK_Execute() {
     // ---- 配置求解器 ----
     BlenderIKImpl::FBlenderSolver Solver;
 
-    const int32 NumTasks = bUseOrientationTask ? 6 : 3;
+    // 纯位置任务（已移除 bUseOrientationTask 朝向任务）：
+    // 末端朝向由求解后的 bPropagateToChildren 后处理控制。
+    const int32 NumTasks = 3;
     const int32 NumDoF = NumBones * 3;
 
     Solver.MaxAngleStep =
@@ -462,36 +424,12 @@ FRigUnit_BlenderStyleIK_Execute() {
                 Pos[i + 1] = Pos[i] + Rot[i].RotateVector(LocalOffset[i]);
             }
         }
-        if (bUseDebug) {
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK] Goal unreachable "
-                        "(RootToGoal=%.2f > chainLen=%.2f), stretching "
-                        "chain toward goal, skipping iterative solve"),
-                   RootToGoal, TotalLength);
-        }
         MaxIter = 0;  // 跳过迭代，直接写回拉直后的链
     }
 
     // ---- 迭代求解 ----
     double FinalNorm = 1e30;
-    int32 IterationsUsed = 0;
     double LastNorm = 1e30;  // 上一轮残差（保留声明，兼容后续扩展）
-
-    // 初始态诊断：直接对比 EffectorTransform(Goal) 与链末端初始位置。
-    // 若两者在同一 Control Rig 空间，dist 应接近 0；若差出几百，说明
-    // EffectorTransform 不是 Control Rig 全局空间（如世界空间/Blender 空间）。
-    // 同时输出 orient/pole 实际状态，便于确认朝向任务是否真正关闭。
-    if (bUseDebug) {
-        const FVector InitEnd = Pos[NumBones - 1];
-        UE_LOG(LogControlRig, Warning,
-               TEXT("[BlenderStyleIK] INIT Goal=(%.2f, %.2f, %.2f), End=(%.2f, "
-                    "%.2f, %.2f), initDist=%.4f, chainLen=%.2f, "
-                    "orient=%d, pole=%d"),
-               GoalPosition.X, GoalPosition.Y, GoalPosition.Z, InitEnd.X,
-               InitEnd.Y, InitEnd.Z, FVector::Dist(GoalPosition, InitEnd),
-               TotalLength, bUseOrientationTask ? 1 : 0,
-               PoleTarget.IsNearlyZero() ? 0 : 1);
-    }
 
     // 目标与链末端几乎重合：位置已满足，无需求解。
     // 直接跳过迭代并返回（保持初始姿态），防止朝向任务/极点/数值误差
@@ -499,18 +437,10 @@ FRigUnit_BlenderStyleIK_Execute() {
     // 的根因）。
     const float InitDist = FVector::Dist(GoalPosition, Pos[NumBones - 1]);
     if (InitDist < 0.01f) {
-        if (bUseDebug) {
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK] Goal coincides with chain end "
-                        "(dist=%.4f), skipping solve"),
-                   InitDist);
-        }
         return;
     }
 
     for (int32 Iter = 0; Iter < MaxIter; ++Iter) {
-        IterationsUsed = Iter + 1;
-
         // NaN 防护：一旦求解产生 NaN，中止并跳过写回，避免污染层级
         bool bHasNaN = false;
         for (int32 i = 0; i < NumBones; ++i) {
@@ -520,12 +450,6 @@ FRigUnit_BlenderStyleIK_Execute() {
             }
         }
         if (bHasNaN) {
-            if (bUseDebug) {
-                UE_LOG(LogControlRig, Error,
-                       TEXT("[BlenderStyleIK] NaN detected at iter %d, "
-                            "aborting solve"),
-                       Iter);
-            }
             return;
         }
 
@@ -538,28 +462,6 @@ FRigUnit_BlenderStyleIK_Execute() {
             DPos = DPos / DPosLen * ClampLength;
         }
         Solver.SetBetaRow(0, DPos);
-
-        // ---- 朝向任务残差（行 3-5，对应 Blender IK_QOrientationTask）----
-        if (bUseOrientationTask) {
-            const FQuat& EndRot = Rot[NumBones - 1];
-
-            // Blender 用 d_rot = -0.5 * skew(rot * goal^T) 提取残差，
-            // 其本质是 sin 近似：残差大小恒 <= 1。
-            // 必须使用 sin(角) 而不是 角，否则目标旋转与当前差 180° 时
-            // 残差可达 π≈3.14，远超位置残差，SDLS 被朝向残差主导、
-            // 每步大幅旋转骨骼追朝向，把位置带偏而震荡发散（已验证）。
-            FQuat DeltaRot = GoalRotation * EndRot.Inverse();
-            if (DeltaRot.W < 0.0) {
-                DeltaRot = -DeltaRot;  // 取最短弧，避免角度越过 PI
-            }
-
-            FVector Axis;
-            double Angle = 0.0;
-            DeltaRot.ToAxisAndAngle(Axis, Angle);
-
-            const FVector DRot = Axis * FMath::Sin(Angle);
-            Solver.SetBetaRow(3, DRot);
-        }
 
         // ---- 构建雅可比 ----
         // 位置任务：J 行 = p × axis（p = 骨骼起点到末端，axis =
@@ -578,33 +480,10 @@ FRigUnit_BlenderStyleIK_Execute() {
                                   FVector::CrossProduct(P, Axis1));
             Solver.SetJacobianRow(0, BaseDoF + 2,
                                   FVector::CrossProduct(P, Axis2));
-
-            if (bUseOrientationTask) {
-                Solver.SetJacobianRow(3, BaseDoF + 0, Axis0);
-                Solver.SetJacobianRow(3, BaseDoF + 1, Axis1);
-                Solver.SetJacobianRow(3, BaseDoF + 2, Axis2);
-            }
         }
 
         // ---- SDLS 伪逆求解 ----
         Solver.Solve();
-
-        // 诊断：J 的奇异值 + iter0 的角度增量。
-        // 若奇异值极小（病态 J）但 dTheta 仍巨大，说明 SDLS 阻尼未生效；
-        // 若奇异值正常，则说明输入构型或雅可比构建有误。
-        if (bUseDebug && Iter == 0) {
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK] J svd w=(%.6g, %.6g, %.6g)"),
-                   Solver.SvdW[0], Solver.SvdW[1], Solver.SvdW[2]);
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK] iter0 dTheta: "
-                        "b0=(%.6g, %.6g, %.6g) b1=(%.6g, %.6g, %.6g) "
-                        "b2=(%.6g, %.6g, %.6g) b3=(%.6g, %.6g, %.6g)"),
-                   Solver.DTheta[0], Solver.DTheta[1], Solver.DTheta[2],
-                   Solver.DTheta[3], Solver.DTheta[4], Solver.DTheta[5],
-                   Solver.DTheta[6], Solver.DTheta[7], Solver.DTheta[8],
-                   Solver.DTheta[9], Solver.DTheta[10], Solver.DTheta[11]);
-        }
 
         // ---- 应用角度增量（Blender 原版：局部 basis 右乘 + 从根级联）----
         // 【关键修复】此前用"全局左乘 + 手动传播下游"导致不收敛/发散。
@@ -645,18 +524,6 @@ FRigUnit_BlenderStyleIK_Execute() {
         // ---- 收敛判断 ----
         FinalNorm = FVector::Dist(GoalPosition, Pos[NumBones - 1]);
 
-        if (bUseOrientationTask) {
-            const FQuat DeltaRot = GoalRotation * Rot[NumBones - 1].Inverse();
-            FinalNorm = FMath::Max(FinalNorm, (double)DeltaRot.GetAngle());
-        }
-
-        if (bUseDebug) {
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK] iter %d, distToGoal=%.4f, "
-                        "angleNorm=%.6g"),
-                   Iter, FinalNorm, AngleNorm);
-        }
-
         // 位置残差到位：收敛。
         if (FinalNorm < ConvergeThreshold && Iter > 10) {
             break;
@@ -668,64 +535,71 @@ FRigUnit_BlenderStyleIK_Execute() {
         // 在离目标 0.15 处错误终止迭代（用户报告的 bug）。角度更新小
         // 即认为达标；不可达场景已由上方"太远分流"处理，不会走到这里。
         if (Iter > 10 && AngleNorm < 1e-3) {
-            if (bUseDebug) {
-                UE_LOG(LogControlRig, Warning,
-                       TEXT("[BlenderStyleIK] angle update converged at "
-                            "iter %d, distToGoal=%.4f"),
-                       Iter, FinalNorm);
-            }
             break;
         }
     }
 
-    // ---- Pole 后旋转（用户方案）----
+    // ---- Pole 后旋转（把链平面转到参考平面）----
     // 位置求解（雅可比迭代）已完成：根固定、末端精确到位。
-    // 此时沿 root->end 轴整体旋转整条链，使链的弯曲平面朝向 PoleTarget。
-    // 根与末端都在旋转轴上 -> 位置不变；只有链朝向（弯曲平面）改变。
-    // 这符合"pole 只影响链朝向、不改变末端位置"的语义。
+    // 此时沿 root->end 轴整体旋转整条链，使【链平面】与由【根骨骼、末端、
+    // pole target】三点确定的参考平面重合。根与末端都在旋转轴上 ->
+    // 位置不变；只有链的弯曲平面朝向改变。这符合"pole 只影响链朝向、
+    // 不改变末端位置"的语义。
+    //
+    // 参考平面法线（ArcDistributedIK::CalculateReferencePlaneNormal）：
+    //   RootToEnd   = normalize(End - Root)
+    //   RootToPole  = normalize(Pole - Root)
+    //   PlaneNormal = normalize(cross(RootToEnd, RootToPole))
+    //
+    // 链平面法线：迭代后简单手指链大致共面，取中间关节的平均点作为
+    // 平面内一点：
+    //   MidPos      = average(Pos[1..N-2])
+    //   ChainNormal = normalize(cross(RootToEnd, MidPos - Root))
+    //
+    // 两个平面都包含 root->end 轴，因此只需绕 Dir 旋转一个角度即可重合：
+    //   Angle = atan2(cross(ChainNormal, PlaneNormal)·Dir,
+    //                 ChainNormal·PlaneNormal)
     //
     // 【关键】整条链统一左乘同一个旋转（绕 Dir），因此每根骨骼的局部
     // Basis（相对父）不变：B_i = G_{i-1}^{-1} * G_i，整体左乘后相互抵消。
     // 所以只需更新全局 Rot 与 Pos，无需动 Basis。
-    //
-    // 【up 参考方向】用副轴 SecondAxis（根骨骼局部空间）转到全局后投影到
-    // 垂直链方向（Dir）的平面，作为绕 Dir 的 0° 参考。这样 SecondAxis 的
-    // 数值变化会直接产生额外的扭转角（等价于 Blender 的 poleangle），
-    // 与头文件注释一致：SecondAxis 投影到垂直主轴的平面即 pole 的 up 方向。
     if (!PoleTarget.IsNearlyZero()) {
         const FVector RootPos = Pos[0];
         const FVector EndPos = Pos[NumBones - 1];
         const FVector Dir = (EndPos - RootPos).GetSafeNormal();
 
         if (!Dir.IsNearlyZero()) {
-            // up 参考：根骨骼把局部副轴转到全局，投影到垂直 Dir 的平面
-            FVector Up = Rot[0].RotateVector(SecondAxis);
-            FVector UpPerp = Up - Dir * FVector::DotProduct(Up, Dir);
-            if (UpPerp.IsNearlyZero()) {
-                // 副轴与链方向平行：退回用世界 Z，再退回世界 X
-                Up = FVector(0, 0, 1);
-                if (FMath::Abs(FVector::DotProduct(Up, Dir)) > 0.99f) {
-                    Up = FVector(1, 0, 0);
+            // 参考平面法线（ArcDistributedIK 同款退化回退）
+            const FVector RootToPole = (PoleTarget - RootPos).GetSafeNormal();
+            FVector PlaneNormal = FVector::CrossProduct(Dir, RootToPole);
+            if (PlaneNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
+                PlaneNormal = FVector::CrossProduct(Dir, FVector::UpVector);
+                if (PlaneNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
+                    PlaneNormal =
+                        FVector::CrossProduct(Dir, FVector::ForwardVector);
                 }
-                UpPerp = Up - Dir * FVector::DotProduct(Up, Dir);
+            }
+            PlaneNormal = PlaneNormal.GetSafeNormal();
+
+            // 链平面法线：由中间关节的平均点决定（链大致共面）
+            FVector ChainNormal = FVector::ZeroVector;
+            if (NumBones >= 3) {
+                FVector MidPos = FVector::ZeroVector;
+                for (int32 i = 1; i < NumBones - 1; ++i) {
+                    MidPos += Pos[i];
+                }
+                MidPos /= (float)(NumBones - 2);
+                ChainNormal = FVector::CrossProduct(Dir, MidPos - RootPos);
             }
 
-            if (bNegativePole) {
-                UpPerp = -UpPerp;
-            }
+            if (!ChainNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
+                ChainNormal = ChainNormal.GetSafeNormal();
 
-            // pole 方向也投影到垂直 Dir 的平面，求绕 Dir 的夹角
-            const FVector PoleDir = (PoleTarget - RootPos).GetSafeNormal();
-            const FVector PolePerp =
-                PoleDir - Dir * FVector::DotProduct(PoleDir, Dir);
-
-            if (!UpPerp.IsNearlyZero() && !PolePerp.IsNearlyZero()) {
-                const FVector UpN = UpPerp.GetSafeNormal();
-                const FVector PoleN = PolePerp.GetSafeNormal();
-
+                // 绕 Dir 把链平面法线转到参考平面法线的有符号角度
                 const double Angle = FMath::Atan2(
-                    FVector::DotProduct(FVector::CrossProduct(UpN, PoleN), Dir),
-                    FVector::DotProduct(UpN, PoleN));
+                    FVector::DotProduct(
+                        FVector::CrossProduct(ChainNormal, PlaneNormal), Dir),
+                    FVector::DotProduct(ChainNormal, PlaneNormal));
 
                 if (!FMath::IsNearlyZero(Angle, 1e-5)) {
                     const FQuat PoleRot(Dir, Angle);
@@ -735,25 +609,21 @@ FRigUnit_BlenderStyleIK_Execute() {
                             RootPos + PoleRot.RotateVector(Pos[i] - RootPos);
                         Rot[i] = (PoleRot * Rot[i]).GetNormalized();
                     }
-
-                    if (bUseDebug) {
-                        UE_LOG(LogControlRig, Warning,
-                               TEXT("[BlenderStyleIK] Pole post-rotation "
-                                    "applied, twist=%.4f rad (up=SecondAxis)"),
-                               Angle);
-                    }
                 }
             }
         }
     }
 
-    // ---- 末端朝向处理 ----
-    // "影响子级"（bPropagateToChildren）语义：末根骨骼作为链的末端"子级"，
-    // 其旋转与前一根骨骼保持一致，不再独立旋转。
-    // 注意：该逻辑在朝向任务之后执行，因此会覆盖朝向任务对末根的旋转结果；
-    //       若希望末根朝向 EffectorTransform，请关闭 bPropagateToChildren。
+    // ---- 末端关节旋转 ----
+    // bPropagateToChildren 语义（用户要求）：
+    //   true  -> 末端关节的世界旋转 = Effector 的世界旋转（GoalRotation），
+    //            即两者在世界（Control Rig 全局）坐标系的旋转值一致。
+    //   false -> 末端关节保持迭代开始时的局部旋转不变（相对父骨骼不旋转）。
+    //            该行为由级联 Rot[N-1] = Rot[N-2] * Basis[N-1] 自然保证：
+    //            末端关节的雅可比列为 0（P=0）故 dtheta 恒为 0，Basis[N-1]
+    //            在整个迭代中保持初始值；Pole 后旋转整体左乘也不改 Basis。
     if (bPropagateToChildren) {
-        Rot[NumBones - 1] = Rot[NumBones - 2];
+        Rot[NumBones - 1] = GoalRotation;
     }
 
     // ---- 写回层级 ----
@@ -771,28 +641,5 @@ FRigUnit_BlenderStyleIK_Execute() {
 
         Hierarchy->SetGlobalTransform(CachedBones[i].GetKey(), Xfo, false,
                                       bPropagateToChildren, false);
-    }
-
-    // 写回读回一致性验证：确认 SetGlobalTransform 后能真实重现写入的坐标
-    if (bUseDebug) {
-        UE_LOG(LogControlRig, Warning,
-               TEXT("[BlenderStyleIK] write-back verify (wrote -> readback):"));
-        for (int32 i = 0; i < NumBones; ++i) {
-            const FTransform ReadBack =
-                Hierarchy->GetGlobalTransform(CachedBones[i].GetKey());
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("  bone%d: (%.2f, %.2f, %.2f) -> (%.2f, %.2f, %.2f)"),
-                   i, Pos[i].X, Pos[i].Y, Pos[i].Z, ReadBack.GetLocation().X,
-                   ReadBack.GetLocation().Y, ReadBack.GetLocation().Z);
-        }
-    }
-
-    if (bUseDebug) {
-        const FVector EndPos = Pos[NumBones - 1];
-        UE_LOG(LogControlRig, Warning,
-               TEXT("[BlenderStyleIK] Iterations=%d, FinalDist=%.4f, "
-                    "Goal=(%.2f, %.2f, %.2f), End=(%.2f, %.2f, %.2f)"),
-               IterationsUsed, FinalNorm, GoalPosition.X, GoalPosition.Y,
-               GoalPosition.Z, EndPos.X, EndPos.Y, EndPos.Z);
     }
 }
