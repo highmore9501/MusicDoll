@@ -224,7 +224,6 @@ struct FStringFlowRecorderTransform {
     }
 };
 
-
 /**
  * AStringFlowUnreal - 小提琴动画系统的核心Actor类
  * 管理小提琴表演的控制器和记录器配置
@@ -278,7 +277,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     EStringFlowRightHandStringIndex RightHandStringIndex;
 
     // ========== 渲染监控变量 ==========
-    
 
     /** 弦材质 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
@@ -478,9 +476,12 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
 
     /**
      * 导出记录器信息到JSON文件
+     * @param FilePath 目标文件路径
+     * @param bToBlender 为 true 时按 Blender 坐标系导出（位置 Y 取反、旋转 x/z
+     * 取反）
      */
     UFUNCTION(BlueprintCallable, Category = "StringFlow")
-    void ExportRecorderInfo(const FString& FilePath);
+    void ExportRecorderInfo(const FString& FilePath, bool bToBlender = false);
 
     /**
      * 从JSON文件导入记录器信息
@@ -497,7 +498,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     /** 生成的小提琴材质 */
     UPROPERTY()
     TMap<FString, class UMaterialInstanceConstant*> GeneratedMaterials;
-
 
     // ========== FTickableGameObject 接口实现 ==========
 

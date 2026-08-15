@@ -2,11 +2,11 @@
 
 #include "Animation/SkeletalMeshActor.h"
 #include "ControlRig/Public/ControlRig.h"
+#include "ControlRigCacheSubsystem.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "InstrumentAnimationUtility.h" 
-#include "InstrumentBase.h" 
-#include "ControlRigCacheSubsystem.h"
+#include "InstrumentAnimationUtility.h"
+#include "InstrumentBase.h"
 #include "KeyRippleUnreal.generated.h"
 
 UENUM(BlueprintType)
@@ -23,13 +23,13 @@ struct FSyncReport {
     GENERATED_BODY()
 
    public:
-    UPROPERTY()   
+    UPROPERTY()
     bool bSuccess = true;
 
-    UPROPERTY()  
+    UPROPERTY()
     TArray<FString> Warnings;
 
-    UPROPERTY()   
+    UPROPERTY()
     TArray<FString> Errors;
 
     void AddWarning(const FString& Message) { Warnings.Add(Message); }
@@ -118,18 +118,15 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
     virtual void Tick(float DeltaTime) override;
 
     /** 钢琴模型 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Basic Properties")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     ASkeletalMeshActor* Piano;
 
     /** 白键材质 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Basic Properties")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     class UMaterialInstance* KeyMatWhite;
 
     /** 黑键材质 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite,
-              Category = "Basic Properties")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Basic Properties")
     class UMaterialInstance* KeyMatBlack;
 
     /** 单手手指数量 */
@@ -196,7 +193,7 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /** 右手位置类型 */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple State")
-    EPositionType RightHandPositionType;    
+    EPositionType RightHandPositionType;
 
     /** 手指控制器 */
     UPROPERTY()
@@ -216,7 +213,7 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /** 键盘关键位置点 */
     UPROPERTY()
-    TMap<FString, FString> KeyBoardPositions;    
+    TMap<FString, FString> KeyBoardPositions;
 
     /** 人物朝向控制器 */
     UPROPERTY()
@@ -224,14 +221,15 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /** 人物朝向记录器 */
     UPROPERTY()
-    TMap<FString, FStringArray> TargetPointsRecorders;    
+    TMap<FString, FStringArray> TargetPointsRecorders;
 
     /** 手指极向量 */
-    UPROPERTY()   
-    TMap<FString, FString> PolePoints;    
+    UPROPERTY()
+    TMap<FString, FString> PolePoints;
 
     /** 左手原始方向 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Configuration")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "KeyRipple Configuration")
     FVector LeftHandOriginalDirection;
 
     FString GetControllerName(int32 FingerNumber, EHandType HandType) const;
@@ -254,7 +252,7 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
     TMap<FString, class AActor*> CreatedActors;
 
     /** 记录器变换数据 */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Data")    
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "KeyRipple Data")
     TMap<FString, FRecorderTransform> RecorderTransforms;
 
     /** 生成的钢琴材质 */
@@ -263,9 +261,12 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
 
     /**
      * 导出记录器信息
+     * @param FilePath 目标文件路径
+     * @param bToBlender 为 true 时按 Blender 坐标系导出（位置 Y 取反、旋转 x/z
+     * 取反）， 否则按原有 Unreal 坐标系导出
      */
     UFUNCTION(BlueprintCallable, Category = "KeyRipple")
-    void ExportRecorderInfo();
+    void ExportRecorderInfo(const FString& FilePath, bool bToBlender = false);
 
     /**
      * 导入记录器信息
@@ -273,14 +274,12 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
      */
     UFUNCTION(BlueprintCallable, Category = "KeyRipple")
     bool ImportRecorderInfo();
-    
-    
+
     /**
-    * 注册所有 Control Rig（演奏者和钢琴）到缓存子系统    
-    * @param CacheSubsystem Control Rig 缓存子系统
-    * @param LevelSequence 当前的 Level Sequence
-    */
-    void RegisterAllControlRigs(
-        UControlRigCacheSubsystem* CacheSubsystem,
-        ULevelSequence* LevelSequence);
+     * 注册所有 Control Rig（演奏者和钢琴）到缓存子系统
+     * @param CacheSubsystem Control Rig 缓存子系统
+     * @param LevelSequence 当前的 Level Sequence
+     */
+    void RegisterAllControlRigs(UControlRigCacheSubsystem* CacheSubsystem,
+                                ULevelSequence* LevelSequence);
 };

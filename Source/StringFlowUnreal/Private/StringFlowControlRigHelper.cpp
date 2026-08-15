@@ -1,4 +1,4 @@
-﻿#include "StringFlowControlRigHelper.h"
+#include "StringFlowControlRigHelper.h"
 
 #include "ControlRigCreationUtility.h"
 #include "Dom/JsonObject.h"
@@ -66,6 +66,14 @@ TSet<FString> FStringFlowControlRigHelper::GetAllControllerNames(
     // 拇指辅助控件 ext_T_L / ext_T_R（拇指 pole 为 TP_L / TP_R）
     AllControllerNames.Add(TEXT("ext_T_L"));
     AllControllerNames.Add(TEXT("ext_T_R"));
+
+    // 脚部 IK 控件（F_L / F_R）与 pole 控件（FP_L / FP_R）——仅创建，
+    // 不参与任何数据传递与计算；与 controller_root 同级（base_root 子级，
+    // 由 SetupControllers 主循环的脚部分支指定父级，不挂 controller_root）
+    AllControllerNames.Add(TEXT("F_L"));
+    AllControllerNames.Add(TEXT("F_R"));
+    AllControllerNames.Add(TEXT("FP_L"));
+    AllControllerNames.Add(TEXT("FP_R"));
 
     for (const auto& Pair : StringFlowActor->GuideLines) {
         AllControllerNames.Add(Pair.Value);
@@ -188,19 +196,6 @@ FString FStringFlowControlRigHelper::GenerateStateDependentBowRecorderName(
         StringFlowActor->RightHandPositionType);
     return FString::Printf(TEXT("bow_position_s%d_%s"), StringIndex,
                            *RightPositionStr);
-}
-
-FString FStringFlowControlRigHelper::GenerateStateDependentRHTRecorderName(
-    AStringFlowUnreal* StringFlowActor) {
-    if (!StringFlowActor) {
-        return FString();
-    }
-
-    int32 StringIndex = (int32)StringFlowActor->RightHandStringIndex;
-    FString RightPositionStr = StringFlowActor->GetRightHandPositionTypeString(
-        StringFlowActor->RightHandPositionType);
-    return FString::Printf(TEXT("right_hand_tar_%s_s%d"), *RightPositionStr,
-                           StringIndex);
 }
 
 void FStringFlowControlRigHelper::SaveSingleController(
@@ -451,14 +446,6 @@ void FStringFlowControlRigHelper::SaveStateDependentOtherControllers(
 
     SaveSingleController(StringFlowActor, RigHierarchy, TEXT("Bow_Controller"),
                          BowRecorderName, SavedCount, FailedCount);
-
-    // 保存 Right_Hand_Tar 到当前弦对应的 right_hand_tar 记录器
-    FString RHTRecorderName =
-        FStringFlowControlRigHelper::GenerateStateDependentRHTRecorderName(
-            StringFlowActor);
-
-    SaveSingleController(StringFlowActor, RigHierarchy, TEXT("Right_Hand_Tar"),
-                         RHTRecorderName, SavedCount, FailedCount);
 }
 
 void FStringFlowControlRigHelper::LoadStateDependentOtherControllers(
@@ -488,14 +475,6 @@ void FStringFlowControlRigHelper::LoadStateDependentOtherControllers(
 
     LoadSingleController(StringFlowActor, RigHierarchy, TEXT("Bow_Controller"),
                          BowRecorderName, LoadedCount, FailedCount);
-
-    // 从当前弦对应的 right_hand_tar 记录器加载到 Right_Hand_Tar
-    FString RHTRecorderName =
-        FStringFlowControlRigHelper::GenerateStateDependentRHTRecorderName(
-            StringFlowActor);
-
-    LoadSingleController(StringFlowActor, RigHierarchy, TEXT("Right_Hand_Tar"),
-                         RHTRecorderName, LoadedCount, FailedCount);
 }
 
 void FStringFlowControlRigHelper::SaveStatelessOtherControllers(
@@ -519,10 +498,9 @@ void FStringFlowControlRigHelper::SaveStatelessOtherControllers(
     for (int32 i = 0; i < OtherArray->Num(); ++i) {
         FString RecorderName = OtherArray->Get(i);
 
-        // 跳过状态相关的 stp、bow_position 和 right_hand_tar 记录器
+        // 跳过状态相关的 stp、bow_position 记录器
         if (RecorderName.StartsWith(TEXT("stp_")) ||
-            RecorderName.StartsWith(TEXT("bow_position_")) ||
-            RecorderName.StartsWith(TEXT("right_hand_tar_"))) {
+            RecorderName.StartsWith(TEXT("bow_position_"))) {
             continue;
         }
 
@@ -571,10 +549,9 @@ void FStringFlowControlRigHelper::LoadStatelessOtherControllers(
     for (int32 i = 0; i < OtherArray->Num(); ++i) {
         FString RecorderName = OtherArray->Get(i);
 
-        // 跳过状态相关的 stp、bow_position 和 right_hand_tar 记录器
+        // 跳过状态相关的 stp、bow_position 记录器
         if (RecorderName.StartsWith(TEXT("stp_")) ||
-            RecorderName.StartsWith(TEXT("bow_position_")) ||
-            RecorderName.StartsWith(TEXT("right_hand_tar_"))) {
+            RecorderName.StartsWith(TEXT("bow_position_"))) {
             continue;
         }
 

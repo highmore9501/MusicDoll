@@ -280,7 +280,8 @@ class FRETDANCEUNREAL_API AFretDanceUnreal : public AInstrumentBase,
                                     EFretDanceLeftHandState State) const;
 
     // 导入/导出
-    void ExportRecorderInfo(const FString& FilePath);
+    // bToBlender 为 true 时按 Blender 坐标系导出（位置 Y 取反、旋转 x/z 取反）
+    void ExportRecorderInfo(const FString& FilePath, bool bToBlender = false);
     bool ImportRecorderInfo(const FString& FilePath);
 
     // 设置乐器类型（会自动更新配置）

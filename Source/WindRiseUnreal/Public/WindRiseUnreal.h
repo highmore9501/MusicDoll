@@ -228,9 +228,12 @@ class WINDRISEUNREAL_API AWindRiseUnreal : public AInstrumentBase,
     UFUNCTION(BlueprintCallable, Category = "WindRise File")
     void ImportWindFile(const FString& FilePath);
 
-    /** 导出全部 NoteStates + Config 到 .wind 文件 */
+    /** 导出全部 NoteStates + Config 到 .wind 文件
+     *  @param FilePath 目标文件路径
+     *  @param bToBlender 为 true 时按 Blender 坐标系导出（位置 Y 取反、旋转 x/z
+     * 取反） */
     UFUNCTION(BlueprintCallable, Category = "WindRise File")
-    void ExportWindFile(const FString& FilePath);
+    void ExportWindFile(const FString& FilePath, bool bToBlender = false);
 
     /** 捕获当前 controller_root_offset 的 Transform 到 RestOffset */
     UFUNCTION(BlueprintCallable, Category = "WindRise State")

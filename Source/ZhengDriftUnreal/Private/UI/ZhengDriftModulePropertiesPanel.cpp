@@ -131,6 +131,27 @@ void SZhengDriftModulePropertiesPanel::CreatePropertyWidgets() {
                       &SZhengDriftModulePropertiesPanel::OnImportRecorderInfo)
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // ---- Export to Blender ----
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".zheng_master"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderBtn", "Export to Blender"))
+                  .OnClicked(
+                      this,
+                      &SZhengDriftModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SZhengDriftModulePropertiesPanel::OnNumericPropertyChanged(
@@ -171,7 +192,8 @@ FReply SZhengDriftModulePropertiesPanel::OnExportRecorderInfo() {
         UE_LOG(LogTemp, Error, TEXT("ZhengDrift: IOFilePath is empty"));
         return FReply::Handled();
     }
-    if (!FCommonPanelUtility::ConfirmExportOverwrite(ZhengDriftActor->IOFilePath)) {
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(
+            ZhengDriftActor->IOFilePath)) {
         return FReply::Handled();
     }
     ZhengDriftActor->ExportRecorderInfo(ZhengDriftActor->IOFilePath);
@@ -185,6 +207,26 @@ FReply SZhengDriftModulePropertiesPanel::OnImportRecorderInfo() {
         return FReply::Handled();
     }
     ZhengDriftActor->ImportRecorderInfo(ZhengDriftActor->IOFilePath);
+    return FReply::Handled();
+}
+
+FReply SZhengDriftModulePropertiesPanel::OnExportToBlender() {
+    if (!ZhengDriftActor.IsValid()) return FReply::Handled();
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("ZhengDrift: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    ZhengDriftActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("ZhengDrift: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 

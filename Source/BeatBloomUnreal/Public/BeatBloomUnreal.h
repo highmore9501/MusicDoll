@@ -303,8 +303,10 @@ class BEATBLOOMUNREAL_API ABeatBloomUnreal : public AInstrumentBase,
      * 导出记录器信息到 .drummer 文件
      *
      * @param FilePath 目标文件路径
+     * @param bToBlender 为 true 时按 Blender 坐标系导出（位置 Y 取反、旋转 x/z
+     * 取反）
      */
-    void ExportRecorderInfo(const FString& FilePath);
+    void ExportRecorderInfo(const FString& FilePath, bool bToBlender = false);
 
     /**
      * 从 .drummer 文件导入记录器信息

@@ -1,10 +1,11 @@
-﻿#include "FretDanceUnreal.h"
+#include "FretDanceUnreal.h"
 
 #include "Animation/SkeletalMeshActor.h"
 #include "Components/SceneComponent.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "InstrumentAnimationUtility.h"
@@ -350,11 +351,22 @@ bool AFretDanceUnreal::IsValidLeftHandCombination(
     return true;
 }
 
-void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
+void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath,
+                                          bool bToBlender) {
     if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error, TEXT("ExportRecorderInfo: FilePath is empty"));
         return;
     }
+
+    // bToBlender 时应用 Unreal → Blender 坐标转换
+    auto ToBlenderPos = [bToBlender](const FVector& V) {
+        return bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(V)
+                          : V;
+    };
+    auto ToBlenderRot = [bToBlender](const FQuat& Q) {
+        return bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(Q)
+                          : Q;
+    };
 
     TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 
@@ -430,24 +442,27 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                     TSharedPtr<FJsonObject> ControlObj =
                         MakeShareable(new FJsonObject);
 
+                    FVector Loc = ToBlenderPos(Transform->Location);
+                    FQuat Rot = ToBlenderRot(Transform->Rotation);
+
                     TArray<TSharedPtr<FJsonValue>> LocationArray;
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.X)));
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.Y)));
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.Z)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.X)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.Y)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.Z)));
                     ControlObj->SetArrayField(TEXT("position"), LocationArray);
 
                     TArray<TSharedPtr<FJsonValue>> RotationArray;
-                    RotationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Rotation.W)));
-                    RotationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Rotation.X)));
-                    RotationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Rotation.Y)));
-                    RotationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Rotation.Z)));
+                    RotationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Rot.W)));
+                    RotationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Rot.X)));
+                    RotationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Rot.Y)));
+                    RotationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Rot.Z)));
                     ControlObj->SetArrayField(TEXT("rotation"), RotationArray);
 
                     PositionObj->SetObjectField(*ControllerName, ControlObj);
@@ -467,13 +482,15 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                     TSharedPtr<FJsonObject> ControlObj =
                         MakeShareable(new FJsonObject);
 
+                    FVector Loc = ToBlenderPos(Transform->Location);
+
                     TArray<TSharedPtr<FJsonValue>> LocationArray;
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.X)));
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.Y)));
-                    LocationArray.Add(MakeShareable(
-                        new FJsonValueNumber(Transform->Location.Z)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.X)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.Y)));
+                    LocationArray.Add(
+                        MakeShareable(new FJsonValueNumber(Loc.Z)));
                     ControlObj->SetArrayField(TEXT("position"), LocationArray);
                     ControlObj->SetArrayField(
                         TEXT("rotation"),
@@ -503,13 +520,11 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
         const FFretDanceRecorderTransform* Transform =
             RecorderTransforms.Find(RecorderName);
         if (Transform) {
+            FVector Loc = ToBlenderPos(Transform->Location);
             TArray<TSharedPtr<FJsonValue>> LocationArray;
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.X)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Y)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Z)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Loc.X)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Loc.Y)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Loc.Z)));
             LeftFingerPositionsObj->SetArrayField(*PositionKey, LocationArray);
             TotalExported++;
         }
@@ -545,17 +560,19 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
         if (const FFretDanceRecorderTransform* Transform =
                 RecorderTransforms.Find(HRName)) {
             TSharedPtr<FJsonObject> ControlObj = MakeShareable(new FJsonObject);
+            FVector Loc = ToBlenderPos(Transform->Location);
+            FQuat Rot = ToBlenderRot(Transform->Rotation);
             TArray<TSharedPtr<FJsonValue>> LocArr = {
-                MakeShareable(new FJsonValueNumber(Transform->Location.X)),
-                MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
-                MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+                MakeShareable(new FJsonValueNumber(Loc.X)),
+                MakeShareable(new FJsonValueNumber(Loc.Y)),
+                MakeShareable(new FJsonValueNumber(Loc.Z)),
             };
             ControlObj->SetArrayField(TEXT("position"), LocArr);
             TArray<TSharedPtr<FJsonValue>> RotArr = {
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+                MakeShareable(new FJsonValueNumber(Rot.W)),
+                MakeShareable(new FJsonValueNumber(Rot.X)),
+                MakeShareable(new FJsonValueNumber(Rot.Y)),
+                MakeShareable(new FJsonValueNumber(Rot.Z)),
             };
             ControlObj->SetArrayField(TEXT("rotation"), RotArr);
             RightHandPositionsObj->SetObjectField(*HRName, ControlObj);
@@ -573,17 +590,19 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
         if (const FFretDanceRecorderTransform* Transform =
                 RecorderTransforms.Find(HPRName)) {
             TSharedPtr<FJsonObject> ControlObj = MakeShareable(new FJsonObject);
+            FVector Loc = ToBlenderPos(Transform->Location);
+            FQuat Rot = ToBlenderRot(Transform->Rotation);
             TArray<TSharedPtr<FJsonValue>> LocArr = {
-                MakeShareable(new FJsonValueNumber(Transform->Location.X)),
-                MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
-                MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+                MakeShareable(new FJsonValueNumber(Loc.X)),
+                MakeShareable(new FJsonValueNumber(Loc.Y)),
+                MakeShareable(new FJsonValueNumber(Loc.Z)),
             };
             ControlObj->SetArrayField(TEXT("position"), LocArr);
             TArray<TSharedPtr<FJsonValue>> RotArr = {
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
-                MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+                MakeShareable(new FJsonValueNumber(Rot.W)),
+                MakeShareable(new FJsonValueNumber(Rot.X)),
+                MakeShareable(new FJsonValueNumber(Rot.Y)),
+                MakeShareable(new FJsonValueNumber(Rot.Z)),
             };
             ControlObj->SetArrayField(TEXT("rotation"), RotArr);
             RightHandPositionsObj->SetObjectField(*HPRName, ControlObj);
@@ -597,17 +616,19 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
                     RecorderTransforms.Find(FingerName)) {
                 TSharedPtr<FJsonObject> ControlObj =
                     MakeShareable(new FJsonObject);
+                FVector Loc = ToBlenderPos(Transform->Location);
+                FQuat Rot = ToBlenderRot(Transform->Rotation);
                 TArray<TSharedPtr<FJsonValue>> LocArr = {
-                    MakeShareable(new FJsonValueNumber(Transform->Location.X)),
-                    MakeShareable(new FJsonValueNumber(Transform->Location.Y)),
-                    MakeShareable(new FJsonValueNumber(Transform->Location.Z)),
+                    MakeShareable(new FJsonValueNumber(Loc.X)),
+                    MakeShareable(new FJsonValueNumber(Loc.Y)),
+                    MakeShareable(new FJsonValueNumber(Loc.Z)),
                 };
                 ControlObj->SetArrayField(TEXT("position"), LocArr);
                 TArray<TSharedPtr<FJsonValue>> RotArr = {
-                    MakeShareable(new FJsonValueNumber(Transform->Rotation.W)),
-                    MakeShareable(new FJsonValueNumber(Transform->Rotation.X)),
-                    MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)),
-                    MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)),
+                    MakeShareable(new FJsonValueNumber(Rot.W)),
+                    MakeShareable(new FJsonValueNumber(Rot.X)),
+                    MakeShareable(new FJsonValueNumber(Rot.Y)),
+                    MakeShareable(new FJsonValueNumber(Rot.Z)),
                 };
                 ControlObj->SetArrayField(TEXT("rotation"), RotArr);
                 RightHandPositionsObj->SetObjectField(*FingerName, ControlObj);
@@ -616,11 +637,43 @@ void AFretDanceUnreal::ExportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // 添加unreal标志信息
+    // 添加unreal标志信息（导出 Blender 格式时置 false）
     TSharedPtr<FJsonObject> OtherSettingObj =
         CategoryObjects[TEXT("OTHER_SETTING")];
-    OtherSettingObj->SetBoolField(TEXT("is_unreal"), true);
+    OtherSettingObj->SetBoolField(TEXT("is_unreal"), !bToBlender);
     OtherSettingObj->SetBoolField(TEXT("use_vibrato_bar"), bUseVibratoBar);
+
+    // === pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender
+    // 时转换到 Blender 系；从 Control Rig 直接读取，SaveState 不涉及） ===
+    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        const TArray<FString> PoleNames = {
+            TEXT("TP_L"),     TEXT("I_L_pole"), TEXT("M_L_pole"),
+            TEXT("R_L_pole"), TEXT("P_L_pole"), TEXT("TP_R"),
+            TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
+            TEXT("P_R_pole"),
+        };
+        for (const FString& PoleName : PoleNames) {
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Loc = ToBlenderPos(PoleTransform.GetLocation());
+                TArray<TSharedPtr<FJsonValue>> LocArr = {
+                    MakeShareable(new FJsonValueNumber(Loc.X)),
+                    MakeShareable(new FJsonValueNumber(Loc.Y)),
+                    MakeShareable(new FJsonValueNumber(Loc.Z)),
+                };
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(TEXT("location"), LocArr);
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+                TotalExported++;
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            JsonObject->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
+    }
 
     // 将所有分类添加到主 JSON 对象
     for (const auto& CategoryPair : CategoryObjects) {
@@ -925,6 +978,50 @@ bool AFretDanceUnreal::ImportRecorderInfo(const FString& FilePath) {
             UE_LOG(LogTemp, Warning,
                    TEXT("  [OtherSetting] Read 'use_vibrato_bar' = %s"),
                    bUseVibratoBar ? TEXT("true") : TEXT("false"));
+        }
+    }
+
+    // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
+    if (JsonObject->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ImportRecorderInfo: ControlRig not available, "
+                        "pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                JsonObject->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                if (Entry->HasField(TEXT("location"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        Entry->GetArrayField(TEXT("location"));
+                    FVector Loc;
+                    if (FFretDanceHelpers::ReadLocationFromArray(LocArray,
+                                                                 Loc)) {
+                        CurrentTransform.SetLocation(Loc);
+                    }
+                }
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    ImportedCount++;
+                    UE_LOG(LogTemp, Log,
+                           TEXT("  [Pole] Applied '%s' location: (%.3f, "
+                                "%.3f, %.3f)"),
+                           *PolePair.Key, CurrentTransform.GetLocation().X,
+                           CurrentTransform.GetLocation().Y,
+                           CurrentTransform.GetLocation().Z);
+                }
+            }
         }
     }
 

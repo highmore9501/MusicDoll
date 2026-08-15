@@ -57,7 +57,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("OneHandFingerNumber"), StringFlow->OneHandFingerNumber,
-        TEXT("OneHandFingerNumber"), 
+        TEXT("OneHandFingerNumber"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -152,7 +152,7 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
                 5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
                 PropertyName,
                 StringFlow->CurrentInstrumentConfig.StringNotes[i],
-                PropertyName, 
+                PropertyName,
                 [this](const FString& InPropertyPath, int32 NewValue) {
                     OnNumericPropertyChanged(InPropertyPath, NewValue);
                 })];
@@ -186,22 +186,23 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
         5.0f, 15.0f, 5.0f,
         5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("Initialization"))];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Player Control Rig Status"))
-             .OnClicked(this,
-                        &SStringFlowModulePropertiesPanel::OnCheckObjectsStatus)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
-
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
-                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
+                  .Text(LOCTEXT("CheckObjectsStatusButton",
+                                "Check Player Control Rig Status"))
                   .OnClicked(
                       this,
-                      &SStringFlowModulePropertiesPanel::OnSetupAllObjects)
+                      &SStringFlowModulePropertiesPanel::OnCheckObjectsStatus)
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SButton)
+             .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
+             .OnClicked(this,
+                        &SStringFlowModulePropertiesPanel::OnSetupAllObjects)
+             .HAlign(HAlign_Center)
+             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     // Import/Export
     Container->AddSlot().AutoHeight().Padding(
@@ -223,6 +224,27 @@ void SStringFlowModulePropertiesPanel::CreatePropertyWidgets() {
                         &SStringFlowModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // Export to Blender Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".violinist"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderButton", "Export to Blender"))
+                  .OnClicked(
+                      this,
+                      &SStringFlowModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SStringFlowModulePropertiesPanel::OnNumericPropertyChanged(
@@ -297,8 +319,9 @@ FReply SStringFlowModulePropertiesPanel::OnCheckObjectsStatus() {
 
 FReply SStringFlowModulePropertiesPanel::OnSetupAllObjects() {
     if (!StringFlowActor.IsValid()) {
-        UE_LOG(LogTemp, Error,
-               TEXT("StringFlow: No actor selected for setup player control rig"));
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("StringFlow: No actor selected for setup player control rig"));
         return FReply::Handled();
     }
 
@@ -309,22 +332,23 @@ FReply SStringFlowModulePropertiesPanel::OnSetupAllObjects() {
 }
 
 FReply SStringFlowModulePropertiesPanel::OnExportRecorderInfo() {
-if (!StringFlowActor.IsValid()) {
-    UE_LOG(LogTemp, Error,
-           TEXT("StringFlow: No actor selected for export recorder info"));
-    return FReply::Handled();
-}
+    if (!StringFlowActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for export recorder info"));
+        return FReply::Handled();
+    }
 
-if (StringFlowActor->IOFilePath.IsEmpty()) {
-    UE_LOG(LogTemp, Error, TEXT("StringFlow: IO file path is empty"));
-    return FReply::Handled();
-}
+    if (StringFlowActor->IOFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error, TEXT("StringFlow: IO file path is empty"));
+        return FReply::Handled();
+    }
 
-if (!FCommonPanelUtility::ConfirmExportOverwrite(StringFlowActor->IOFilePath)) {
-    return FReply::Handled();
-}
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(
+            StringFlowActor->IOFilePath)) {
+        return FReply::Handled();
+    }
 
-StringFlowActor->ExportRecorderInfo(StringFlowActor->IOFilePath);
+    StringFlowActor->ExportRecorderInfo(StringFlowActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("StringFlow: Export Recorder Info operation triggered"));
     return FReply::Handled();
@@ -345,6 +369,30 @@ FReply SStringFlowModulePropertiesPanel::OnImportRecorderInfo() {
     StringFlowActor->ImportRecorderInfo(StringFlowActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("StringFlow: Import Recorder Info operation triggered"));
+    return FReply::Handled();
+}
+
+FReply SStringFlowModulePropertiesPanel::OnExportToBlender() {
+    if (!StringFlowActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: No actor selected for export to blender"));
+        return FReply::Handled();
+    }
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("StringFlow: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    StringFlowActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("StringFlow: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 #undef LOCTEXT_NAMESPACE

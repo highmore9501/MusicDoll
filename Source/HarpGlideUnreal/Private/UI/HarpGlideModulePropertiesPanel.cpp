@@ -214,6 +214,26 @@ void SHarpGlideModulePropertiesPanel::CreatePropertyWidgets() {
                       &SHarpGlideModulePropertiesPanel::OnImportRecorderInfo)
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // ---- Export to Blender ----
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".harpist"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderBtn", "Export to Blender"))
+                  .OnClicked(
+                      this, &SHarpGlideModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SHarpGlideModulePropertiesPanel::OnNumericPropertyChanged(
@@ -266,6 +286,26 @@ FReply SHarpGlideModulePropertiesPanel::OnInitHarpInstrument() {
     if (!HarpGlideActor.IsValid()) return FReply::Handled();
     UHarpGlideMusicInstrumentProcessor::InitializeHarpInstrument(
         HarpGlideActor.Get());
+    return FReply::Handled();
+}
+
+FReply SHarpGlideModulePropertiesPanel::OnExportToBlender() {
+    if (!HarpGlideActor.IsValid()) return FReply::Handled();
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("HarpGlide: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    HarpGlideActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("HarpGlide: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 

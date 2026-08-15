@@ -31,4 +31,8 @@ class HARPGLIDEUNREAL_API SHarpGlideModulePropertiesPanel
     FReply OnExportRecorderInfo();
     FReply OnImportRecorderInfo();
     FReply OnInitHarpInstrument();
+    FReply OnExportToBlender();
+
+    // Blender 格式导出文件路径（在资源管理器中选择）
+    FString BlenderExportFilePath;
 };

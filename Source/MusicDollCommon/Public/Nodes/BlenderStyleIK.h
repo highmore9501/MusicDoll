@@ -43,7 +43,7 @@ struct MUSICDOLLCOMMON_API FRigUnit_BlenderStyleIK
 
     /** 收敛精度：末端离目标多近算达标 */
     UPROPERTY(meta = (Input, Constant))
-    float Precision = 1.f;
+    float Precision = 0.05f;
 
     /** 求解权重：0~1 插值 */
     UPROPERTY(meta = (Input))
@@ -51,7 +51,7 @@ struct MUSICDOLLCOMMON_API FRigUnit_BlenderStyleIK
 
     /** 最大迭代次数 */
     UPROPERTY(meta = (Input))
-    int32 MaxIterations = 10;
+    int32 MaxIterations = 30;
 
     /** 影响子级：true 时末端关节的世界旋转跟随 Effector */
     UPROPERTY(meta = (Input, Constant))

@@ -240,6 +240,26 @@ void SFretDanceModulePropertiesPanel::CreatePropertyWidgets() {
                         &SFretDanceModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // Export to Blender Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".json"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderButton", "Export to Blender"))
+                  .OnClicked(
+                      this, &SFretDanceModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SFretDanceModulePropertiesPanel::OnNumericPropertyChanged(
@@ -361,6 +381,30 @@ FReply SFretDanceModulePropertiesPanel::OnImportRecorderInfo() {
     FretDanceActor->ImportRecorderInfo(FretDanceActor->IOFilePath);
     UE_LOG(LogTemp, Warning,
            TEXT("FretDance: Import Player Info operation triggered"));
+    return FReply::Handled();
+}
+
+FReply SFretDanceModulePropertiesPanel::OnExportToBlender() {
+    if (!FretDanceActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FretDance: No actor selected for export to blender"));
+        return FReply::Handled();
+    }
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("FretDance: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    FretDanceActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("FretDance: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 

@@ -297,8 +297,9 @@ void UZhengDriftAnimationProcessor::CollectPerformerKeyframes(
             int32 FrameNumber =
                 static_cast<int32>(FMath::RoundToInt(FrameDouble));
 
-            // hand_infos 字段（新格式）：{"H_L": [x,y,z], "H_rotation_L":
-            // [w,x,y,z], ...}
+            // hand_infos 字段（新格式）：{"H_L": [x,y,z, w,i,j,k], "HP_L":
+            // [x,y,z], ...}；H_{L/R} 为 7 元素 = 位置(前 3) + 旋转四元数(后 4,
+            // WXYZ)，其余控件为 3 元素位置。
             if (FrameObj->HasField(TEXT("hand_infos"))) {
                 TSharedPtr<FJsonObject> HandInfos =
                     FrameObj->GetObjectField(TEXT("hand_infos"));
@@ -307,79 +308,78 @@ void UZhengDriftAnimationProcessor::CollectPerformerKeyframes(
                     const TArray<TSharedPtr<FJsonValue>>& Arr =
                         Entry.Value->AsArray();
 
-                    if (CtrlName.Contains(TEXT("rotation"))) {
-                        // 旋转四元数 [w, x, y, z]
-                        // 注意：旋转必须合并到对应的 H_{Suffix} 控件的 keyframe
-                        // 中， 而不是写入单独的 "H_rotation_L" 控件。
-                        if (Arr.Num() == 4) {
+                    if (Arr.Num() == 7) {
+                        // H_{L/R}：位置(前 3) + 旋转四元数(后 4, WXYZ)，
+                        // 合并到同一控件的同帧 keyframe。
+                        bool bHasNull = false;
+                        for (const auto& Elem : Arr) {
+                            if (!Elem.IsValid() || Elem->IsNull()) {
+                                bHasNull = true;
+                                break;
+                            }
+                        }
+                        if (!bHasNull) {
+                            FVector Loc(Arr[0]->AsNumber(), Arr[1]->AsNumber(),
+                                        Arr[2]->AsNumber());
                             FQuat Q;
-                            Q.W = Arr[0]->AsNumber();
-                            Q.X = Arr[1]->AsNumber();
-                            Q.Y = Arr[2]->AsNumber();
-                            Q.Z = Arr[3]->AsNumber();
-
-                            // 从 "H_rotation_L" 解析出 "H_L"
-                            FString TargetCtrlName = CtrlName;
-                            TargetCtrlName.RemoveFromStart(TEXT("H_rotation_"));
-                            TargetCtrlName = TEXT("H_") + TargetCtrlName;
+                            Q.W = Arr[3]->AsNumber();
+                            Q.X = Arr[4]->AsNumber();
+                            Q.Y = Arr[5]->AsNumber();
+                            Q.Z = Arr[6]->AsNumber();
 
                             TArray<FAnimationKeyframe>& KFs =
-                                OutControlKeyframeData.FindOrAdd(
-                                    TargetCtrlName);
-                            // 尝试合并到同帧已有 keyframe
-                            bool bFound = false;
+                                OutControlKeyframeData.FindOrAdd(CtrlName);
+                            bool bMerged = false;
                             for (int32 i = KFs.Num() - 1; i >= 0; i--) {
                                 if (KFs[i].FrameNumber == FrameNumber) {
+                                    KFs[i].Translation = Loc;
                                     KFs[i].Rotation = Q;
+                                    KFs[i].bHasLocation = true;
                                     KFs[i].bHasRotation = true;
-                                    bFound = true;
+                                    bMerged = true;
                                     break;
                                 }
                             }
-                            // 如果没有同帧 keyframe（rotation 先于 position
-                            // 到达），创建占位
-                            if (!bFound) {
+                            if (!bMerged) {
                                 FAnimationKeyframe KF;
                                 KF.FrameNumber = FrameNumber;
+                                KF.Translation = Loc;
                                 KF.Rotation = Q;
+                                KF.bHasLocation = true;
                                 KF.bHasRotation = true;
                                 KFs.Add(KF);
                             }
                         }
-                    } else {
+                    } else if (Arr.Num() == 3) {
                         // 位置 [x, y, z]
-                        if (Arr.Num() == 3) {
-                            bool bHasNull = false;
-                            for (const auto& Elem : Arr) {
-                                if (!Elem.IsValid() || Elem->IsNull()) {
-                                    bHasNull = true;
+                        bool bHasNull = false;
+                        for (const auto& Elem : Arr) {
+                            if (!Elem.IsValid() || Elem->IsNull()) {
+                                bHasNull = true;
+                                break;
+                            }
+                        }
+                        if (!bHasNull) {
+                            FVector Loc(Arr[0]->AsNumber(), Arr[1]->AsNumber(),
+                                        Arr[2]->AsNumber());
+
+                            TArray<FAnimationKeyframe>& KFs =
+                                OutControlKeyframeData.FindOrAdd(CtrlName);
+                            bool bMerged = false;
+                            for (int32 i = KFs.Num() - 1; i >= 0; i--) {
+                                if (KFs[i].FrameNumber == FrameNumber) {
+                                    KFs[i].Translation = Loc;
+                                    KFs[i].bHasLocation = true;
+                                    bMerged = true;
                                     break;
                                 }
                             }
-                            if (!bHasNull) {
-                                FVector Loc(Arr[0]->AsNumber(),
-                                            Arr[1]->AsNumber(),
-                                            Arr[2]->AsNumber());
-
-                                // 查找是否已有同帧 keyframe（如 rotation 占位）
-                                TArray<FAnimationKeyframe>& KFs =
-                                    OutControlKeyframeData.FindOrAdd(CtrlName);
-                                bool bMerged = false;
-                                for (int32 i = KFs.Num() - 1; i >= 0; i--) {
-                                    if (KFs[i].FrameNumber == FrameNumber) {
-                                        KFs[i].Translation = Loc;
-                                        KFs[i].bHasLocation = true;
-                                        bMerged = true;
-                                        break;
-                                    }
-                                }
-                                if (!bMerged) {
-                                    FAnimationKeyframe KF;
-                                    KF.FrameNumber = FrameNumber;
-                                    KF.Translation = Loc;
-                                    KF.bHasLocation = true;
-                                    KFs.Add(KF);
-                                }
+                            if (!bMerged) {
+                                FAnimationKeyframe KF;
+                                KF.FrameNumber = FrameNumber;
+                                KF.Translation = Loc;
+                                KF.bHasLocation = true;
+                                KFs.Add(KF);
                             }
                         }
                     }

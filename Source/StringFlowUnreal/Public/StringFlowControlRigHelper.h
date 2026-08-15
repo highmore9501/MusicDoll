@@ -36,7 +36,7 @@ class STRINGFLOWUNREAL_API FStringFlowControlRigHelper {
     // ========================================
 
     /**
-     * 收集所有控制器名称（包括手指、手掌、其他控制器和辅助线）
+     * 收集所有控制器名称（包括手指、手掌、脚部、其他控制器和辅助线）
      */
     static TSet<FString> GetAllControllerNames(
         AStringFlowUnreal* StringFlowActor);
@@ -68,13 +68,6 @@ class STRINGFLOWUNREAL_API FStringFlowControlRigHelper {
      * 格式：bow_position_s{弦索引}_{位置类型}
      */
     static FString GenerateStateDependentBowRecorderName(
-        AStringFlowUnreal* StringFlowActor);
-
-    /**
-     * 生成状态相关的 Right_Hand_Tar 记录器名称
-     * 格式：right_hand_tar_{位置类型}_s{弦索引}
-     */
-    static FString GenerateStateDependentRHTRecorderName(
         AStringFlowUnreal* StringFlowActor);
 
     // ========================================

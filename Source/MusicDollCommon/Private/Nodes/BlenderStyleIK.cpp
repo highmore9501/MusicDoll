@@ -292,6 +292,52 @@ struct FBlenderSolver {
 // ================================================================
 
 FRigUnit_BlenderStyleIK_Execute() {
+    // 与兄弟节点 ArcDistributedIK 同风格：把"拉直"与"写回"抽成独立方法，
+    // 主流程按算法分支组织，可读性更好。
+    struct Local {
+        // 把整条链沿 Direction 拉直（就地修改 Rot/Pos；根位置不变）。
+        // 每段骨骼都对齐到同一方向，链变成一条指向目标的直线。
+        static void StretchChainAlongDirection(TArray<FQuat>& Rot,
+                                               TArray<FVector>& Pos,
+                                               const TArray<FVector>& LocalOffset,
+                                               const FVector& Direction) {
+            for (int32 i = 0; i < Rot.Num() - 1; ++i) {
+                const FVector CurSegDir = Rot[i].RotateVector(LocalOffset[i]);
+                if (!CurSegDir.IsNearlyZero()) {
+                    const FQuat Align = FQuat::FindBetweenVectors(
+                        CurSegDir.GetSafeNormal(), Direction);
+                    Rot[i] = (Align * Rot[i]).GetNormalized();
+                }
+                Pos[i + 1] = Pos[i] + Rot[i].RotateVector(LocalOffset[i]);
+            }
+        }
+
+        // 把解算后的全局姿态写回层级（含 Weight 插值）。
+        static void WriteChainToHierarchy(
+            URigHierarchy* Hierarchy,
+            const TArray<FCachedRigElement>& CachedBones,
+            const TArray<FVector>& Pos, const TArray<FQuat>& Rot,
+            const TArray<FVector>& Scale, const TArray<FTransform>& InitGlobal,
+            float Weight, bool bPropagateToChildren) {
+            if (!Hierarchy) {
+                return;
+            }
+            const float T = FMath::Clamp<float>(Weight, 0.f, 1.f);
+            for (int32 i = 0; i < CachedBones.Num(); ++i) {
+                FTransform Xfo(FRotator(Rot[i]), Pos[i], Scale[i]);
+                if (!FMath::IsNearlyEqual(T, 1.f)) {
+                    const FTransform& Prev = InitGlobal[i];
+                    Xfo.SetLocation(FMath::Lerp(Prev.GetLocation(), Pos[i], T));
+                    Xfo.SetRotation(FQuat::Slerp(Prev.GetRotation(), Rot[i], T));
+                    Xfo.SetScale3D(FMath::Lerp(Prev.GetScale3D(), Scale[i], T));
+                }
+                Hierarchy->SetGlobalTransform(CachedBones[i].GetKey(), Xfo,
+                                              false, bPropagateToChildren,
+                                              false);
+            }
+        }
+    };
+
     URigHierarchy* Hierarchy = ExecuteContext.Hierarchy;
     if (!Hierarchy) {
         return;
@@ -346,14 +392,6 @@ FRigUnit_BlenderStyleIK_Execute() {
         Scale[i] = InitGlobal[i].GetScale3D();
     }
 
-    // 【关键修复】LocalOffset 必须在所有 Pos 都赋值之后再计算！
-    // 原实现把它放在同一个循环里，导致计算 LocalOffset[i] 时 Pos[i+1]
-    // 尚未被后续循环轮次读取（还是 (0,0,0)），于是：
-    //   LocalOffset[i] = Rot[i]^-1 * ((0,0,0) - Pos[i]) = -Rot[i]^-1 * Pos[i]
-    // 其长度 = |Pos[i]|（从世界原点到骨骼的距离，约 107），而非真实骨长
-    // （约 2.4，见 GetLocalTransform 的 LPos）。这使 chainLen 虚高到 322、
-    // 位置级联完全失真，求解第一步就把链甩飞。拆成独立循环后：
-    //   LocalOffset[i] = Rot[i]^-1 * (Pos[i+1] - Pos[i])
     // 长度 = 相邻骨骼真实距离（骨长），求解恢复正常。
     for (int32 i = 0; i < NumBones - 1; ++i) {
         LocalOffset[i] = Rot[i].Inverse().RotateVector(Pos[i + 1] - Pos[i]);
@@ -403,28 +441,28 @@ FRigUnit_BlenderStyleIK_Execute() {
 
     int32 MaxIter = MaxIterations > 0 ? MaxIterations : 10;
 
-    // ---- 可达性分流（参考 ArcDistributedIK 的 Algorithm Branching）----
-    // 先算根到目标的距离与链长：目标不可达（太远）时直接把链拉直朝目标，
-    // 不进入雅可比迭代——链完全拉直时雅可比病态（秩≈1），SDLS 会振荡发散
-    // （目标不可达时 dist 从 0.30 飙到 2.5 的根因）。提前分流可稳定停在
-    // 可达边界（残差 = RootToGoal - 链长）。
+    // 可达性分流：目标在可达边界带内或之外时直接拉直朝目标。
+    // 1) RootToGoal > TotalLength：真正不可达，拉直即最优近似；
+    // 2) RootToGoal ∈ (TotalLength-Precision, TotalLength]：链接近满伸长时
+    //    雅可比在链方向秩不足，SDLS 无法产生径向修正会停滞（链保持伸直但
+    //    方向错误）；提前分流可稳定停在边界带内，残差 < ConvergeThreshold
+    // 该分支自包含：拉直 + 末端旋转 + 写回后直接结束，不再进入迭代。
     const float RootToGoal = FVector::Dist(Pos[0], GoalPosition);
-    const bool bHandleTooFar = (RootToGoal > TotalLength);
+    const bool bHandleTooFar = (RootToGoal > TotalLength - ConvergeThreshold);
 
     if (bHandleTooFar) {
         const FVector Dir = (GoalPosition - Pos[0]).GetSafeNormal();
         if (!Dir.IsNearlyZero()) {
-            for (int32 i = 0; i < NumBones - 1; ++i) {
-                const FVector CurSegDir = Rot[i].RotateVector(LocalOffset[i]);
-                if (!CurSegDir.IsNearlyZero()) {
-                    const FQuat Align = FQuat::FindBetweenVectors(
-                        CurSegDir.GetSafeNormal(), Dir);
-                    Rot[i] = (Align * Rot[i]).GetNormalized();
-                }
-                Pos[i + 1] = Pos[i] + Rot[i].RotateVector(LocalOffset[i]);
-            }
+            Local::StretchChainAlongDirection(Rot, Pos, LocalOffset, Dir);
         }
-        MaxIter = 0;  // 跳过迭代，直接写回拉直后的链
+        // 拉直后链共线、链平面退化，pole 后旋转天然被跳过；
+        // 末端关节旋转仍按 bPropagateToChildren 语义生效。
+        if (bPropagateToChildren) {
+            Rot[NumBones - 1] = GoalRotation;
+        }
+        Local::WriteChainToHierarchy(Hierarchy, CachedBones, Pos, Rot, Scale,
+                                     InitGlobal, Weight, bPropagateToChildren);
+        return;
     }
 
     // ---- 迭代求解 ----
@@ -432,15 +470,18 @@ FRigUnit_BlenderStyleIK_Execute() {
     double LastNorm = 1e30;  // 上一轮残差（保留声明，兼容后续扩展）
 
     // 目标与链末端几乎重合：位置已满足，无需求解。
-    // 直接跳过迭代并返回（保持初始姿态），防止朝向任务/极点/数值误差
-    // 在位置残差为 0 时仍把链推飞（此前日志中 iter 0 后 dist 跳到 322
-    // 的根因）。
+    // 直接跳过迭代并返回（保持初始姿态），防止朝向任务/极点/数值误差导致链被扭曲。
+    // 注意：走到这里必然 !bHandleTooFar（太远分支已提前返回），
+    // 因此该提前返回只作用于雅可比路径，不会丢弃拉直结果。
     const float InitDist = FVector::Dist(GoalPosition, Pos[NumBones - 1]);
-    if (InitDist < 0.01f) {
+    const FVector InitEndPos = Pos[NumBones - 1];  // 解算前末端位置（与 InitDist 对应，诊断用）
+    if (InitDist < ConvergeThreshold) {
         return;
     }
 
+    int32 NumIterations = 0;  // 实际执行的迭代次数（诊断用）
     for (int32 Iter = 0; Iter < MaxIter; ++Iter) {
+        NumIterations = Iter + 1;
         // NaN 防护：一旦求解产生 NaN，中止并跳过写回，避免污染层级
         bool bHasNaN = false;
         for (int32 i = 0; i < NumBones; ++i) {
@@ -626,20 +667,32 @@ FRigUnit_BlenderStyleIK_Execute() {
         Rot[NumBones - 1] = GoalRotation;
     }
 
-    // ---- 写回层级 ----
-    const float T = FMath::Clamp<float>(Weight, 0.f, 1.f);
-
-    for (int32 i = 0; i < NumBones; ++i) {
-        FTransform Xfo(FRotator(Rot[i]), Pos[i], Scale[i]);
-
-        if (!FMath::IsNearlyEqual(T, 1.f)) {
-            const FTransform& Prev = InitGlobal[i];
-            Xfo.SetLocation(FMath::Lerp(Prev.GetLocation(), Pos[i], T));
-            Xfo.SetRotation(FQuat::Slerp(Prev.GetRotation(), Rot[i], T));
-            Xfo.SetScale3D(FMath::Lerp(Prev.GetScale3D(), Scale[i], T));
+    // ---- 诊断日志（临时排查用）----
+    // 当解算结束后，末端（Pos[NumBones-1]，即倒数第二根与末根骨骼之间的关节）
+    // 到 effector 的距离仍超过解算前距离的 10 倍时，说明求解异常（停滞/发散），
+    // 输出当前现场信息，便于定位问题。纯排查用途，不影响求解与写回结果。
+    // 注意：走到这里必为雅可比路径（拉直分流已提前返回）。
+    {
+        const FVector FinalEndPos = Pos[NumBones - 1];
+        const double FinalDist = (double)FVector::Dist(GoalPosition, FinalEndPos);
+        if (FinalDist > 10.0 * (double)InitDist) {
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[BlenderStyleIK][诊断] 末端到 effector 距离异常放大: "
+                        "解算后 %.4f > 10x 解算前 %.4f | 链总长 %.4f | "
+                        "雅可比迭代(%d次)"),
+                   FinalDist, (double)InitDist, TotalLength, NumIterations);
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[BlenderStyleIK][诊断]   解算前末端 %s | 最终末端 %s | effector %s"),
+                   *InitEndPos.ToString(), *FinalEndPos.ToString(),
+                   *GoalPosition.ToString());
+            UE_LOG(LogControlRig, Warning,
+                   TEXT("[BlenderStyleIK][诊断]   根位置 %s | NumBones %d | "
+                        "Precision %.4f | MaxIter %d"),
+                   *Pos[0].ToString(), NumBones, (double)ConvergeThreshold, MaxIter);
         }
-
-        Hierarchy->SetGlobalTransform(CachedBones[i].GetKey(), Xfo, false,
-                                      bPropagateToChildren, false);
     }
+
+    // ---- 写回层级 ----
+    Local::WriteChainToHierarchy(Hierarchy, CachedBones, Pos, Rot, Scale,
+                                 InitGlobal, Weight, bPropagateToChildren);
 }

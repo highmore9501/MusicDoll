@@ -61,20 +61,22 @@ class ZHENGDRIFTUNREAL_API UZhengDriftAnimationProcessor : public UObject {
     /**
      * 从 performance JSON 生成左右手控制器关键帧
      *
-     * JSON 每帧格式：
+     * JSON 每帧格式（新格式 hand_infos）：
      * {
      *   "frame": 0,
-     *   "hand_position": [x, y, z],         → H_L / H_R
-     *   "hand_rotation": [w, x, y, z],      → H_L / H_R（旋转，统一 WXYZ 顺序）
-     *   "finger_positions": {
-     *     "thumb":  [x, y, z],              → T_L / T_R
-     *     "index":  [x, y, z],              → I_L / I_R
-     *     "middle": [x, y, z],              → M_L / M_R
-     *     "ring":   [x, y, z],              → R_L / R_R
-     *     "pinky":  [x, y, z]               → P_L / P_R
+     *   "hand_infos": {
+     *     "H_L": [x, y, z, w, i, j, k],   → H_L / H_R（位置前 3 + 旋转四元数后
+     * 4，WXYZ） "HP_L": [x, y, z],              → HP_L / HP_R "T_L": [x, y, z],
+     * → T_L / T_R "I_L": [x, y, z],               → I_L / I_R "M_L": [x, y, z],
+     * → M_L / M_R "R_L": [x, y, z],               → R_L / R_R "P_L": [x, y, z]
+     * → P_L / P_R
      *   },
-     *   "hand_pole_target": [x, y, z]       → HP_L / HP_R
+     *   "state": "ready" | "attack" | "hold" | "release" | "transition"
      * }
+     *
+     * 注：手掌 H_{L/R} 单个控件同时承载位置与旋转（7 元素），不再使用
+     * H_rotation_{L/R} 字段。旧格式（hand_position / hand_rotation 顶层字段）
+     * 仍被 CollectPerformerKeyframes 兼容解析。
      */
     static void MakePerformerAnimation(AZhengDriftUnreal* ZhengDriftActor,
                                        const FString& AnimationFilePath,

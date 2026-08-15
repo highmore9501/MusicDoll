@@ -1,4 +1,4 @@
-﻿#include "KeyRippleControlRigProcessor.h"
+#include "KeyRippleControlRigProcessor.h"
 
 #include "BoneControlMappingUtility.h"
 #include "ControlRigCacheSubsystem.h"
@@ -609,7 +609,8 @@ void UKeyRippleControlRigProcessor::SetupControllers(
     }
 
     // 第2步：创建 controller_root（乐器演奏层级的根控制器，父级为base_root）
-    if (!FControlRigCreationUtility::CreateControl(
+    // EnsureControl：已存在时也会校验父级是否为 base_root
+    if (!FControlRigCreationUtility::EnsureControl(
             ControlRigBlueprint, TEXT("controller_root"), TEXT("base_root"))) {
         UE_LOG(LogTemp, Error, TEXT("Failed to create controller_root"));
         return;
@@ -621,55 +622,29 @@ void UKeyRippleControlRigProcessor::SetupControllers(
     // 注意：base_root 和 controller_root 已在第1、2步中创建完成
 
     // 3a. 创建手掌控制器（H_L, H_R, HP_L, HP_R）— 作为手指和 pole 的父级
+    //     EnsureControl：已存在时校验并修正父级为 controller_root
     for (const auto& Pair : KeyRippleActor->HandControllers) {
         const FString& ControllerName = Pair.Value;
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Created hand controller %s under controller_root"),
-                   *ControllerName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Hand controller %s already exists"),
-                   *ControllerName);
-        }
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
     }
 
     // 3b. 创建 Mid_Hand（作为 Look_At 的父级，必须在 Look_At 之前创建）
     for (const auto& Pair : KeyRippleActor->TargetPoints) {
         if (!Pair.Value.Equals(TEXT("Mid_Hand"))) continue;
-        FRigElementKey ElementKey(*(Pair.Value), ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, Pair.Value, TEXT("controller_root"));
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Created Mid_Hand under controller_root"));
-        } else {
-            UE_LOG(LogTemp, Warning, TEXT("✅ Mid_Hand already exists"));
-        }
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, Pair.Value, TEXT("controller_root"));
         break;
     }
 
     // 3c. 创建手指控制器（0_L, 0_R, ...）— 挂在对应手掌下（H_L 或 H_R）
     for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
         const FString& ControllerName = FingerPair.Value;
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FString HandSuffix =
-                ControllerName.EndsWith(TEXT("_L")) ? TEXT("_L") : TEXT("_R");
-            FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, ParentName);
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Created finger controller %s under %s"),
-                   *ControllerName, *ParentName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Finger controller %s already exists"),
-                   *ControllerName);
-        }
+        FString HandSuffix =
+            ControllerName.EndsWith(TEXT("_L")) ? TEXT("_L") : TEXT("_R");
+        FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, ParentName);
     }
 
     // 3d. 创建辅助控件（ext_）— 每个手指一个，与手指控件一样挂在对应手掌下
@@ -678,22 +653,12 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         const FString& FingerControllerName = FingerPair.Value;
         FString ExtControllerName =
             FString::Printf(TEXT("ext_%s"), *FingerControllerName);
-        FRigElementKey ExtElementKey(*ExtControllerName,
-                                     ERigElementType::Control);
-        if (!RigHierarchy->Contains(ExtElementKey)) {
-            FString HandSuffix = FingerControllerName.EndsWith(TEXT("_L"))
-                                     ? TEXT("_L")
-                                     : TEXT("_R");
-            FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ExtControllerName, ParentName);
-            UE_LOG(LogTemp, Warning, TEXT("Created ext controller %s under %s"),
-                   *ExtControllerName, *ParentName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Ext controller %s already exists"),
-                   *ExtControllerName);
-        }
+        FString HandSuffix = FingerControllerName.EndsWith(TEXT("_L"))
+                                 ? TEXT("_L")
+                                 : TEXT("_R");
+        FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ExtControllerName, ParentName);
     }
 
     // 3e. 创建其余目标点控制器（Mid_Hand 已在 3b 中创建，此处跳过）
@@ -702,71 +667,41 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         const FString& ControllerName = Pair.Value;
         if (ControllerName.Equals(TEXT("Mid_Hand"))) continue;  // 已在 3b 创建
 
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FString ParentName = ControllerName.Equals(TEXT("Look_At"))
-                                     ? TEXT("Mid_Hand")
-                                     : TEXT("controller_root");
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, ParentName);
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Created target controller %s under %s"),
-                   *ControllerName, *ParentName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Target controller %s already exists"),
-                   *ControllerName);
-        }
+        FString ParentName = ControllerName.Equals(TEXT("Look_At"))
+                                 ? TEXT("Mid_Hand")
+                                 : TEXT("controller_root");
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, ParentName);
     }
 
     // 3f. 创建极向量控制器（pole_0, pole_1, ...）— 挂在对应的 ext_ 控件下面
     for (const FString& ControllerName : AllControllerNames) {
         if (!ControllerName.StartsWith(TEXT("pole_"))) continue;
 
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FString PoleFingerNumber =
-                ControllerName.Mid(5);  // 去掉 "pole_" 前缀
-            FString RelatedFingerControllerName;
+        FString PoleFingerNumber =
+            ControllerName.Mid(5);  // 去掉 "pole_" 前缀
+        FString RelatedFingerControllerName;
 
-            for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
-                if (FingerPair.Key == PoleFingerNumber) {
-                    RelatedFingerControllerName = FingerPair.Value;
-                    break;
-                }
+        for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
+            if (FingerPair.Key == PoleFingerNumber) {
+                RelatedFingerControllerName = FingerPair.Value;
+                break;
             }
+        }
 
-            if (!RelatedFingerControllerName.IsEmpty()) {
-                FString ParentName = FString::Printf(
-                    TEXT("ext_%s"), *RelatedFingerControllerName);
-                FControlRigCreationUtility::CreateControl(
-                    ControlRigBlueprint, ControllerName, ParentName);
-                UE_LOG(LogTemp, Warning,
-                       TEXT("Created pole controller %s under %s"),
-                       *ControllerName, *ParentName);
-            }
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Pole controller %s already exists"),
-                   *ControllerName);
+        if (!RelatedFingerControllerName.IsEmpty()) {
+            FString ParentName = FString::Printf(
+                TEXT("ext_%s"), *RelatedFingerControllerName);
+            FControlRigCreationUtility::EnsureControl(
+                ControlRigBlueprint, ControllerName, ParentName);
         }
     }
 
     // 3g. 创建键盘位置控制器（KeyBoardPositions）— 挂在 controller_root 下
     for (const auto& Pair : KeyRippleActor->KeyBoardPositions) {
         const FString& ControllerName = Pair.Value;
-        FRigElementKey ElementKey(*ControllerName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ElementKey)) {
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
-            UE_LOG(LogTemp, Warning,
-                   TEXT("Created keyboard controller %s under controller_root"),
-                   *ControllerName);
-        } else {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("✅ Keyboard controller %s already exists"),
-                   *ControllerName);
-        }
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Finished setting up controllers"));
@@ -820,15 +755,15 @@ AActor* UKeyRippleControlRigProcessor::CreateController(
         return nullptr;
     }
 
-    // 使用新的统一接口
-    if (FControlRigCreationUtility::CreateControl(
+    // 使用 EnsureControl：已存在时校验并修正父级，不存在则创建
+    if (FControlRigCreationUtility::EnsureControl(
             ControlRigBlueprint, ControllerName, ParentControllerName)) {
         UE_LOG(LogTemp, Warning,
-               TEXT("✅ Successfully created controller %s with parent %s"),
+               TEXT("✅ Successfully ensured controller %s with parent %s"),
                *ControllerName, *ParentControllerName);
         return nullptr;
     } else {
-        UE_LOG(LogTemp, Error, TEXT("❌ Failed to create controller %s"),
+        UE_LOG(LogTemp, Error, TEXT("❌ Failed to ensure controller %s"),
                *ControllerName);
         return nullptr;
     }

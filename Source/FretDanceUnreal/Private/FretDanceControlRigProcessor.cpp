@@ -1,4 +1,4 @@
-﻿#include "FretDanceControlRigProcessor.h"
+#include "FretDanceControlRigProcessor.h"
 
 #include "Animation/SkeletalMeshActor.h"
 #include "BoneControlMappingUtility.h"
@@ -959,29 +959,14 @@ bool UFretDanceControlRigProcessor::CreateController(
         return false;
     }
 
-    URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
-    if (!RigHierarchy) {
-        UE_LOG(LogTemp, Error,
-               TEXT("CreateController: Failed to get RigHierarchy from "
-                    "ControlRigBlueprint"));
-        return false;
-    }
-
-    // 检查控制器是否已存在
-    FRigElementKey ExistingKey(*ControllerName, ERigElementType::Control);
-    if (RigHierarchy->Contains(ExistingKey)) {
-        UE_LOG(LogTemp, Verbose,
-               TEXT("Controller %s already exists, skipping creation"),
-               *ControllerName);
-        return true;
-    }
-
-    // 使用新的接口创建控制器
+    // 使用 EnsureControl：控件不存在则创建；已存在则校验父级是否匹配，
+    // 不匹配时 reparent 修正（bMaintainGlobalTransform 保持世界位姿），
+    // 确保已有控件的层级始终符合预期
     UE_LOG(LogTemp, Warning,
-           TEXT("[DEBUG] Attempting to create control '%s' with parent='%s'"),
+           TEXT("[DEBUG] Attempting to ensure control '%s' with parent='%s'"),
            *ControllerName, *ParentName);
 
-    bool bSuccess = FControlRigCreationUtility::CreateControl(
+    bool bSuccess = FControlRigCreationUtility::EnsureControl(
         ControlRigBlueprint, ControllerName, ParentName);
 
     return bSuccess;

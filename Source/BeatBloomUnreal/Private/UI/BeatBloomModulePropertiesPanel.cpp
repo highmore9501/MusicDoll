@@ -183,6 +183,26 @@ void SBeatBloomModulePropertiesPanel::CreatePropertyWidgets() {
                         &SBeatBloomModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // Export to Blender Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".drummer"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderButton", "Export to Blender"))
+                  .OnClicked(
+                      this, &SBeatBloomModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SBeatBloomModulePropertiesPanel::OnNumericPropertyChanged(
@@ -365,6 +385,30 @@ FReply SBeatBloomModulePropertiesPanel::OnImportRecorderInfo() {
                *BeatBloom->IOFilePath);
     }
 
+    return FReply::Handled();
+}
+
+FReply SBeatBloomModulePropertiesPanel::OnExportToBlender() {
+    if (!BeatBloomActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: No actor selected for export to blender"));
+        return FReply::Handled();
+    }
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("BeatBloom: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    BeatBloomActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("BeatBloom: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 

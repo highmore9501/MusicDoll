@@ -40,6 +40,10 @@ class WINDRISEUNREAL_API SWindRiseModulePropertiesPanel
     FReply OnInitializePerformerCR();
     FReply OnImportWindFile();
     FReply OnExportWindFile();
+    FReply OnExportToBlender();
+
+    // Blender 格式导出文件路径（在资源管理器中选择）
+    FString BlenderExportFilePath;
 
     // 人物 MT 编辑
     FReply OnAddCharacterMorphTarget();

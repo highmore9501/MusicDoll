@@ -1,4 +1,4 @@
-﻿#include "StringFlowAnimationProcessor.h"
+#include "StringFlowAnimationProcessor.h"
 
 #include "Channels/MovieSceneFloatChannel.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -36,12 +36,11 @@ enum class EControllerFilterType {
 static const TSet<FString> GetValidStringFlowControllerNames(
     EControllerFilterType FilterType = EControllerFilterType::All) {
     static const TSet<FString> LeftHandControllers = {
-        TEXT("H_L"), TEXT("H_rotation_L"), TEXT("HP_L"), TEXT("T_L"),
-        TEXT("1_L"), TEXT("2_L"),          TEXT("3_L"),  TEXT("4_L")};
+        TEXT("H_L"), TEXT("HP_L"), TEXT("T_L"), TEXT("1_L"),
+        TEXT("2_L"), TEXT("3_L"),  TEXT("4_L")};
 
     static const TSet<FString> RightHandControllers = {
         TEXT("H_R"),
-        TEXT("H_rotation_R"),
         TEXT("HP_R"),
         TEXT("T_R"),
         TEXT("1_R"),
@@ -49,8 +48,7 @@ static const TSet<FString> GetValidStringFlowControllerNames(
         TEXT("3_R"),
         TEXT("4_R"),
         TEXT("String_Touch_Point"),
-        TEXT("Bow_Controller"),
-        TEXT("Right_Hand_Tar")};
+        TEXT("Bow_Controller")};
 
     static const TSet<FString> AllControllers = []() {
         TSet<FString> Combined;
@@ -116,6 +114,7 @@ static void ProcessStringFlowAnimationFrame(
     // StringFlow 控件数据格式：每个控制器值为直接数组
     //   - 3 元素 = 位置 [x, y, z]
     //   - 4 元素 = 四元数旋转 [w, x, y, z]
+    //   - 7 元素 = 合并 [x, y, z, w, qx, qy, qz]（H_ 手掌控制器位置+旋转）
     for (const auto& Pair : HandInfos->Values) {
         FString RawControlName = Pair.Key;
 
@@ -154,7 +153,7 @@ static void ProcessStringFlowAnimationFrame(
             ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
             OutKeyframesAdded++;
         } else if (DataArray.Num() == 4) {
-            // 四元数旋转 [w, x, y, z] → 写入去掉 _rotation 的控制器
+            // 四元数旋转 [w, x, y, z] → 写入原控制器的旋转通道
             FQuat Rotation;
             Rotation.W = DataArray[0]->AsNumber();
             Rotation.X = DataArray[1]->AsNumber();
@@ -163,10 +162,27 @@ static void ProcessStringFlowAnimationFrame(
             Rotation.Normalize();
             Keyframe.Rotation = Rotation;
             Keyframe.bHasRotation = true;
-            // H_rotation_L → H_L, H_rotation_R → H_R
-            FString TargetName =
-                ControlName.Replace(TEXT("_rotation"), TEXT(""));
-            ControlKeyframeData.FindOrAdd(TargetName).Add(Keyframe);
+            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
+            OutKeyframesAdded++;
+        } else if (DataArray.Num() == 7) {
+            // 合并格式 [x, y, z, w, qx, qy, qz]：前3为位置，后4为四元数
+            FVector Location;
+            Location.X = DataArray[0]->AsNumber();
+            Location.Y = DataArray[1]->AsNumber();
+            Location.Z = DataArray[2]->AsNumber();
+            Keyframe.Translation = Location;
+            Keyframe.bHasLocation = true;
+
+            FQuat Rotation;
+            Rotation.W = DataArray[3]->AsNumber();
+            Rotation.X = DataArray[4]->AsNumber();
+            Rotation.Y = DataArray[5]->AsNumber();
+            Rotation.Z = DataArray[6]->AsNumber();
+            Rotation.Normalize();
+            Keyframe.Rotation = Rotation;
+            Keyframe.bHasRotation = true;
+
+            ControlKeyframeData.FindOrAdd(ControlName).Add(Keyframe);
             OutKeyframesAdded++;
         } else {
             continue;

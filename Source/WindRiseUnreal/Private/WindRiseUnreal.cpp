@@ -5,6 +5,7 @@
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
 #include "ControlRigCreationUtility.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "EngineUtils.h"
@@ -62,14 +63,20 @@ struct FWindRiseHelpers {
                 MakeShareable(new FJsonValueNumber(Q.Z))};
     }
 
-    /** 从 FTransform 读取控制器数据为 FWindRiseNoteState 格式 */
+    /** 从 FTransform 读取控制器数据为 FWindRiseNoteState 格式
+     *  bToBlender 时坐标转换到 Blender 系 */
     static TSharedPtr<FJsonObject> TransformToControllerJson(
-        const FString& CtrlName, const FTransform& Transform) {
+        const FString& CtrlName, const FTransform& Transform,
+        bool bToBlender = false) {
         TSharedPtr<FJsonObject> CtrlObj = MakeShareable(new FJsonObject);
         TSharedPtr<FJsonObject> LocObj = MakeShareable(new FJsonObject);
 
         FVector Loc = Transform.GetLocation();
         FQuat Rot = Transform.GetRotation();
+        if (bToBlender) {
+            Loc = FCoordinateTransformUtility::ToBlenderPosition(Loc);
+            Rot = FCoordinateTransformUtility::ToBlenderRotation(Rot);
+        }
 
         CtrlObj->SetArrayField(TEXT("location"),
                                {MakeShareable(new FJsonValueNumber(Loc.X)),
@@ -482,6 +489,39 @@ void AWindRiseUnreal::ImportWindFile(const FString& FilePath) {
         }
     }
 
+    // ── pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ──
+    if (RootObj->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("WindRiseUnreal: ControlRig not available, "
+                        "pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                RootObj->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                const TArray<TSharedPtr<FJsonValue>>* LocArr = nullptr;
+                if (Entry->TryGetArrayField(TEXT("location"), LocArr) &&
+                    LocArr->Num() == 3) {
+                    CurrentTransform.SetLocation(FVector(
+                        (*LocArr)[0]->AsNumber(), (*LocArr)[1]->AsNumber(),
+                        (*LocArr)[2]->AsNumber()));
+                }
+                FInstrumentControlRigUtility::SetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PolePair.Key, CurrentTransform);
+            }
+        }
+    }
+
     Modify();
 
     UE_LOG(LogTemp, Log,
@@ -496,7 +536,7 @@ void AWindRiseUnreal::ImportWindFile(const FString& FilePath) {
     FSlateNotificationManager::Get().AddNotification(Info);
 }
 
-void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
+void AWindRiseUnreal::ExportWindFile(const FString& FilePath, bool bToBlender) {
     TSharedPtr<FJsonObject> RootObj = MakeShareable(new FJsonObject);
 
     // ── config ──
@@ -505,7 +545,7 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
     ConfigObj->SetNumberField(TEXT("min_note"), MinNote);
     ConfigObj->SetNumberField(TEXT("max_note"), MaxNote);
     ConfigObj->SetStringField(TEXT("description"), Description);
-    ConfigObj->SetBoolField(TEXT("is_unreal"), true);
+    ConfigObj->SetBoolField(TEXT("is_unreal"), !bToBlender);
 
     TArray<TSharedPtr<FJsonValue>> FSKArr;
     for (const FString& Name : CharacterMorphTargets) {
@@ -523,13 +563,17 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
 
     // ── rest_offset（可选，非单位置时导出）──
     if (!RestOffset.Equals(FTransform::Identity)) {
+        FVector RestLoc = RestOffset.GetLocation();
+        FQuat RestRot = RestOffset.GetRotation();
+        if (bToBlender) {
+            RestLoc = FCoordinateTransformUtility::ToBlenderPosition(RestLoc);
+            RestRot = FCoordinateTransformUtility::ToBlenderRotation(RestRot);
+        }
         TSharedPtr<FJsonObject> RestOffsetObj = MakeShareable(new FJsonObject);
+        RestOffsetObj->SetArrayField(TEXT("location"),
+                                     FWindRiseHelpers::VecToJsonArray(RestLoc));
         RestOffsetObj->SetArrayField(
-            TEXT("location"),
-            FWindRiseHelpers::VecToJsonArray(RestOffset.GetLocation()));
-        RestOffsetObj->SetArrayField(
-            TEXT("rotation"),
-            FWindRiseHelpers::QuatToJsonArray(RestOffset.GetRotation()));
+            TEXT("rotation"), FWindRiseHelpers::QuatToJsonArray(RestRot));
         RootObj->SetObjectField(TEXT("rest_offset"), RestOffsetObj);
     }
 
@@ -545,8 +589,8 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
         TSharedPtr<FJsonObject> ControllersObj = MakeShareable(new FJsonObject);
         for (const auto& CtrlPair : State.Controllers) {
             TSharedPtr<FJsonObject> CtrlObj =
-                FWindRiseHelpers::TransformToControllerJson(CtrlPair.Key,
-                                                            CtrlPair.Value);
+                FWindRiseHelpers::TransformToControllerJson(
+                    CtrlPair.Key, CtrlPair.Value, bToBlender);
             ControllersObj->SetObjectField(CtrlPair.Key, CtrlObj);
         }
         NoteObj->SetObjectField(TEXT("controllers"), ControllersObj);
@@ -578,6 +622,32 @@ void AWindRiseUnreal::ExportWindFile(const FString& FilePath) {
         NoteInfoArr.Add(MakeShareable(new FJsonValueObject(NoteObj)));
     }
     RootObj->SetArrayField(TEXT("note_info"), NoteInfoArr);
+
+    // ── pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender
+    // 时转换到 Blender 系；从 Control Rig 直接读取） ──
+    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        for (const auto& PolePair : PoleControllers) {
+            const FString& PoleName = PolePair.Value;
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Loc = PoleTransform.GetLocation();
+                if (bToBlender) {
+                    Loc = FCoordinateTransformUtility::ToBlenderPosition(Loc);
+                }
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FWindRiseHelpers::VecToJsonArray(Loc));
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            RootObj->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
+    }
 
     // ── 序列化写入 ──
     FString JsonContent;

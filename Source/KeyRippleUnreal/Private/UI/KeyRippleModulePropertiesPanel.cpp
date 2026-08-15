@@ -52,7 +52,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("OneHandFingerNumber"), KeyRipple->OneHandFingerNumber,
-        TEXT("OneHandFingerNumber"), 
+        TEXT("OneHandFingerNumber"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -60,7 +60,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("LeftestPosition"), KeyRipple->LeftestPosition,
-        TEXT("LeftestPosition"), 
+        TEXT("LeftestPosition"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -75,7 +75,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("MiddleLeftPosition"), KeyRipple->MiddleLeftPosition,
-        TEXT("MiddleLeftPosition"), 
+        TEXT("MiddleLeftPosition"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -83,7 +83,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("MiddleRightPosition"), KeyRipple->MiddleRightPosition,
-        TEXT("MiddleRightPosition"), 
+        TEXT("MiddleRightPosition"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -98,21 +98,21 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
         TEXT("RightestPosition"), KeyRipple->RightestPosition,
-        TEXT("RightestPosition"), 
+        TEXT("RightestPosition"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
-        TEXT("MinKey"), KeyRipple->MinKey, TEXT("MinKey"), 
+        TEXT("MinKey"), KeyRipple->MinKey, TEXT("MinKey"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[FCommonPanelUtility::CreateNumericPropertyRow(
-        TEXT("MaxKey"), KeyRipple->MaxKey, TEXT("MaxKey"), 
+        TEXT("MaxKey"), KeyRipple->MaxKey, TEXT("MaxKey"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
         })];
@@ -122,7 +122,7 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
         TEXT("HandRange"), KeyRipple->HandRange, TEXT("HandRange"),
         [this](const FString& PropertyPath, int32 NewValue) {
             OnNumericPropertyChanged(PropertyPath, NewValue);
-        })];    
+        })];
 
     // File path properties
     Container->AddSlot().AutoHeight().Padding(
@@ -130,35 +130,40 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
         5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("File Paths"))];
 
     // IOFilePath comes from base class AInstrumentBase
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
-            TEXT("IO File Path"), KeyRipple->IOFilePath, TEXT("IOFilePath"),
-            TEXT(".avatar"),
-            [this](const FString& NewPath) {
-                if (KeyRippleActor.IsValid()) {
-                    KeyRippleActor->Modify();
-                    KeyRippleActor->IOFilePath = NewPath;
-                    UE_LOG(LogTemp, Warning, TEXT("KeyRipple: IO File Path updated to: %s"), *NewPath);
-                }
-            },
-            true)];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("IO File Path"), KeyRipple->IOFilePath, TEXT("IOFilePath"),
+        TEXT(".avatar"),
+        [this](const FString& NewPath) {
+            if (KeyRippleActor.IsValid()) {
+                KeyRippleActor->Modify();
+                KeyRippleActor->IOFilePath = NewPath;
+                UE_LOG(LogTemp, Warning,
+                       TEXT("KeyRipple: IO File Path updated to: %s"),
+                       *NewPath);
+            }
+        },
+        true)];
 
     // Initialization Operations Section
     Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f,
         5.0f)[FCommonPanelUtility::CreateSectionHeader(TEXT("Initialization"))];
 
-    Container->AddSlot().AutoHeight().Padding(5.0f)
-        [SNew(SButton)
-             .Text(LOCTEXT("CheckObjectsStatusButton", "Check Player Control Rig Status"))
-             .OnClicked(this,
-                        &SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus)
-             .HAlign(HAlign_Center)
-             .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("CheckObjectsStatusButton",
+                                "Check Player Control Rig Status"))
+                  .OnClicked(
+                      this,
+                      &SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
     Container->AddSlot().AutoHeight().Padding(
         5.0f)[SNew(SButton)
-                  .Text(LOCTEXT("SetupAllObjectsButton", "Setup Player Control Rig"))
+                  .Text(LOCTEXT("SetupAllObjectsButton",
+                                "Setup Player Control Rig"))
                   .OnClicked(
                       this, &SKeyRippleModulePropertiesPanel::OnSetupAllObjects)
                   .HAlign(HAlign_Center)
@@ -184,6 +189,26 @@ void SKeyRippleModulePropertiesPanel::CreatePropertyWidgets() {
                         &SKeyRippleModulePropertiesPanel::OnImportRecorderInfo)
              .HAlign(HAlign_Center)
              .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
+
+    // Export to Blender Section
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 5.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Export to Blender"))];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[FCommonPanelUtility::CreateFilePathPropertyRowWithCallback(
+        TEXT("Blender File Path"), BlenderExportFilePath,
+        TEXT("BlenderExportFilePath"), TEXT(".avatar"),
+        [this](const FString& NewPath) { BlenderExportFilePath = NewPath; },
+        true)];
+
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f)[SNew(SButton)
+                  .Text(LOCTEXT("ExportToBlenderButton", "Export to Blender"))
+                  .OnClicked(
+                      this, &SKeyRippleModulePropertiesPanel::OnExportToBlender)
+                  .HAlign(HAlign_Center)
+                  .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 }
 
 void SKeyRippleModulePropertiesPanel::OnNumericPropertyChanged(
@@ -234,7 +259,9 @@ void SKeyRippleModulePropertiesPanel::OnStringPropertyChanged(
 
 FReply SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for check player control rig status"))
+        UE_LOG(LogTemp, Error,
+               TEXT("KeyRipple: No actor selected for check player control rig "
+                    "status"))
         return FReply::Handled();
     }
 
@@ -244,7 +271,9 @@ FReply SKeyRippleModulePropertiesPanel::OnCheckObjectsStatus() {
 
 FReply SKeyRippleModulePropertiesPanel::OnSetupAllObjects() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for setup player control rig"))
+        UE_LOG(
+            LogTemp, Error,
+            TEXT("KeyRipple: No actor selected for setup player control rig"))
         return FReply::Handled();
     }
 
@@ -254,25 +283,52 @@ FReply SKeyRippleModulePropertiesPanel::OnSetupAllObjects() {
 
 FReply SKeyRippleModulePropertiesPanel::OnExportRecorderInfo() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for export player info"))
+        UE_LOG(LogTemp, Error,
+               TEXT("KeyRipple: No actor selected for export player info"))
         return FReply::Handled();
     }
 
-    if (!FCommonPanelUtility::ConfirmExportOverwrite(KeyRippleActor->IOFilePath)) {
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(
+            KeyRippleActor->IOFilePath)) {
         return FReply::Handled();
     }
 
-    KeyRippleActor->ExportRecorderInfo();
+    KeyRippleActor->ExportRecorderInfo(KeyRippleActor->IOFilePath);
     return FReply::Handled();
 }
 
 FReply SKeyRippleModulePropertiesPanel::OnImportRecorderInfo() {
     if (!KeyRippleActor.IsValid()) {
-        UE_LOG(LogTemp, Error, TEXT("KeyRipple: No actor selected for import player info"))
+        UE_LOG(LogTemp, Error,
+               TEXT("KeyRipple: No actor selected for import player info"))
         return FReply::Handled();
     }
 
     KeyRippleActor->ImportRecorderInfo();
+    return FReply::Handled();
+}
+
+FReply SKeyRippleModulePropertiesPanel::OnExportToBlender() {
+    if (!KeyRippleActor.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("KeyRipple: No actor selected for export to blender"));
+        return FReply::Handled();
+    }
+
+    if (BlenderExportFilePath.IsEmpty()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("KeyRipple: Blender export file path is empty"));
+        return FReply::Handled();
+    }
+
+    if (!FCommonPanelUtility::ConfirmExportOverwrite(BlenderExportFilePath)) {
+        return FReply::Handled();
+    }
+
+    KeyRippleActor->ExportRecorderInfo(BlenderExportFilePath, true);
+    UE_LOG(LogTemp, Warning,
+           TEXT("KeyRipple: Export to Blender triggered -> %s"),
+           *BlenderExportFilePath);
     return FReply::Handled();
 }
 #undef LOCTEXT_NAMESPACE

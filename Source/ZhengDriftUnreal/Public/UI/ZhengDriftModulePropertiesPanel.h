@@ -9,7 +9,7 @@
  */
 class ZHENGDRIFTUNREAL_API SZhengDriftModulePropertiesPanel
     : public SModulePropertiesPanel {
-public:
+   public:
     SLATE_BEGIN_ARGS(SZhengDriftModulePropertiesPanel) {}
     SLATE_END_ARGS()
 
@@ -19,10 +19,10 @@ public:
     virtual bool CanHandleActor(const AActor* InActor) const override;
     virtual void RefreshProperties() override;
 
-protected:
+   protected:
     virtual void CreatePropertyWidgets() override;
 
-private:
+   private:
     TWeakObjectPtr<AZhengDriftUnreal> ZhengDriftActor;
 
     void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
@@ -31,4 +31,8 @@ private:
     FReply OnExportRecorderInfo();
     FReply OnImportRecorderInfo();
     FReply OnInitZhengInstrument();
+    FReply OnExportToBlender();
+
+    // Blender 格式导出文件路径（在资源管理器中选择）
+    FString BlenderExportFilePath;
 };

@@ -1,9 +1,10 @@
-﻿#include "ZhengDriftUnreal.h"
+#include "ZhengDriftUnreal.h"
 
 #include "Animation/SkeletalMeshActor.h"
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "InstrumentAnimationUtility.h"
@@ -548,7 +549,8 @@ void AZhengDriftUnreal::TriggerControlRigReregistration(
 // ExportRecorderInfo / ImportRecorderInfo
 // ============================================================
 
-void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
+void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath,
+                                           bool bToBlender) {
     if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error,
                TEXT("ZhengDrift::ExportRecorderInfo: FilePath is empty"));
@@ -556,9 +558,13 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
     }
 
     TSharedPtr<FJsonObject> Root = MakeShareable(new FJsonObject);
+    // 顶层源标记：Rust 端按顶层 is_blender 判断坐标系（true=Blender
+    // 右手系，false=Unreal）
+    Root->SetBoolField(TEXT("is_blender"), bToBlender);
 
     // 辅助 lambda：将记录器名称列表的 Transform 写入 JSON 对象
     // 字段名 "rotation" 与 .zheng_master 格式保持一致
+    // bToBlender 时转换到 Blender 坐标系
     auto WriteCategory = [&](const FString& CategoryName,
                              const TMap<FString, FString>& RecorderMap) {
         TSharedPtr<FJsonObject> CatObj = MakeShareable(new FJsonObject);
@@ -567,12 +573,20 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     T->Location)
+                               : T->Location;
+                FQuat Rotation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                     T->Rotation)
+                               : T->Rotation;
                 Entry->SetArrayField(
                     TEXT("location"),
-                    FZhengDriftHelpers::VecToJsonArray(T->Location));
+                    FZhengDriftHelpers::VecToJsonArray(Location));
                 Entry->SetArrayField(
                     TEXT("rotation"),
-                    FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
+                    FZhengDriftHelpers::QuatToJsonArray(Rotation));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -589,12 +603,20 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     T->Location)
+                               : T->Location;
+                FQuat Rotation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                     T->Rotation)
+                               : T->Rotation;
                 Entry->SetArrayField(
                     TEXT("location"),
-                    FZhengDriftHelpers::VecToJsonArray(T->Location));
+                    FZhengDriftHelpers::VecToJsonArray(Location));
                 Entry->SetArrayField(
                     TEXT("rotation"),
-                    FZhengDriftHelpers::QuatToJsonArray(T->Rotation));
+                    FZhengDriftHelpers::QuatToJsonArray(Rotation));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -616,9 +638,13 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     T->Location)
+                               : T->Location;
                 Entry->SetArrayField(
                     TEXT("location"),
-                    FZhengDriftHelpers::VecToJsonArray(T->Location));
+                    FZhengDriftHelpers::VecToJsonArray(Location));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -627,11 +653,45 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // OTHER_SETTINGS：源标记
+    // OTHER_SETTINGS：源标记（导出 Blender 格式时
+    // is_unreal=false、is_blender=true）
     {
         TSharedPtr<FJsonObject> SettingsObj = MakeShareable(new FJsonObject);
-        SettingsObj->SetBoolField(TEXT("is_unreal"), true);
+        SettingsObj->SetBoolField(TEXT("is_unreal"), !bToBlender);
+        SettingsObj->SetBoolField(TEXT("is_blender"), bToBlender);
         Root->SetObjectField(TEXT("OTHER_SETTINGS"), SettingsObj);
+    }
+
+    // pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender 时
+    // 转换到 Blender 系；从 Control Rig 直接读取，SaveState 不涉及）
+    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        const TArray<FString> PoleNames = {
+            TEXT("TP_L"),     TEXT("I_L_pole"), TEXT("M_L_pole"),
+            TEXT("R_L_pole"), TEXT("P_L_pole"), TEXT("TP_R"),
+            TEXT("I_R_pole"), TEXT("M_R_pole"), TEXT("R_R_pole"),
+            TEXT("P_R_pole"),
+        };
+        for (const FString& PoleName : PoleNames) {
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Location =
+                    bToBlender
+                        ? FCoordinateTransformUtility::ToBlenderPosition(
+                              PoleTransform.GetLocation())
+                        : PoleTransform.GetLocation();
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FZhengDriftHelpers::VecToJsonArray(Location));
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            Root->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
     }
 
     FString Output;
@@ -728,6 +788,44 @@ bool AZhengDriftUnreal::ImportRecorderInfo(const FString& FilePath) {
             }
             RecorderTransforms.FindOrAdd(HelperName) = T;
             ImportedCount++;
+        }
+    }
+
+    // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
+    if (Root->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ZhengDrift::ImportRecorderInfo: ControlRig not "
+                        "available, pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                Root->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                if (Entry->HasField(TEXT("location"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        Entry->GetArrayField(TEXT("location"));
+                    FVector Loc;
+                    if (FZhengDriftHelpers::ReadLocationFromArray(LocArray,
+                                                                  Loc)) {
+                        CurrentTransform.SetLocation(Loc);
+                    }
+                }
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    ImportedCount++;
+                }
+            }
         }
     }
 

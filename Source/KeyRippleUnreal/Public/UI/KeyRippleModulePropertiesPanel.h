@@ -33,11 +33,15 @@ class KEYRIPPLEUNREAL_API SKeyRippleModulePropertiesPanel
     void OnNumericPropertyChanged(const FString& PropertyPath, int32 NewValue);
     void OnStringPropertyChanged(const FString& PropertyPath,
                                  const FString& NewValue);
-    void OnEnumPropertyChanged(const FString& PropertyPath, uint8 NewValue);    
+    void OnEnumPropertyChanged(const FString& PropertyPath, uint8 NewValue);
 
     // Initialization operation handlers
     FReply OnCheckObjectsStatus();
     FReply OnSetupAllObjects();
     FReply OnExportRecorderInfo();
     FReply OnImportRecorderInfo();
+    FReply OnExportToBlender();
+
+    // Blender 格式导出文件路径（在资源管理器中选择）
+    FString BlenderExportFilePath;
 };

@@ -11,7 +11,8 @@ class ABeatBloomUnreal;
  *
  * 布局：
  * - Basic Properties：Performer / DrumKit 骨骼引用、实时同步开关
- * - IO Configuration：Settings 文件路径、Animation 文件路径、DrumKit Config 路径
+ * - IO Configuration：Settings 文件路径、Animation 文件路径、DrumKit Config
+ * 路径
  * - DrumKit Info（只读）：配置名称、肢体列表、鼓件数量、特殊动作数量
  *
  * 对标参考：SFretDanceModulePropertiesPanel
@@ -20,7 +21,7 @@ DECLARE_DELEGATE(FOnBeatBloomDrumKitConfigLoaded);
 
 class BEATBLOOMUNREAL_API SBeatBloomModulePropertiesPanel
     : public SModulePropertiesPanel {
-public:
+   public:
     SLATE_BEGIN_ARGS(SBeatBloomModulePropertiesPanel) {}
     SLATE_END_ARGS()
 
@@ -34,10 +35,10 @@ public:
     virtual bool CanHandleActor(const AActor* InActor) const override;
     virtual void RefreshProperties() override;
 
-protected:
+   protected:
     virtual void CreatePropertyWidgets() override;
 
-private:
+   private:
     TWeakObjectPtr<ABeatBloomUnreal> BeatBloomActor;
 
     // 属性变更处理
@@ -51,4 +52,8 @@ private:
     FReply OnCheckObjectsStatus();
     FReply OnExportRecorderInfo();
     FReply OnImportRecorderInfo();
+    FReply OnExportToBlender();
+
+    // Blender 格式导出文件路径（在资源管理器中选择）
+    FString BlenderExportFilePath;
 };

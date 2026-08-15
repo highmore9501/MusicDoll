@@ -1,4 +1,4 @@
-﻿#include "KeyRippleUnreal.h"
+#include "KeyRippleUnreal.h"
 
 #include <fstream>
 #include <map>
@@ -9,11 +9,13 @@
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "InstrumentControlRigUtility.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -341,9 +343,31 @@ static bool JsonArrayToQuat(const TArray<TSharedPtr<FJsonValue>>& Array,
 // Export/Import helper functions
 // ========================================
 
+static UControlRig* GetKeyRipplePerformerControlRig(
+    AKeyRippleUnreal* KeyRippleActor) {
+    // 与 KeyRippleControlRigProcessor 相同的取 rig 方式（缓存子系统 + 当前
+    // LevelSequence）；失败返回 nullptr，调用方静默跳过 pole 读写。
+    if (!KeyRippleActor || !GEngine) {
+        return nullptr;
+    }
+    UControlRigCacheSubsystem* CacheSubsystem =
+        GEngine->GetEngineSubsystem<UControlRigCacheSubsystem>();
+    if (!CacheSubsystem) {
+        return nullptr;
+    }
+    ULevelSequence* LevelSequence =
+        UInstrumentAnimationUtility::GetCurrentLevelSequence();
+    if (!LevelSequence || !KeyRippleActor->SkeletalMeshActor) {
+        return nullptr;
+    }
+    return CacheSubsystem->GetControlRig(KeyRippleActor->SkeletalMeshActor,
+                                         LevelSequence);
+}
+
 static void ProcessTransformDataForStringArray(
     AKeyRippleUnreal* KeyRippleActor, TSharedPtr<FJsonObject> JsonObject,
-    const TMap<FString, FStringArray>& Recorders, const FString& CategoryName) {
+    const TMap<FString, FStringArray>& Recorders, const FString& CategoryName,
+    bool bToBlender = false) {
     TSharedPtr<FJsonObject> CategoryObject = MakeShareable(new FJsonObject);
 
     for (const auto& RecorderListPair : Recorders) {
@@ -359,14 +383,21 @@ static void ProcessTransformDataForStringArray(
                 TSharedPtr<FJsonObject> RecorderObject =
                     MakeShareable(new FJsonObject);
 
-                RecorderObject->SetArrayField(
-                    TEXT("rotation_quaternion"),
-                    QuatToJsonArray(FoundTransform->Rotation));
+                FQuat Rotation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                     FoundTransform->Rotation)
+                               : FoundTransform->Rotation;
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     FoundTransform->Location)
+                               : FoundTransform->Location;
+
+                RecorderObject->SetArrayField(TEXT("rotation_quaternion"),
+                                              QuatToJsonArray(Rotation));
                 RecorderObject->SetStringField(TEXT("rotation_mode"),
                                                TEXT("QUATERNION"));
-                RecorderObject->SetArrayField(
-                    TEXT("location"),
-                    VectorToJsonArray(FoundTransform->Location));
+                RecorderObject->SetArrayField(TEXT("location"),
+                                              VectorToJsonArray(Location));
 
                 ListObject->SetObjectField(*RecorderName, RecorderObject);
             }
@@ -381,7 +412,8 @@ static void ProcessTransformDataForStringArray(
 static void ProcessTransformData(AKeyRippleUnreal* KeyRippleActor,
                                  TSharedPtr<FJsonObject> JsonObject,
                                  const TMap<FString, FString>& SimpleData,
-                                 const FString& CategoryName) {
+                                 const FString& CategoryName,
+                                 bool bToBlender = false) {
     TSharedPtr<FJsonObject> CategoryObject = MakeShareable(new FJsonObject);
 
     for (const auto& DataPair : SimpleData) {
@@ -395,13 +427,20 @@ static void ProcessTransformData(AKeyRippleUnreal* KeyRippleActor,
         const FRecorderTransform* FoundTransform =
             KeyRippleActor->RecorderTransforms.Find(RecorderName);
         if (FoundTransform) {
-            DataObject->SetArrayField(
-                TEXT("location"), VectorToJsonArray(FoundTransform->Location));
+            FVector Location =
+                bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                 FoundTransform->Location)
+                           : FoundTransform->Location;
+            DataObject->SetArrayField(TEXT("location"),
+                                      VectorToJsonArray(Location));
 
             if (isGuildLine) {
-                DataObject->SetArrayField(
-                    TEXT("rotation_quaternion"),
-                    QuatToJsonArray(FoundTransform->Rotation));
+                FQuat Rotation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                     FoundTransform->Rotation)
+                               : FoundTransform->Rotation;
+                DataObject->SetArrayField(TEXT("rotation_quaternion"),
+                                          QuatToJsonArray(Rotation));
                 DataObject->SetStringField(TEXT("rotation_mode"),
                                            TEXT("QUATERNION"));
             }
@@ -561,20 +600,21 @@ static void ProcessImportConfigParameters(AKeyRippleUnreal* KeyRippleActor,
     UE_LOG(LogTemp, Warning, TEXT("  ✓ Config parameters imported"));
 }
 
-void AKeyRippleUnreal::ExportRecorderInfo() {
+void AKeyRippleUnreal::ExportRecorderInfo(const FString& FilePath,
+                                          bool bToBlender) {
     if (!this) {
         UE_LOG(LogTemp, Error,
                TEXT("ExportRecorderInfo: KeyRippleActor is null"));
         return;
     }
 
-    if (IOFilePath.IsEmpty()) {
+    if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error,
-               TEXT("IOFilePath is empty, cannot export recorder info"));
+               TEXT("FilePath is empty, cannot export recorder info"));
         return;
     }
 
-    FString OutputFilePath = FString::Printf(TEXT("%s"), *IOFilePath);
+    FString OutputFilePath = FilePath;
     UE_LOG(LogTemp, Warning, TEXT("Exporting to file: %s"), *OutputFilePath);
 
     TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
@@ -594,17 +634,45 @@ void AKeyRippleUnreal::ExportRecorderInfo() {
     ConfigObject->SetNumberField(TEXT("min_key"), MinKey);
     ConfigObject->SetNumberField(TEXT("max_key"), MaxKey);
     ConfigObject->SetNumberField(TEXT("hand_range"), HandRange);
-    ConfigObject->SetBoolField(TEXT("is_unreal"), true);
+    ConfigObject->SetBoolField(TEXT("is_unreal"), !bToBlender);
     JsonObject->SetObjectField(TEXT("config"), ConfigObject);
 
     ProcessTransformDataForStringArray(this, JsonObject, FingerRecorders,
-                                       TEXT("finger_recorders"));
+                                       TEXT("finger_recorders"), bToBlender);
     ProcessTransformDataForStringArray(this, JsonObject, HandRecorders,
-                                       TEXT("hand_recorders"));
+                                       TEXT("hand_recorders"), bToBlender);
     ProcessTransformDataForStringArray(this, JsonObject, TargetPointsRecorders,
-                                       TEXT("target_points_recorders"));
+                                       TEXT("target_points_recorders"),
+                                       bToBlender);
     ProcessTransformData(this, JsonObject, KeyBoardPositions,
-                         TEXT("key_board_positions"));
+                         TEXT("key_board_positions"), bToBlender);
+
+    // === pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender
+    // 时转换到 Blender 系；从 Control Rig 直接读取，SaveState 不涉及） ===
+    UControlRig* PoleCR = GetKeyRipplePerformerControlRig(this);
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        for (const auto& FingerPair : FingerControllers) {
+            FString PoleName =
+                FString::Printf(TEXT("pole_%s"), *FingerPair.Key);
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Location =
+                    bToBlender
+                        ? FCoordinateTransformUtility::ToBlenderPosition(
+                              PoleTransform.GetLocation())
+                        : PoleTransform.GetLocation();
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(TEXT("location"),
+                                     VectorToJsonArray(Location));
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            JsonObject->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
+    }
 
     FString OutputString;
     TSharedRef<TJsonWriter<>> Writer =
@@ -680,6 +748,43 @@ bool AKeyRippleUnreal::ImportRecorderInfo() {
 
     ProcessImportTransformData(this, JsonObject, TEXT("key_board_positions"),
                                ImportedCount, FailedCount);
+
+    // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
+    if (JsonObject->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetKeyRipplePerformerControlRig(this);
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ImportRecorderInfo: ControlRig not available, "
+                        "pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                JsonObject->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                if (Entry->HasField(TEXT("location"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        Entry->GetArrayField(TEXT("location"));
+                    FVector Loc;
+                    if (JsonArrayToVector(LocArray, Loc)) {
+                        CurrentTransform.SetLocation(Loc);
+                    }
+                }
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    ImportedCount++;
+                }
+            }
+        }
+    }
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== ImportRecorderInfo Summary =========="));

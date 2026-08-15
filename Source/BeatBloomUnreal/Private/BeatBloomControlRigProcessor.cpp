@@ -1,4 +1,4 @@
-﻿#include "BeatBloomControlRigProcessor.h"
+#include "BeatBloomControlRigProcessor.h"
 
 #include "BeatBloomUnreal.h"
 #include "BoneControlMappingUtility.h"
@@ -37,10 +37,9 @@ void UBeatBloomControlRigProcessor::SaveHandState(
     int32 SavedCount = 0;
     int32 FailedCount = 0;
 
-    // 手部控制器列表
-    TArray<FString> HandControllers = {
-        TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-        TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R")};
+    // 手部控制器列表（H_L/H_R 记录器同时含位置 + 旋转）
+    TArray<FString> HandControllers = {TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"),
+                                       TEXT("HP_R")};
 
     // 遍历所有手部控制器并保存
     for (const FString& ControllerName : HandControllers) {
@@ -53,18 +52,11 @@ void UBeatBloomControlRigProcessor::SaveHandState(
             continue;
         }
 
-        // 对于旋转控制器，重定位到对应的位置控制器读取数据
-        FString ActualControllerName = ControllerName;
-        if (ControllerName == TEXT("H_rotation_L")) {
-            ActualControllerName = TEXT("H_L");
-        } else if (ControllerName == TEXT("H_rotation_R")) {
-            ActualControllerName = TEXT("H_R");
-        }
-
+        // 旋转已并入 H_L/H_R 主控件，不再有独立的 H_rotation_ 控制器
         FVector Location;
         FQuat Rotation;
-        if (ReadControllerTransform(BeatBloomActor, ActualControllerName,
-                                    Location, Rotation)) {
+        if (ReadControllerTransform(BeatBloomActor, ControllerName, Location,
+                                    Rotation)) {
             // 根据控制器类型决定保存的数据
             FBeatBloomRecorderTransform RecorderTransform;
 
@@ -86,7 +78,7 @@ void UBeatBloomControlRigProcessor::SaveHandState(
         } else {
             UE_LOG(LogTemp, Error,
                    TEXT("BeatBloom: Failed to read controller %s"),
-                   *ActualControllerName);
+                   *ControllerName);
             FailedCount++;
         }
     }
@@ -123,9 +115,8 @@ void UBeatBloomControlRigProcessor::SaveFootState(
     int32 SavedCount = 0;
     int32 FailedCount = 0;
 
-    // 脚部控制器列表
-    TArray<FString> FootControllers = {TEXT("F_L"), TEXT("F_rotation_L"),
-                                       TEXT("F_R"), TEXT("F_rotation_R")};
+    // 脚部控制器列表（F_L/F_R 记录器同时含位置 + 旋转）
+    TArray<FString> FootControllers = {TEXT("F_L"), TEXT("F_R")};
 
     // 遍历所有脚部控制器并保存
     for (const FString& ControllerName : FootControllers) {
@@ -138,18 +129,11 @@ void UBeatBloomControlRigProcessor::SaveFootState(
             continue;
         }
 
-        // 对于脚部旋转控制器，重定位到对应的位置控制器读取数据
-        FString ActualControllerName = ControllerName;
-        if (ControllerName == TEXT("F_rotation_L")) {
-            ActualControllerName = TEXT("F_L");
-        } else if (ControllerName == TEXT("F_rotation_R")) {
-            ActualControllerName = TEXT("F_R");
-        }
-
+        // 旋转已并入 F_L/F_R 主控件，不再有独立的 F_rotation_ 控制器
         FVector Location;
         FQuat Rotation;
-        if (ReadControllerTransform(BeatBloomActor, ActualControllerName,
-                                    Location, Rotation)) {
+        if (ReadControllerTransform(BeatBloomActor, ControllerName, Location,
+                                    Rotation)) {
             // 根据控制器类型决定保存的数据
             FBeatBloomRecorderTransform RecorderTransform;
 
@@ -171,7 +155,7 @@ void UBeatBloomControlRigProcessor::SaveFootState(
         } else {
             UE_LOG(LogTemp, Error,
                    TEXT("BeatBloom: Failed to read controller %s"),
-                   *ActualControllerName);
+                   *ControllerName);
             FailedCount++;
         }
     }
@@ -493,20 +477,16 @@ void UBeatBloomControlRigProcessor::SaveAllState(
     SaveHeadControlState(BeatBloomActor);
 
     // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
-    {  // 影响 Hand: H_L,HP_L,H_rotation_L, H_R,HP_R,H_rotation_R (6)
-        //       Foot: F_L,F_R,F_rotation_L,F_rotation_R (4)
+    {  // 影响 Hand: H_L,HP_L,H_R,HP_R (4)
+        //       Foot: F_L,F_R (2)
         //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
-        //       — 默认共 11 个
+        //       — 默认共 7 个
         UControlRig* CR =
             BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
         if (CR) {
             TArray<FString> CtrlNames = {
-                TEXT("H_L"),          TEXT("HP_L"),
-                TEXT("H_rotation_L"), TEXT("H_R"),
-                TEXT("HP_R"),         TEXT("H_rotation_R"),
-                TEXT("F_L"),          TEXT("F_R"),
-                TEXT("F_rotation_L"), TEXT("F_rotation_R"),
-                TEXT("Head_Control"),
+                TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"),          TEXT("HP_R"),
+                TEXT("F_L"), TEXT("F_R"),  TEXT("Head_Control"),
             };
             UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
                                                                     CtrlNames);
@@ -567,11 +547,7 @@ void UBeatBloomControlRigProcessor::LoadState(
         bool bRotationOnly = false;
         bool bZOnly = false;
 
-        if (ControllerName.StartsWith(TEXT("H_rotation")) ||
-            ControllerName.StartsWith(TEXT("F_rotation"))) {
-            // 旋转控制器不需要真实加载
-            continue;
-        } else if (ControllerName == TEXT("Head_Control")) {
+        if (ControllerName == TEXT("Head_Control")) {
             // Head_Control：仅加载位置，不加载旋转
             bLocationOnly = true;
         } else {
@@ -613,20 +589,16 @@ void UBeatBloomControlRigProcessor::LoadState(
     // 完成（它使用新写入的目标关键帧）。
 
     // 在 Sequencer 中为已恢复控制器写入关键帧，防止后续操作导致控件复位
-    {  // 影响 Hand: H_L,HP_L,H_rotation_L, H_R,HP_R,H_rotation_R (6)
-        //       Foot: F_L,F_R,F_rotation_L,F_rotation_R (4)
+    {  // 影响 Hand: H_L,HP_L,H_R,HP_R (4)
+        //       Foot: F_L,F_R (2)
         //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
-        //       — 默认共 11 个
+        //       — 默认共 7 个
         UControlRig* CR =
             BeatBloomActor->GetCachedControlRig(TEXT("Performer"));
         if (CR) {
             TArray<FString> CtrlNames = {
-                TEXT("H_L"),          TEXT("HP_L"),
-                TEXT("H_rotation_L"), TEXT("H_R"),
-                TEXT("HP_R"),         TEXT("H_rotation_R"),
-                TEXT("F_L"),          TEXT("F_R"),
-                TEXT("F_rotation_L"), TEXT("F_rotation_R"),
-                TEXT("Head_Control"),
+                TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"),          TEXT("HP_R"),
+                TEXT("F_L"), TEXT("F_R"),  TEXT("Head_Control"),
             };
             UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
                                                                     CtrlNames);
@@ -750,107 +722,104 @@ int32 UBeatBloomControlRigProcessor::SetupControllers(
         UE_LOG(LogTemp, Warning, TEXT("Created controller: base_root"));
     }
 
-    // 2. 创建 controller_root
+    // 2. 创建 controller_root（EnsureControl：已存在时校验父级为 base_root）
     if (!ControlExists(RigHierarchy, TEXT("controller_root"))) {
-        FControlRigCreationUtility::CreateControl(
+        FControlRigCreationUtility::EnsureControl(
             ControlRigBlueprint, TEXT("controller_root"), TEXT("base_root"));
         CreatedCount++;
         UE_LOG(LogTemp, Warning, TEXT("Created controller: controller_root"));
     }
 
-    // 3. 创建手部控制器
-    TArray<FString> HandControllers = {
-        TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-        TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R")};
+    // 3. 创建手部控制器（H_L/H_R 同时承载位置 + 旋转）
+    TArray<FString> HandControllers = {TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"),
+                                       TEXT("HP_R")};
 
     for (const FString& ControllerName : HandControllers) {
-        if (!ControlExists(RigHierarchy, ControllerName)) {
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
-            CreatedCount++;
-            UE_LOG(LogTemp, Warning, TEXT("Created controller: %s"),
-                   *ControllerName);
-        }
+        bool bExisted = ControlExists(RigHierarchy, ControllerName);
+        // EnsureControl：已存在时校验并修正父级为 controller_root
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
+        if (!bExisted) CreatedCount++;
     }
 
-    // 4. 创建手指控制器和极向量控制器
+    // 4. 创建手指控制器、ext 辅助控件和极向量控制器
     // 手指前缀：T_(thumb),I_(index), M_(middle), R_(ring), P_(pinky)
-    // 极向量后缀：_pole
+    // ext 辅助控件：ext_<手指>，与手指同级，挂在手掌（H_）下
+    // 极向量控制器：<手指>_pole，挂在对应的 ext 控件下
     TArray<FString> FingerPrefixes = {TEXT("T"), TEXT("I"), TEXT("M"),
                                       TEXT("R"), TEXT("P")};
     TArray<FString> HandSuffixes = {TEXT("_L"), TEXT("_R")};
 
     for (const FString& FingerPrefix : FingerPrefixes) {
         for (const FString& HandSuffix : HandSuffixes) {
-            // 创建手指控制器，父级为 H_
+            // 手指控制器，父级为 H_（手掌）
             FString FingerControllerName = FingerPrefix + HandSuffix;
             FString ParentControllerName = TEXT("H") + HandSuffix;
 
-            if (!ControlExists(RigHierarchy, FingerControllerName)) {
-                FControlRigCreationUtility::CreateControl(ControlRigBlueprint,
-                                                          FingerControllerName,
-                                                          ParentControllerName);
-                CreatedCount++;
-                UE_LOG(LogTemp, Warning,
-                       TEXT("Created finger controller: %s (parent: %s)"),
-                       *FingerControllerName, *ParentControllerName);
-            }
+            bool bFingerExisted =
+                ControlExists(RigHierarchy, FingerControllerName);
+            // EnsureControl：已存在时校验并修正父级为手掌
+            FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                      FingerControllerName,
+                                                      ParentControllerName);
+            if (!bFingerExisted) CreatedCount++;
 
-            // 创建手指极向量控制器
+            // ext 辅助控件（父级 = 手掌，与手指同级；仅创建，不设 driver）
+            FString ExtControllerName = TEXT("ext_") + FingerControllerName;
+            if (!ControlExists(RigHierarchy, ExtControllerName)) {
+                CreatedCount++;
+            }
+            FControlRigCreationUtility::EnsureControl(
+                ControlRigBlueprint, ExtControllerName, ParentControllerName);
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Ensured ext controller: %s (parent: %s)"),
+                   *ExtControllerName, *ParentControllerName);
+
+            // 手指极向量控制器（父级 = 对应的 ext 控件）
             FString FingerPoleControllerName =
                 FingerPrefix + TEXT("_pole") + HandSuffix;
 
             if (!ControlExists(RigHierarchy, FingerPoleControllerName)) {
-                FControlRigCreationUtility::CreateControl(
-                    ControlRigBlueprint, FingerPoleControllerName,
-                    ParentControllerName);
                 CreatedCount++;
-                UE_LOG(LogTemp, Warning,
-                       TEXT("Created finger pole controller: %s (parent: %s)"),
-                       *FingerPoleControllerName, *ParentControllerName);
             }
+            FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                      FingerPoleControllerName,
+                                                      ExtControllerName);
+            UE_LOG(LogTemp, Warning,
+                   TEXT("Ensured finger pole controller: %s (parent: %s)"),
+                   *FingerPoleControllerName, *ExtControllerName);
         }
     }
 
-    // 5. 创建脚部控制器
-    TArray<FString> FootControllers = {
-        TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_pole_L"),
-        TEXT("F_R"), TEXT("F_rotation_R"), TEXT("F_pole_R")};
+    // 5. 创建脚部控制器（F_L/F_R 同时承载位置 + 旋转，保留极向量）
+    TArray<FString> FootControllers = {TEXT("F_L"), TEXT("F_pole_L"),
+                                       TEXT("F_R"), TEXT("F_pole_R")};
 
     for (const FString& ControllerName : FootControllers) {
-        if (!ControlExists(RigHierarchy, ControllerName)) {
-            FControlRigCreationUtility::CreateControl(
-                ControlRigBlueprint, ControllerName, TEXT("controller_root"));
-            CreatedCount++;
-            UE_LOG(LogTemp, Warning, TEXT("Created controller: %s"),
-                   *ControllerName);
-        }
+        bool bExisted = ControlExists(RigHierarchy, ControllerName);
+        // EnsureControl：已存在时校验并修正父级为 controller_root
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
+        if (!bExisted) CreatedCount++;
     }
 
     // 6. 创建目标控制器（新的三控制器系统）
     // Middle_Hand 和 Head_Control 挂在 controller_root 下
-    if (!ControlExists(RigHierarchy, TEXT("Middle_Hand"))) {
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, TEXT("Middle_Hand"), TEXT("controller_root"));
-        CreatedCount++;
-        UE_LOG(LogTemp, Warning, TEXT("Created controller: Middle_Hand"));
-    }
+    bool bMiddleHandExisted = ControlExists(RigHierarchy, TEXT("Middle_Hand"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("Middle_Hand"), TEXT("controller_root"));
+    if (!bMiddleHandExisted) CreatedCount++;
 
-    if (!ControlExists(RigHierarchy, TEXT("Head_Control"))) {
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, TEXT("Head_Control"), TEXT("controller_root"));
-        CreatedCount++;
-        UE_LOG(LogTemp, Warning, TEXT("Created controller: Head_Control"));
-    }
+    bool bHeadExisted = ControlExists(RigHierarchy, TEXT("Head_Control"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("Head_Control"), TEXT("controller_root"));
+    if (!bHeadExisted) CreatedCount++;
 
     // Look_At 挂在 Middle_Hand 下
-    if (!ControlExists(RigHierarchy, TEXT("Look_At"))) {
-        FControlRigCreationUtility::CreateControl(
-            ControlRigBlueprint, TEXT("Look_At"), TEXT("Middle_Hand"));
-        CreatedCount++;
-        UE_LOG(LogTemp, Warning,
-               TEXT("Created controller: Look_At (parent: Middle_Hand)"));
-    }
+    bool bLookAtExisted = ControlExists(RigHierarchy, TEXT("Look_At"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("Look_At"), TEXT("Middle_Hand"));
+    if (!bLookAtExisted) CreatedCount++;
 
     // 注意: 双线性映射辅助记录器(Middle_Hand_A/B/C/D, Head_Control_A/B/C/D)
     // 不需要创建 Control Rig 控制器,它们只在 RecorderTransforms 中作为数据存储
@@ -887,14 +856,26 @@ void UBeatBloomControlRigProcessor::CheckObjectsStatus(
     ExpectedControllers.Add(TEXT("base_root"));
     ExpectedControllers.Add(TEXT("controller_root"));
 
-    // 手部控制器 (6个)
-    ExpectedControllers.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-                                TEXT("H_R"), TEXT("HP_R"),
-                                TEXT("H_rotation_R")});
-
-    // 脚部控制器 (4个)
+    // 手部控制器 (4个)
     ExpectedControllers.Append(
-        {TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_R"), TEXT("F_rotation_R")});
+        {TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"), TEXT("HP_R")});
+
+    // 手指控制器 + ext 辅助控件 + 手指极向量（各 10 个，挂手掌下）
+    TArray<FString> FingerPrefixes = {TEXT("T"), TEXT("I"), TEXT("M"),
+                                      TEXT("R"), TEXT("P")};
+    TArray<FString> HandSuffixes = {TEXT("_L"), TEXT("_R")};
+    for (const FString& FingerPrefix : FingerPrefixes) {
+        for (const FString& HandSuffix : HandSuffixes) {
+            FString FingerName = FingerPrefix + HandSuffix;
+            ExpectedControllers.Add(FingerName);
+            ExpectedControllers.Add(TEXT("ext_") + FingerName);
+            ExpectedControllers.Add(FingerPrefix + TEXT("_pole") + HandSuffix);
+        }
+    }
+
+    // 脚部控制器 + 脚部极向量（各 2 个，极向量与脚控件同级）
+    ExpectedControllers.Append(
+        {TEXT("F_L"), TEXT("F_pole_L"), TEXT("F_R"), TEXT("F_pole_R")});
 
     // 目标控制器（新的三控制器系统）
     ExpectedControllers.Append(

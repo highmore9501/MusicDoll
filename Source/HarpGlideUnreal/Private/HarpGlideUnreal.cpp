@@ -4,6 +4,7 @@
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Engine/Engine.h"
 #include "HarpGlideControlRigProcessor.h"
@@ -440,7 +441,8 @@ ASkeletalMeshActor* AHarpGlideUnreal::GetSkeletalMeshActorByName(
 // 导入/导出（.harpist 格式）
 // ============================================================
 
-void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath) {
+void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath,
+                                          bool bToBlender) {
     if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error,
                TEXT("HarpGlide::ExportRecorderInfo: FilePath is empty"));
@@ -458,10 +460,11 @@ void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath) {
     ConfigObj->SetNumberField(TEXT("left_mid_near"), LeftMidNear);
     ConfigObj->SetNumberField(TEXT("right_far"), RightFar);
     ConfigObj->SetNumberField(TEXT("right_near"), RightNear);
-    ConfigObj->SetBoolField(TEXT("is_unreal"), true);
+    ConfigObj->SetBoolField(TEXT("is_unreal"), !bToBlender);
     Root->SetObjectField(TEXT("config"), ConfigObj);
 
-    // 辅助 lambda：将记录器组的 Transform 写入 JSON
+    // 辅助 lambda：将记录器组的 Transform 写入 JSON（bToBlender 时转换到
+    // Blender 系）
     auto WriteCategory = [&](const FString& CategoryName,
                              const TMap<FString, FString>& RecorderMap,
                              bool bIncludeRotation = true) {
@@ -471,13 +474,22 @@ void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     T->Location)
+                               : T->Location;
                 Entry->SetArrayField(
                     TEXT("location"),
-                    FHarpGlideJsonHelpers::VecToJsonArray(T->Location));
+                    FHarpGlideJsonHelpers::VecToJsonArray(Location));
                 if (bIncludeRotation) {
+                    FQuat Rotation =
+                        bToBlender
+                            ? FCoordinateTransformUtility::ToBlenderRotation(
+                                  T->Rotation)
+                            : T->Rotation;
                     Entry->SetArrayField(
                         TEXT("rotation"),
-                        FHarpGlideJsonHelpers::QuatToJsonArray(T->Rotation));
+                        FHarpGlideJsonHelpers::QuatToJsonArray(Rotation));
                 }
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
@@ -495,12 +507,20 @@ void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath) {
                 RecorderTransforms.Find(Pair.Value);
             if (T) {
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                FVector Location =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     T->Location)
+                               : T->Location;
+                FQuat Rotation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                     T->Rotation)
+                               : T->Rotation;
                 Entry->SetArrayField(
                     TEXT("location"),
-                    FHarpGlideJsonHelpers::VecToJsonArray(T->Location));
+                    FHarpGlideJsonHelpers::VecToJsonArray(Location));
                 Entry->SetArrayField(
                     TEXT("rotation"),
-                    FHarpGlideJsonHelpers::QuatToJsonArray(T->Rotation));
+                    FHarpGlideJsonHelpers::QuatToJsonArray(Rotation));
                 CatObj->SetObjectField(*Pair.Value, Entry);
             }
         }
@@ -520,6 +540,33 @@ void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath) {
 
     // 双线性映射辅助控制器（只导出 location）
     WriteCategory(TEXT("BILINEAR_HELPERS"), BilinearHelpers, false);
+
+    // pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender 时
+    // 转换到 Blender 系；从 Control Rig 直接读取，SaveState 不涉及）
+    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        for (const auto& PolePair : HandPoleControllers) {
+            const FString& PoleName = PolePair.Value;
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Location =
+                    bToBlender
+                        ? FCoordinateTransformUtility::ToBlenderPosition(
+                              PoleTransform.GetLocation())
+                        : PoleTransform.GetLocation();
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(
+                    TEXT("location"),
+                    FHarpGlideJsonHelpers::VecToJsonArray(Location));
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            Root->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
+    }
 
     FString Output;
     TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
@@ -625,6 +672,44 @@ bool AHarpGlideUnreal::ImportRecorderInfo(const FString& FilePath) {
     ReadCategory(TEXT("FOOT_REST_RECORDERS"));
     ReadCategory(TEXT("FOOT_CONTROLLERS"));
     ReadCategory(TEXT("BILINEAR_HELPERS"));
+
+    // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
+    if (Root->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("HarpGlide::ImportRecorderInfo: ControlRig not "
+                        "available, pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                Root->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                if (Entry->HasField(TEXT("location"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        Entry->GetArrayField(TEXT("location"));
+                    FVector Loc;
+                    if (FHarpGlideJsonHelpers::ReadLocationFromArray(LocArray,
+                                                                     Loc)) {
+                        CurrentTransform.SetLocation(Loc);
+                    }
+                }
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    ImportedCount++;
+                }
+            }
+        }
+    }
 
     UE_LOG(LogTemp, Warning,
            TEXT("HarpGlide::ImportRecorderInfo: Imported %d recorders from %s"),

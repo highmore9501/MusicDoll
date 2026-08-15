@@ -1,4 +1,4 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "StringFlowUnreal.h"
 
@@ -11,8 +11,10 @@
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "ControlRigBlueprintLegacy.h"
 #include "ControlRigCacheSubsystem.h"
 #include "ControlRigCreationUtility.h"
+#include "CoordinateTransformUtility.h"
 #include "Dom/JsonObject.h"
 #include "Editor/EditorEngine.h"
 #include "Engine/Engine.h"
@@ -24,10 +26,12 @@
 #include "InstrumentAnimationUtility.h"
 #include "InstrumentControlRigUtility.h"
 #include "InstrumentMorphTargetUtility.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "LevelEditorSequencerIntegration.h"
 #include "LevelSequenceActor.h"
 #include "MoviePipelineQueueSubsystem.h"
 #include "MovieRenderPipelineCoreModule.h"
+#include "Rigs/RigHierarchy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -85,8 +89,6 @@ FString AStringFlowUnreal::GetHandControllerName(
         BaseName = FString(TEXT("H")) + HandStr;
     } else if (HandControllerType == TEXT("hand_pivot_controller")) {
         BaseName = FString(TEXT("HP")) + HandStr;
-    } else if (HandControllerType == TEXT("hand_rotation_controller")) {
-        BaseName = FString(TEXT("H_rotation")) + HandStr;
     } else if (HandControllerType == TEXT("thumb_controller")) {
         BaseName = FString(TEXT("T")) + HandStr;
     } else {
@@ -105,8 +107,6 @@ FString AStringFlowUnreal::GetLeftHandRecorderName(
         HandControllerBaseName = TEXT("H");
     } else if (HandControllerType == TEXT("hand_pivot_controller")) {
         HandControllerBaseName = TEXT("HP");
-    } else if (HandControllerType == TEXT("hand_rotation_controller")) {
-        HandControllerBaseName = TEXT("H_rotation");
     } else if (HandControllerType == TEXT("thumb_controller")) {
         HandControllerBaseName = TEXT("T");
     }
@@ -126,8 +126,6 @@ FString AStringFlowUnreal::GetRightHandRecorderName(
         HandControllerBaseName = TEXT("H");
     } else if (HandControllerType == TEXT("hand_pivot_controller")) {
         HandControllerBaseName = TEXT("HP");
-    } else if (HandControllerType == TEXT("hand_rotation_controller")) {
-        HandControllerBaseName = TEXT("H_rotation");
     } else if (HandControllerType == TEXT("thumb_controller")) {
         HandControllerBaseName = TEXT("T");
     }
@@ -183,7 +181,6 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
 
     // ========== 初始化辅助线 ==========
     GuideLines.Empty();
-    GuideLines.Add(TEXT("violin_normal_line"), TEXT("violin_normal_line"));
 
     // ========== 初始化左手手指记录器 ==========
     // 结构: p_s{StringIndex}_f{FretIndex}_{FingerNumber}_L_{PositionType}
@@ -354,6 +351,9 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
             other_recorders_array.Add(PositionRecorderName);
         }
 
+        // 中间品板参考点：定义指板平面所需的第三点
+        other_recorders_array.Add(TEXT("middle_fret_board_position"));
+
         // 触弦点和弓位置记录器 (为每种右手位置类型)
         for (EStringFlowRightHandPositionType PositionType :
              {EStringFlowRightHandPositionType::NEAR,
@@ -370,12 +370,6 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
             FString BowRecorderName = FString::Printf(
                 TEXT("bow_position_s%d_%s"), StringIndex, *PositionStr);
             other_recorders_array.Add(BowRecorderName);
-
-            // Right_Hand_Tar 记录器
-            // (right_hand_tar_{PositionType}_s{StringIndex})
-            FString RHTRecorderName = FString::Printf(
-                TEXT("right_hand_tar_%s_s%d"), *PositionStr, StringIndex);
-            other_recorders_array.Add(RHTRecorderName);
         }
     }
     OtherRecorders.Add(TEXT("other_recorders"), other_recorders_array);
@@ -522,7 +516,8 @@ void AStringFlowUnreal::SetCustomInstrumentConfig(
     }
 }
 
-void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
+void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath,
+                                           bool bToBlender) {
     if (FilePath.IsEmpty()) {
         UE_LOG(LogTemp, Error, TEXT("ExportRecorderInfo: FilePath is empty"));
         return;
@@ -535,7 +530,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     ConfigObject->SetNumberField(TEXT("one_hand_finger_number"),
                                  OneHandFingerNumber);
     ConfigObject->SetNumberField(TEXT("string_number"), StringNumber);
-    ConfigObject->SetBoolField(TEXT("is_unreal"), true);
+    ConfigObject->SetBoolField(TEXT("is_unreal"), !bToBlender);
 
     // 保存乐器配置
     switch (CurrentInstrumentConfig.InstrumentType) {
@@ -574,53 +569,55 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
                         MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("left_hand_position_recorders"),
                         MakeShareable(new FJsonObject));
-    CategoryObjects.Add(TEXT("left_hand_rotation_recorders"),
-                        MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("left_thumb_position_recorders"),
                         MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("right_finger_recorders"),
                         MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("right_hand_position_recorders"),
                         MakeShareable(new FJsonObject));
-    CategoryObjects.Add(TEXT("right_hand_rotation_recorders"),
-                        MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("right_thumb_position_recorders"),
                         MakeShareable(new FJsonObject));
     CategoryObjects.Add(TEXT("other_recorders"),
                         MakeShareable(new FJsonObject));
-    CategoryObjects.Add(TEXT("guide_lines_rotations"),
-                        MakeShareable(new FJsonObject));
 
-    // 辅助Lambda：创建recorder JSON对象
+    // 辅助Lambda：创建recorder JSON对象（bToBlender 时坐标转换到 Blender 系）
+    // 每个 recorder 同时导出 location 与 rotation_quaternion（H_rotation_ 已移除）；
+    // bIncludeRotation = false 时不写 rotation 字段（Bow 旋转已停采，见施工计划 D4：
+    // 回放时由指向约束实时决定，Rust 端不读）。
     auto CreateRecorderObject =
-        [](const FStringFlowRecorderTransform* Transform,
-           bool bIncludeLocation = true,
-           bool bIsRotationOnly = false) -> TSharedPtr<FJsonObject> {
+        [bToBlender](const FStringFlowRecorderTransform* Transform,
+                     bool bIncludeLocation = true,
+                     bool bIncludeRotation = true) -> TSharedPtr<FJsonObject> {
         TSharedPtr<FJsonObject> RecorderObj = MakeShareable(new FJsonObject);
 
-        if (bIncludeLocation && !bIsRotationOnly) {
+        FVector Location = bToBlender
+                               ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     Transform->Location)
+                               : Transform->Location;
+
+        if (bIncludeLocation) {
             TArray<TSharedPtr<FJsonValue>> LocationArray;
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.X)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Y)));
-            LocationArray.Add(
-                MakeShareable(new FJsonValueNumber(Transform->Location.Z)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Location.X)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Location.Y)));
+            LocationArray.Add(MakeShareable(new FJsonValueNumber(Location.Z)));
             RecorderObj->SetArrayField(TEXT("location"), LocationArray);
         }
 
-        RecorderObj->SetStringField(TEXT("rotation_mode"), TEXT("QUATERNION"));
+        if (bIncludeRotation) {
+            FQuat Rotation = bToBlender
+                                 ? FCoordinateTransformUtility::ToBlenderRotation(
+                                       Transform->Rotation)
+                                 : Transform->Rotation;
 
-        TArray<TSharedPtr<FJsonValue>> RotationArray;
-        RotationArray.Add(
-            MakeShareable(new FJsonValueNumber(Transform->Rotation.W)));
-        RotationArray.Add(
-            MakeShareable(new FJsonValueNumber(Transform->Rotation.X)));
-        RotationArray.Add(
-            MakeShareable(new FJsonValueNumber(Transform->Rotation.Y)));
-        RotationArray.Add(
-            MakeShareable(new FJsonValueNumber(Transform->Rotation.Z)));
-        RecorderObj->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+            RecorderObj->SetStringField(TEXT("rotation_mode"), TEXT("QUATERNION"));
+
+            TArray<TSharedPtr<FJsonValue>> RotationArray;
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.W)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.X)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.Y)));
+            RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.Z)));
+            RecorderObj->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+        }
 
         return RecorderObj;
     };
@@ -637,8 +634,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
         if (CategoryName == TEXT("left_finger_recorders")) {
             RecorderArray =
                 LeftFingerRecorders.Find(TEXT("left_finger_recorders"));
-        } else if (CategoryName == TEXT("left_hand_position_recorders") ||
-                   CategoryName == TEXT("left_hand_rotation_recorders")) {
+        } else if (CategoryName == TEXT("left_hand_position_recorders")) {
             RecorderArray = LeftHandPositionRecorders.Find(
                 TEXT("left_hand_position_recorders"));
         } else if (CategoryName == TEXT("left_thumb_position_recorders")) {
@@ -647,8 +643,7 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
         } else if (CategoryName == TEXT("right_finger_recorders")) {
             RecorderArray =
                 RightFingerRecorders.Find(TEXT("right_finger_recorders"));
-        } else if (CategoryName == TEXT("right_hand_position_recorders") ||
-                   CategoryName == TEXT("right_hand_rotation_recorders")) {
+        } else if (CategoryName == TEXT("right_hand_position_recorders")) {
             RecorderArray = RightHandPositionRecorders.Find(
                 TEXT("right_hand_position_recorders"));
         } else if (CategoryName == TEXT("right_thumb_position_recorders")) {
@@ -673,21 +668,17 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
         for (int32 i = 0; i < RecorderArray->Num(); ++i) {
             FString RecorderName = RecorderArray->Get(i);
 
-            // 特殊处理：判断是否为旋转分类
-            bool bIsRotationCategory = CategoryName.Contains(TEXT("rotation"));
-            FString RealRecorderName =
-                bIsRotationCategory
-                    ? RecorderName.Replace(TEXT("H_"), TEXT("H_rotation_"))
-                    : RecorderName;
-
             // 从RecorderTransforms中查找该recorder的变换数据
             const FStringFlowRecorderTransform* Transform =
                 RecorderTransforms.Find(RecorderName);
             if (Transform) {
-                // 如果是旋转recorder，只导出旋转部分
-                TSharedPtr<FJsonObject> RecorderObj = CreateRecorderObject(
-                    Transform, !bIsRotationCategory, bIsRotationCategory);
-                CategoryObj->SetObjectField(*RealRecorderName, RecorderObj);
+                // Bow 旋转已停采（施工计划 D4）：bow_position_* 只导出位置
+                const bool bIncludeRotation =
+                    !(CategoryName == TEXT("other_recorders") &&
+                      RecorderName.StartsWith(TEXT("bow_position_")));
+                TSharedPtr<FJsonObject> RecorderObj =
+                    CreateRecorderObject(Transform, true, bIncludeRotation);
+                CategoryObj->SetObjectField(*RecorderName, RecorderObj);
             }
         }
     };
@@ -695,31 +686,54 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath) {
     // 按照Python版本的顺序导出
     ExportRecordersCategory(TEXT("left_finger_recorders"));
     ExportRecordersCategory(TEXT("left_hand_position_recorders"));
-    ExportRecordersCategory(TEXT("left_hand_rotation_recorders"));
     ExportRecordersCategory(TEXT("left_thumb_position_recorders"));
     ExportRecordersCategory(TEXT("right_hand_position_recorders"));
-    ExportRecordersCategory(TEXT("right_hand_rotation_recorders"));
     ExportRecordersCategory(TEXT("right_thumb_position_recorders"));
     ExportRecordersCategory(TEXT("right_finger_recorders"));
     ExportRecordersCategory(TEXT("other_recorders"));
 
-    // 导出辅助线
-    TSharedPtr<FJsonObject> GuideLinesObj =
-        CategoryObjects[TEXT("guide_lines_rotations")];
-    for (const auto& GuidePair : GuideLines) {
-        const FString& GuideLineName = GuidePair.Value;
-        const FStringFlowRecorderTransform* Transform =
-            RecorderTransforms.Find(GuideLineName);
-        if (Transform) {
-            TSharedPtr<FJsonObject> RecorderObj =
-                CreateRecorderObject(Transform, true);
-            GuideLinesObj->SetObjectField(*GuideLineName, RecorderObj);
-        }
-    }
-
     // 将所有分类添加到主JSON对象
     for (const auto& CategoryPair : CategoryObjects) {
         JsonObject->SetObjectField(*CategoryPair.Key, CategoryPair.Value);
+    }
+
+    // === pole_controller：挂在 ext 下的手指 pole 控件局部位置（bToBlender
+    // 时转换到 Blender 系；从 Control Rig 直接读取，SaveState 不涉及） ===
+    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+    if (PoleCR) {
+        TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
+        TArray<FString> PoleNames;
+        for (const auto& Pair : LeftFingerControllers) {
+            PoleNames.Add(FString::Printf(TEXT("pole_%s"), *Pair.Value));
+        }
+        PoleNames.Add(TEXT("TP_L"));
+        for (const auto& Pair : RightFingerControllers) {
+            PoleNames.Add(FString::Printf(TEXT("pole_%s"), *Pair.Value));
+        }
+        PoleNames.Add(TEXT("TP_R"));
+
+        for (const FString& PoleName : PoleNames) {
+            FTransform PoleTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                FVector Location =
+                    bToBlender
+                        ? FCoordinateTransformUtility::ToBlenderPosition(
+                              PoleTransform.GetLocation())
+                        : PoleTransform.GetLocation();
+                TArray<TSharedPtr<FJsonValue>> LocArr = {
+                    MakeShareable(new FJsonValueNumber(Location.X)),
+                    MakeShareable(new FJsonValueNumber(Location.Y)),
+                    MakeShareable(new FJsonValueNumber(Location.Z)),
+                };
+                TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+                Entry->SetArrayField(TEXT("location"), LocArr);
+                PoleCtrlObj->SetObjectField(*PoleName, Entry);
+            }
+        }
+        if (PoleCtrlObj->Values.Num() > 0) {
+            JsonObject->SetObjectField(TEXT("pole_controller"), PoleCtrlObj);
+        }
     }
 
     // 序列化为字符串并写入文件
@@ -837,27 +851,20 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                 continue;
             }
 
-            // 特殊处理：判断是否为旋转recorder（如H_rotation_L）
-            bool bIsRotationRecorder = RecorderName.Contains(TEXT("rotation"));
-            FString RealRecorderName =
-                bIsRotationRecorder
-                    ? RecorderName.Replace(TEXT("_rotation"), TEXT(""))
-                    : RecorderName;
-
-            // 获取或创建真实recorder的Transform
+            // 获取或创建该recorder的Transform（H_rotation_
+            // 已移除，直接按名称存储）
             FStringFlowRecorderTransform* TargetTransform =
-                RecorderTransforms.Find(RealRecorderName);
+                RecorderTransforms.Find(RecorderName);
             if (!TargetTransform) {
                 FStringFlowRecorderTransform NewTransform;
                 NewTransform.Location = FVector::ZeroVector;
                 NewTransform.Rotation = FQuat::Identity;
                 TargetTransform =
-                    &RecorderTransforms.Add(RealRecorderName, NewTransform);
+                    &RecorderTransforms.Add(RecorderName, NewTransform);
             }
 
-            // 读取位置（仅非旋转recorder）
-            if (!bIsRotationRecorder &&
-                RecorderObj->HasField(TEXT("location"))) {
+            // 读取位置
+            if (RecorderObj->HasField(TEXT("location"))) {
                 TArray<TSharedPtr<FJsonValue>> LocationArray =
                     RecorderObj->GetArrayField(TEXT("location"));
                 if (LocationArray.Num() == 3) {
@@ -886,14 +893,139 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
     // 导入各类记录器
     ImportRecordersCategory(TEXT("left_finger_recorders"));
     ImportRecordersCategory(TEXT("left_hand_position_recorders"));
-    ImportRecordersCategory(TEXT("left_hand_rotation_recorders"));
     ImportRecordersCategory(TEXT("left_thumb_position_recorders"));
     ImportRecordersCategory(TEXT("right_finger_recorders"));
     ImportRecordersCategory(TEXT("right_hand_position_recorders"));
-    ImportRecordersCategory(TEXT("right_hand_rotation_recorders"));
     ImportRecordersCategory(TEXT("right_thumb_position_recorders"));
     ImportRecordersCategory(TEXT("other_recorders"));
-    ImportRecordersCategory(TEXT("guide_lines_rotations"));
+
+    // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
+    if (JsonObject->HasField(TEXT("pole_controller"))) {
+        UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
+        if (!PoleCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ImportRecorderInfo: ControlRig not available, "
+                        "pole_controller not applied"));
+        } else {
+            TSharedPtr<FJsonObject> PoleCtrlObj =
+                JsonObject->GetObjectField(TEXT("pole_controller"));
+            for (const auto& PolePair : PoleCtrlObj->Values) {
+                TSharedPtr<FJsonObject> Entry = PolePair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+                if (Entry->HasField(TEXT("location"))) {
+                    TArray<TSharedPtr<FJsonValue>> LocArray =
+                        Entry->GetArrayField(TEXT("location"));
+                    if (LocArray.Num() == 3) {
+                        CurrentTransform.SetLocation(FVector(
+                            LocArray[0]->AsNumber(), LocArray[1]->AsNumber(),
+                            LocArray[2]->AsNumber()));
+                    }
+                }
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        PoleCR->GetHierarchy(), PolePair.Key,
+                        CurrentTransform)) {
+                    ImportedCount++;
+                }
+            }
+        }
+    }
+
+    // === 将弦头/弦尾位置写入 Control Rig 控件默认值（Initial） ===
+    // 只处理 position_s{i}_f0 / position_s{i}_f12（弦头和弦尾）；
+    // mid_s*、f9_s* 由 Control Rig 内插值自动计算位置，不写入。
+    // 参考 B/C mapping 的 "Apply Selected to Init"
+    // （FControlInitTransformUtility::ApplySelectedControlsTransformToInitial）：
+    // 把目标变换写入 Blueprint Hierarchy 的 Initial Local Transform，并清空
+    // Offset，随后标记蓝图修改。
+    {
+        UControlRig* InitCR = GetCachedControlRig(TEXT("Performer"));
+        UControlRigBlueprint* InitBlueprint =
+            GetCachedControlRigBlueprint(TEXT("Performer"));
+        if (!InitCR || !InitBlueprint) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ImportRecorderInfo: ControlRig/Blueprint not "
+                        "available, skip writing initial values for "
+                        "position_s*_f0/f12"));
+        } else {
+            URigHierarchy* BlueprintHierarchy = InitBlueprint->GetHierarchy();
+            if (!BlueprintHierarchy) {
+                UE_LOG(LogTemp, Warning,
+                       TEXT("ImportRecorderInfo: Blueprint Hierarchy is null, "
+                            "skip writing initial values"));
+            } else {
+                int32 InitAppliedCount = 0;
+                constexpr bool bAffectChildren = true;
+                constexpr bool bSetupUndo = true;
+                constexpr bool bPrintPythonCommands = false;
+
+                for (int32 StringIndex = 0; StringIndex < StringNumber;
+                     ++StringIndex) {
+                    for (int32 FretNum : {0, 12}) {
+                        FString RecorderName = FString::Printf(
+                            TEXT("position_s%d_f%d"), StringIndex, FretNum);
+
+                        const FStringFlowRecorderTransform* FoundTransform =
+                            RecorderTransforms.Find(RecorderName);
+                        if (!FoundTransform) {
+                            UE_LOG(LogTemp, Warning,
+                                   TEXT("ImportRecorderInfo: RecorderKey '%s' "
+                                        "NOT FOUND, skip writing initial "
+                                        "value"),
+                                   *RecorderName);
+                            continue;
+                        }
+
+                        FRigElementKey ControlKey(*RecorderName,
+                                                  ERigElementType::Control);
+                        if (!BlueprintHierarchy->Contains(ControlKey)) {
+                            UE_LOG(LogTemp, Warning,
+                                   TEXT("ImportRecorderInfo: Control '%s' NOT "
+                                        "FOUND in Blueprint Hierarchy, skip "
+                                        "writing initial value"),
+                                   *RecorderName);
+                            continue;
+                        }
+
+                        // 写入默认值（Initial Local Transform）并清空 Offset
+                        BlueprintHierarchy->SetInitialLocalTransform(
+                            ControlKey, FoundTransform->ToTransform(),
+                            bAffectChildren, bSetupUndo,
+                            bPrintPythonCommands);
+                        BlueprintHierarchy->SetControlOffsetTransform(
+                            ControlKey, FTransform::Identity, true,
+                            bAffectChildren, bSetupUndo,
+                            bPrintPythonCommands);
+
+                        ++InitAppliedCount;
+                        UE_LOG(LogTemp, Warning,
+                               TEXT("ImportRecorderInfo: wrote initial value "
+                                    "for '%s' <- Loc(%.2f, %.2f, %.2f)"),
+                               *RecorderName, FoundTransform->Location.X,
+                               FoundTransform->Location.Y,
+                               FoundTransform->Location.Z);
+                    }
+                }
+
+                if (InitAppliedCount > 0) {
+                    FBlueprintEditorUtils::MarkBlueprintAsModified(
+                        InitBlueprint);
+                    InitBlueprint->MarkPackageDirty();
+                }
+
+                UE_LOG(LogTemp, Warning,
+                       TEXT("ImportRecorderInfo: wrote initial values for %d "
+                            "string-end controls (position_s*_f0/f12)"),
+                       InitAppliedCount);
+            }
+        }
+    }
 
     UE_LOG(
         LogTemp, Warning,

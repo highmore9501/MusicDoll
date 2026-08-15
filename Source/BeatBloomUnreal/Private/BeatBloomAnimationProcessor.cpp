@@ -238,7 +238,7 @@ void UBeatBloomAnimationProcessor::ProcessFootAnimation(
     TMap<FString, TArray<FAnimationKeyframe>>& ControlKeyframeData,
     int32& OutProcessedFrames, int32& OutKeyframesAdded) {
     // 遍历帧数组，提取 position/rotation
-    // 映射到 F_{Suffix}, F_rotation_{Suffix}
+    // 映射到 F_{Suffix}（位置 + 旋转）
     // 注意：脚部不使用 pivot_position
 
     for (const auto& FrameValue : AnimationArray) {
@@ -333,12 +333,10 @@ const TSet<FString>&
 UBeatBloomAnimationProcessor::GetValidBeatBloomControllerNames() {
     static const TSet<FString> ValidControllers = []() {
         TSet<FString> ValidSet;
-        // 手部 (6个)
-        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_rotation_L"),
-                         TEXT("H_R"), TEXT("HP_R"), TEXT("H_rotation_R")});
-        // 脚部 (4个)
-        ValidSet.Append({TEXT("F_L"), TEXT("F_rotation_L"), TEXT("F_R"),
-                         TEXT("F_rotation_R")});
+        // 手部 (4个)
+        ValidSet.Append({TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"), TEXT("HP_R")});
+        // 脚部 (2个)
+        ValidSet.Append({TEXT("F_L"), TEXT("F_R")});
         // 头部控制器
         ValidSet.Append({TEXT("Head_Control")});
         return ValidSet;

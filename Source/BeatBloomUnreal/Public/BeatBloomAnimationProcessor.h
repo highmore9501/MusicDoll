@@ -28,20 +28,18 @@ class ULevelSequence;
  * 3. 控制器集合不同：
  *    - FretDance: 手掌 + 手指（H/HP/H_rotation + I/M/R/P/T/TP）
  *    - BeatBloom: 手掌 + 脚部 + 头部控制器
- *      (H/HP/H_rotation + F/F_rotation + Head_Control)
+ *      (H/HP + F + Head_Control)
  *
  * ============================================================
  * 控制器列表：
  * ============================================================
  *
  * 手部控制器：
- *   - H_L / H_R               手掌主控制器（位置）
+ *   - H_L / H_R               手掌主控制器（位置 + 旋转）
  *   - HP_L / HP_R              手掌 IK 轴点（位置）
- *   - H_rotation_L / H_rotation_R  手掌旋转（四元数）
  *
  * 脚部控制器：
- *   - F_L / F_R                脚部主控制器（位置）
- *   - F_rotation_L / F_rotation_R  脚部旋转（四元数）
+ *   - F_L / F_R                脚部主控制器（位置 + 旋转）
  *
  * 头部控制器：
  *   - Head_Control             头部控制器（完整 XYZ 位置）
@@ -52,7 +50,7 @@ UCLASS()
 class BEATBLOOMUNREAL_API UBeatBloomAnimationProcessor : public UObject {
     GENERATED_BODY()
 
-public:
+   public:
     /**
      * 生成人物演奏动画（四肢 + 目标控制器）
      *
@@ -84,12 +82,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "BeatBloom Animation Processor")
     static void GenerateAllAnimation(ABeatBloomUnreal* BeatBloomActor);
 
-private:
+   private:
     /**
      * 处理手部动画数据（左手/右手共用逻辑）
      *
-     * 对每一帧提取 position -> H_{Suffix}, rotation -> H_rotation_{Suffix},
-     * pivot_position -> HP_{Suffix}
+     * 对每一帧提取 position -> H_{Suffix} 的位置, rotation -> H_{Suffix}
+     * 的旋转, pivot_position -> HP_{Suffix}
      *
      * @param AnimationArray 手部帧数据 JSON 数组
      * @param HandSuffix "L" 或 "R"
@@ -106,7 +104,7 @@ private:
     /**
      * 处理脚部动画数据（左脚/右脚共用逻辑）
      *
-     * 对每一帧提取 position -> F_{Suffix}, rotation -> F_rotation_{Suffix}
+     * 对每一帧提取 position -> F_{Suffix} 的位置, rotation -> F_{Suffix} 的旋转
      * 注意：脚部不使用 pivot_position
      *
      * @param AnimationArray 脚部帧数据 JSON 数组
@@ -124,8 +122,9 @@ private:
     /**
      * 处理头部控制器动画数据
      *
-     * 遍历 head_control_animation 数组，提取 head_control_position -> Head_Control
-     * JSON 结构：{ "frame": N, "head_control_position": [x, y, z] }
+     * 遍历 head_control_animation 数组，提取 head_control_position ->
+     * Head_Control JSON 结构：{ "frame": N, "head_control_position": [x, y, z]
+     * }
      *
      * @param AnimationArray 头部控制器帧数据 JSON 数组
      * @param ControlKeyframeData 输出的控制器关键帧数据

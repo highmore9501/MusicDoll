@@ -488,13 +488,9 @@ bool UHarpGlideControlRigProcessor::CreateController(
     const FString& ParentName, const FTransform& Transform) {
     if (!Blueprint || ControllerName.IsEmpty()) return false;
 
-    URigHierarchy* Hierarchy = Blueprint->GetHierarchy();
-    if (!Hierarchy) return false;
-
-    FRigElementKey ExistKey(*ControllerName, ERigElementType::Control);
-    if (Hierarchy->Contains(ExistKey)) return true;  // 已存在
-
-    return FControlRigCreationUtility::CreateControl(Blueprint, ControllerName,
+    // 使用 EnsureControl：控件不存在则创建；已存在则校验父级是否匹配，
+    // 不匹配时 reparent 修正（bMaintainGlobalTransform 保持世界位姿）
+    return FControlRigCreationUtility::EnsureControl(Blueprint, ControllerName,
                                                      ParentName);
 }
 
