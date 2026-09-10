@@ -1,4 +1,4 @@
-﻿#include "ControlRigCreationUtility.h"
+#include "ControlRigCreationUtility.h"
 
 #include "ControlRig.h"
 #include "ControlRigBlueprintLegacy.h"
@@ -161,6 +161,114 @@ bool FControlRigCreationUtility::EnsureControl(
 
     // 控件不存在 → 创建
     return CreateControl(ControlRigBlueprint, ControlName, ExpectedParentName);
+}
+
+bool FControlRigCreationUtility::AddEyeControl(
+    UControlRigBlueprint* ControlRigBlueprint,
+    const FString& ParentControlName) {
+    if (!ControlRigBlueprint) {
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: ControlRigBlueprint is null"));
+        return false;
+    }
+
+    URigHierarchy* RigHierarchy = ControlRigBlueprint->GetHierarchy();
+    if (!RigHierarchy) {
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: Failed to get RigHierarchy from "
+                    "ControlRigBlueprint"));
+        return false;
+    }
+
+    // 1. 遍历 Curves，筛选名称包含「なごみ」的眼睛睁开相关曲线
+    static const FString EyeOpenMarker = TEXT("なごみ");
+    FString BestCurveName;
+
+    const TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys();
+    for (const FRigElementKey& Key : AllKeys) {
+        if (Key.Type != ERigElementType::Curve) continue;
+
+        const FString CurveName = Key.Name.ToString();
+        if (!CurveName.Contains(EyeOpenMarker)) continue;
+
+        // 多个候选时选名称最短的；同长取字典序最小的，保证结果稳定
+        if (BestCurveName.IsEmpty() || CurveName.Len() < BestCurveName.Len() ||
+            (CurveName.Len() == BestCurveName.Len() &&
+             CurveName < BestCurveName)) {
+            BestCurveName = CurveName;
+        }
+    }
+
+    if (BestCurveName.IsEmpty()) {
+        UE_LOG(LogTemp, Log,
+               TEXT("AddEyeControl: No eye-open curve (containing なごみ) "
+                    "found - skipping"));
+        return true;
+    }
+
+    UE_LOG(LogTemp, Log,
+           TEXT("AddEyeControl: Selected eye-open curve '%s'"),
+           *BestCurveName);
+
+    // 2. 校验父 Control（默认 base_root，需已由控制体系生成流程创建）
+    FRigElementKey ParentKey(*ParentControlName, ERigElementType::Control);
+    if (!RigHierarchy->Contains(ParentKey)) {
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: Parent control '%s' does not exist"),
+               *ParentControlName);
+        return false;
+    }
+
+    // 3. 幂等检查：同名 Float Animation Channel 已存在则直接成功
+    FRigElementKey ChannelKey(*BestCurveName, ERigElementType::Control);
+    if (RigHierarchy->Contains(ChannelKey)) {
+        const FRigControlElement* ExistingElement =
+            RigHierarchy->Find<FRigControlElement>(ChannelKey);
+        if (ExistingElement && ExistingElement->IsAnimationChannel() &&
+            ExistingElement->Settings.ControlType == ERigControlType::Float) {
+            UE_LOG(LogTemp, Log,
+                   TEXT("AddEyeControl: Float channel '%s' already exists "
+                        "under '%s'"),
+                   *BestCurveName, *ParentControlName);
+            return true;
+        }
+
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: Element '%s' already exists but is not a "
+                    "Float animation channel"),
+               *BestCurveName);
+        return false;
+    }
+
+    // 4. 在父 Control 下创建同名 Float Animation Channel
+    URigHierarchyController* HierarchyController = RigHierarchy->GetController();
+    if (!HierarchyController) {
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: Failed to get HierarchyController"));
+        return false;
+    }
+
+    FRigControlSettings ChannelSettings;
+    ChannelSettings.ControlType = ERigControlType::Float;
+    ChannelSettings.DisplayName = FName(*BestCurveName);
+
+    FRigElementKey NewChannelKey = HierarchyController->AddAnimationChannel(
+        FName(*BestCurveName), ParentKey, ChannelSettings, true, false);
+
+    if (!NewChannelKey.IsValid()) {
+        UE_LOG(LogTemp, Error,
+               TEXT("AddEyeControl: Failed to create float channel '%s' under "
+                    "'%s'"),
+               *BestCurveName, *ParentControlName);
+        return false;
+    }
+
+    ControlRigBlueprint->MarkPackageDirty();
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("AddEyeControl: Created float channel '%s' under '%s'"),
+           *BestCurveName, *ParentControlName);
+    return true;
 }
 
 bool FControlRigCreationUtility::CreateControlInternal(

@@ -51,4 +51,22 @@ class SINGERUNREAL_API ASingerUnreal : public AInstrumentBase {
     int32 GenerateLipSyncAnimation(ASkeletalMeshActor* Performer,
                                    UControlRigBlueprint* ControlRigBlueprint,
                                    ULevelSequence* LevelSequence);
+
+    // ===== Control Rig 初始化 =====
+
+    /**
+     * 初始化演奏者的 Control Rig（Singer 专用最小控制体系）
+     *
+     * Singer 不演奏乐器，不需要手指/脚部等控制器，控制体系只包含：
+     * 1. 创建 base_root（最上层根 Control，已存在则跳过）
+     * 2. 在 base_root 下按「なごみ」曲线创建眼睛睁开 Float channel
+     *    （委托给 FControlRigCreationUtility::AddEyeControl）
+     *
+     * ControlRigBlueprint 通过当前 LevelSequence 的
+     * UControlRigCacheSubsystem 从 SkeletalMeshActor 获取。
+     *
+     * @return 是否成功（无「なごみ」曲线时视为正常跳过并返回 true）
+     */
+    UFUNCTION(BlueprintCallable, Category = "Control Rig")
+    bool InitializeControlRig();
 };

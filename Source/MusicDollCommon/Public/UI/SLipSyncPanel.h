@@ -68,13 +68,10 @@ class MUSICDOLLCOMMON_API SLipSyncPanel : public SCompoundWidget {
     FText GetSelectedMorphTargetText(
         TSharedPtr<FLipSyncMappingPair> InPair) const;
 
-    /** 保存映射 */
-    FReply OnSaveMappingClicked();
-
-    /** 初始化 Lip Sync Control */
+    /** 初始化 Lip Sync Control（成功后弹窗提示需先编译 Control Rig） */
     FReply OnInitLipSyncControlClicked();
 
-    /** 将 Mapping 应用到 Rig */
+    /** 保存 Mapping 到 Control Rig 变量并应用到 Rig（原 Save + Apply 合并） */
     FReply OnApplyMappingToRigClicked();
 
     // ===== Generation 区域 =====

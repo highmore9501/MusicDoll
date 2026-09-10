@@ -148,10 +148,6 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
         ExpectedObjects.Add(Pair.Value);
     }
 
-    for (const auto& Pair : StringFlowActor->GuideLines) {
-        ExpectedObjects.Add(Pair.Value);
-    }
-
     // 添加脚部 IK / pole 控件（F_L / FP_L / F_R / FP_R）——仅创建，
     // 不参与任何数据传递与计算，与 controller_root 同级（base_root 子级）
     ExpectedObjects.Add(TEXT("F_L"));
@@ -162,6 +158,11 @@ void UStringFlowControlRigProcessor::CheckObjectsStatus(
     // 添加特殊的实际控制器
     ExpectedObjects.Add(TEXT("String_Touch_Point"));
     ExpectedObjects.Add(TEXT("Bow_Controller"));
+    ExpectedObjects.Add(TEXT("middle_fret_board_position"));
+    if (StringFlowActor->CurrentInstrumentConfig.InstrumentType ==
+        EStringFlowInstrumentType::CELLO) {
+        ExpectedObjects.Add(TEXT("head_control"));
+    }
 
     // 添加参考点控制器（这些是真实的控制器，不是记录器）
     // 注：mid_s* 和 f9_s* 由蓝图自动生成，不需要在这里验证
@@ -347,20 +348,20 @@ void UStringFlowControlRigProcessor::SetupControllers(
         RightFingerControllerNames.Add(Pair.Value);
     }
 
-    // 左手手掌 H_L 必须先于手指创建（手指挂在 H_L 下；CreateControl 在父级缺失时
-    // 会静默创建无父级控件，因此这里显式先建 H_L；主循环中 H_L 已存在时
-    // EnsureControl 同样会校验其父级为 controller_root）
+    // 左手手掌 H_L 必须先于手指创建（手指挂在 H_L 下；CreateControl
+    // 在父级缺失时 会静默创建无父级控件，因此这里显式先建 H_L；主循环中 H_L
+    // 已存在时 EnsureControl 同样会校验其父级为 controller_root）
     FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, TEXT("H_L"),
                                               TEXT("controller_root"));
 
     // 右手手指/拇指（1_R~4_R、T_R）与手掌 H_R 挂在 Bow_Controller 下，因此
-    // Bow_Controller 必须先于它们创建（否则 CreateControl 会静默创建无父级控件）。
-    // 这里显式预建 Bow_Controller 与 H_R，保证主循环用 EnsureControl 校验/修正
-    // 父级时（右手控件 → Bow_Controller，含旧场景中挂在 controller_root 下的
-    // H_R），Bow_Controller 已存在；reparent 采用 bMaintainGlobalTransform 保持
-    // 世界位姿。
-    FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, TEXT("Bow_Controller"),
-                                              TEXT("controller_root"));
+    // Bow_Controller 必须先于它们创建（否则 CreateControl
+    // 会静默创建无父级控件）。 这里显式预建 Bow_Controller 与 H_R，保证主循环用
+    // EnsureControl 校验/修正 父级时（右手控件 → Bow_Controller，含旧场景中挂在
+    // controller_root 下的 H_R），Bow_Controller 已存在；reparent 采用
+    // bMaintainGlobalTransform 保持 世界位姿。
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("Bow_Controller"), TEXT("controller_root"));
     FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, TEXT("H_R"),
                                               TEXT("Bow_Controller"));
 
@@ -375,14 +376,14 @@ void UStringFlowControlRigProcessor::SetupControllers(
         // 右手枢轴 HP_R → 与 Bow_Controller 同级（controller_root）
         bool bIsRightFinger =
             RightFingerControllerNames.Contains(ControllerName) ||
-            ControllerName == TEXT("T_R") ||
-            ControllerName == TEXT("H_R");
+            ControllerName == TEXT("T_R") || ControllerName == TEXT("H_R");
         // 左手手指（1_L~4_L）与拇指（T_L）挂在左手手掌 H_L 下（手指为手掌子级）
         bool bIsLeftFinger =
             LeftFingerControllerNames.Contains(ControllerName) ||
             ControllerName == TEXT("T_L");
         // 脚部 IK / pole（F_L / FP_L / F_R / FP_R）与 controller_root 同级
-        // （base_root 子级，不挂 controller_root；仅创建，不参与数据传递与计算）
+        // （base_root 子级，不挂
+        // controller_root；仅创建，不参与数据传递与计算）
         bool bIsFootControl =
             ControllerName == TEXT("F_L") || ControllerName == TEXT("F_R") ||
             ControllerName == TEXT("FP_L") || ControllerName == TEXT("FP_R");
@@ -408,9 +409,9 @@ void UStringFlowControlRigProcessor::SetupControllers(
 
     // 创建 String_Touch_Point 控制器（EnsureControl：已存在则校验父级为
     // controller_root）
-    FControlRigCreationUtility::EnsureControl(
-        ControlRigBlueprint, TEXT("String_Touch_Point"),
-        TEXT("controller_root"));
+    FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                              TEXT("String_Touch_Point"),
+                                              TEXT("controller_root"));
 
     // 创建 Bow_Controller 控制器（已在主循环前预建；此处 EnsureControl 兜底，
     // 同时校验其父级为 controller_root）
@@ -419,14 +420,15 @@ void UStringFlowControlRigProcessor::SetupControllers(
 
     // 创建辅助控件（ext_）— 每个手指一个，与手指控件同级
     //     极向量控件（pole）将重挂到对应的 ext_ 控件下面
-    // 左手：手指 1_L~4_L 与拇指 T_L 都挂在 H_L 下，ext 与手指同级（也挂 H_L 下）
+    // 左手：手指 1_L~4_L 与拇指 T_L 都挂在 H_L 下，ext 与手指同级（也挂 H_L
+    // 下）
     for (const auto& FingerPair : StringFlowActor->LeftFingerControllers) {
         FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerPair.Value);
         FControlRigCreationUtility::EnsureControl(ControlRigBlueprint, ExtName,
                                                   TEXT("H_L"));
     }
-    FControlRigCreationUtility::EnsureControl(
-        ControlRigBlueprint, TEXT("ext_T_L"), TEXT("H_L"));
+    FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                              TEXT("ext_T_L"), TEXT("H_L"));
     // 右手：手指 1_R~4_R 与拇指 T_R 都挂在 Bow_Controller 下
     for (const auto& FingerPair : StringFlowActor->RightFingerControllers) {
         FString ExtName = FString::Printf(TEXT("ext_%s"), *FingerPair.Value);
@@ -493,6 +495,9 @@ void UStringFlowControlRigProcessor::SetupControllers(
         FControlRigCreationUtility::EnsureControl(
             ControlRigBlueprint, StringF9Name, TEXT("controller_root"));
     }
+
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(ControlRigBlueprint);
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== SetupControllers Fully Completed =========="));
@@ -603,18 +608,16 @@ void UStringFlowControlRigProcessor::SaveState(
     FStringFlowControlRigHelper::SaveStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
-    // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
-        StringFlowActor, RigHierarchy, SavedCount, FailedCount);
+    // 与 Blender 对齐：状态无关控件仅在 Import/Export 处理，
+    // SaveState 不再写入它们到 RecorderTransforms。
 
     // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
     {  // 影响 LeftFinger: 1_L,2_L,3_L,4_L (4)
         //       RightFinger: 1_R,2_R,3_R,4_R (4)
         //       LeftHand: H_L,HP_L,T_L (3)
         //       RightHand: H_R,HP_R,T_R (3)
-        //       GuideLine: middle_fret_board_position (1)
         //       StateDependent: String_Touch_Point, Bow_Controller (2)
-        //       — 共 17 个
+        //       — 共 16 个
         if (ControlRigInstance) {
             TSet<FString> CtrlNames;
             for (const auto& P : StringFlowActor->LeftFingerControllers)
@@ -624,8 +627,6 @@ void UStringFlowControlRigProcessor::SaveState(
             for (const auto& P : StringFlowActor->LeftHandControllers)
                 CtrlNames.Add(P.Value);
             for (const auto& P : StringFlowActor->RightHandControllers)
-                CtrlNames.Add(P.Value);
-            for (const auto& P : StringFlowActor->GuideLines)
                 CtrlNames.Add(P.Value);
             // stp/bow 是状态相关控制器（SaveStateDependentOtherControllers
             // 也会保存它们），保持一致地写入关键帧，避免求值时被旧动画覆盖。
@@ -741,9 +742,7 @@ void UStringFlowControlRigProcessor::SaveLeft(
         CurrentStringNum, CurrentFretNum, EStringFlowHandType::LEFT, SavedCount,
         FailedCount);
 
-    // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
-        StringFlowActor, RigHierarchy, SavedCount, FailedCount);
+    // 与 Blender 对齐：状态无关控件仅在 Import/Export 处理。
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== StringFlow SaveLeft Summary =========="));
@@ -850,9 +849,7 @@ void UStringFlowControlRigProcessor::SaveRight(
     FStringFlowControlRigHelper::SaveStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, SavedCount, FailedCount);
 
-    // 保存状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelper::SaveStatelessOtherControllers(
-        StringFlowActor, RigHierarchy, SavedCount, FailedCount);
+    // 与 Blender 对齐：状态无关控件仅在 Import/Export 处理。
 
     UE_LOG(LogTemp, Warning,
            TEXT("========== StringFlow SaveRight Summary =========="));
@@ -989,9 +986,8 @@ void UStringFlowControlRigProcessor::LoadState(
     FStringFlowControlRigHelper::LoadStateDependentOtherControllers(
         StringFlowActor, RigHierarchy, LoadedCount, FailedCount);
 
-    // 加载状态无关的其他控制器 (mid_s*, f9_s*, position_s*_f*, etc.)
-    FStringFlowControlRigHelper::LoadStatelessOtherControllers(
-        StringFlowActor, RigHierarchy, LoadedCount, FailedCount);
+    // 与 Blender 对齐：状态无关控件仅在 Import/Export 处理，
+    // LoadState 不再从 RecorderTransforms 回灌它们。
 
     // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
     // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
@@ -1003,9 +999,8 @@ void UStringFlowControlRigProcessor::LoadState(
         //       RightFinger: 1_R,2_R,3_R,4_R (4)
         //       LeftHand: H_L,HP_L,T_L (3)
         //       RightHand: H_R,HP_R,T_R (3)
-        //       GuideLine: middle_fret_board_position (1)
         //       StateDependent: String_Touch_Point, Bow_Controller (2)
-        //       — 共 17 个
+        //       — 共 16 个
         if (ControlRigInstance) {
             TSet<FString> CtrlNames;
             for (const auto& P : StringFlowActor->LeftFingerControllers)
@@ -1016,11 +1011,10 @@ void UStringFlowControlRigProcessor::LoadState(
                 CtrlNames.Add(P.Value);
             for (const auto& P : StringFlowActor->RightHandControllers)
                 CtrlNames.Add(P.Value);
-            for (const auto& P : StringFlowActor->GuideLines)
-                CtrlNames.Add(P.Value);
             // stp/bow 也是状态相关控制器，必须一并写入关键帧；
             // 否则末尾的 ForceEvaluate 会用序列中旧的动画关键帧
-            // 覆盖刚加载到 hierarchy 的目标值（详见 InsertCurrentPoseKeyframes）。
+            // 覆盖刚加载到 hierarchy 的目标值（详见
+            // InsertCurrentPoseKeyframes）。
             CtrlNames.Add(TEXT("String_Touch_Point"));
             CtrlNames.Add(TEXT("Bow_Controller"));
             UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(

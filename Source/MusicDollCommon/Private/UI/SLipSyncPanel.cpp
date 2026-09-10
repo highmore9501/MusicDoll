@@ -8,6 +8,7 @@
 #include "InstrumentBase.h"
 #include "InstrumentMorphTargetUtility.h"
 #include "LipSyncUtility.h"
+#include "Misc/MessageDialog.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
@@ -77,7 +78,7 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                                                          "Morph Target"))
                                              .FillWidth(0.7f))]]
 
-                     // 按钮行
+                     // 按钮行（Init → 在 Control Rig 编辑器中 Compile → Apply）
                      +
                      SVerticalBox::Slot().AutoHeight().Padding(0.0f, 5.0f, 0.0f,
                                                                0.0f)
@@ -85,20 +86,12 @@ void SLipSyncPanel::Construct(const FArguments& InArgs) {
                           SHorizontalBox::Slot().AutoWidth().Padding(
                               0.0f, 0.0f, 10.0f, 0.0f)
                               [SNew(SButton)
-                                   .Text(LOCTEXT("SaveMappingButton",
-                                                 "Save Mapping"))
-                                   .OnClicked(
-                                       this,
-                                       &SLipSyncPanel::OnSaveMappingClicked)] +
-                          SHorizontalBox::Slot().AutoWidth()
-                              [SNew(SButton)
                                    .Text(LOCTEXT("InitLipSyncControlButton",
                                                  "Init Lip Sync Control"))
                                    .OnClicked(
                                        this, &SLipSyncPanel::
                                                  OnInitLipSyncControlClicked)] +
-                          SHorizontalBox::Slot().AutoWidth().Padding(
-                              10.0f, 0.0f, 0.0f, 0.0f)
+                          SHorizontalBox::Slot().AutoWidth()
                               [SNew(SButton)
                                    .Text(LOCTEXT("ApplyMappingButton",
                                                  "Apply Mapping to Rig"))
@@ -318,46 +311,6 @@ FText SLipSyncPanel::GetSelectedMorphTargetText(
     return LOCTEXT("SelectMorphTarget", "Select Morph Target...");
 }
 
-FReply SLipSyncPanel::OnSaveMappingClicked() {
-    if (!EnsureControlRigBlueprintValid()) {
-        ShowNotification(
-            LOCTEXT("SaveMappingFailed_NoCRB",
-                    "Failed to save mapping: No ControlRigBlueprint found."),
-            false);
-        return FReply::Handled();
-    }
-
-    // 确保变量存在
-    if (!ULipSyncUtility::AddLipSyncMappingVariable(
-            ControlRigBlueprint.Get())) {
-        ShowNotification(
-            LOCTEXT("SaveMappingFailed_AddVar",
-                    "Failed to save mapping: Could not add variable."),
-            false);
-        return FReply::Handled();
-    }
-
-    // 收集映射（只保存 MorphTargetName 非空的）
-    TArray<FLipSyncMappingPair> ValidMapping;
-    for (const TSharedPtr<FLipSyncMappingPair>& Pair : MappingPairs) {
-        if (Pair.IsValid() && !Pair->MorphTargetName.IsEmpty()) {
-            ValidMapping.Add(*Pair);
-        }
-    }
-
-    if (!ULipSyncUtility::SetLipSyncMapping(ControlRigBlueprint.Get(),
-                                            ValidMapping)) {
-        ShowNotification(
-            LOCTEXT("SaveMappingFailed_Set", "Failed to save mapping."), false);
-        return FReply::Handled();
-    }
-
-    ShowNotification(FText::Format(
-        LOCTEXT("SaveMappingSuccess", "Saved {0} mapping entries."),
-        FText::AsNumber(ValidMapping.Num())));
-    return FReply::Handled();
-}
-
 FReply SLipSyncPanel::OnInitLipSyncControlClicked() {
     if (!EnsureControlRigBlueprintValid()) {
         ShowNotification(
@@ -371,9 +324,19 @@ FReply SLipSyncPanel::OnInitLipSyncControlClicked() {
         ULipSyncUtility::InitializeLipSyncControl(ControlRigBlueprint.Get());
 
     if (bInitSuccess) {
-        ShowNotification(LOCTEXT("InitControlSuccess",
-                                 "Lip sync control initialized successfully."),
-                         true);
+        // 提示用户：必须先编译 Control Rig，LipSyncMapping 变量才会
+        // 生成到编译后类中，否则后面的 Apply Mapping to Rig 无法工作。
+        const FText Title =
+            LOCTEXT("InitControlSuccessTitle", "Compile Required");
+        const FText Message =
+            LOCTEXT("InitControlNeedCompile",
+                    "Lip sync control initialized successfully.\n\n"
+                    "Please open the Control Rig editor and click "
+                    "'Compile' before clicking 'Apply Mapping to Rig'.\n\n"
+                    "Without compiling, the mapping variable is not "
+                    "available yet and 'Apply Mapping to Rig' will not "
+                    "work.");
+        FMessageDialog::Open(EAppMsgType::Ok, Message, Title);
     } else {
         ShowNotification(
             LOCTEXT("InitControlFailed",
@@ -391,6 +354,42 @@ FReply SLipSyncPanel::OnApplyMappingToRigClicked() {
                          false);
         return FReply::Handled();
     }
+
+    // ===== 第一步：保存当前映射表到 ControlRigBlueprint 变量（原
+    // Save Mapping 逻辑）=====
+
+    // 确保变量存在（若未先 Init + Compile，变量属性不存在时会失败）
+    if (!ULipSyncUtility::AddLipSyncMappingVariable(
+            ControlRigBlueprint.Get())) {
+        ShowNotification(
+            LOCTEXT("ApplyMappingFailed_AddVar",
+                    "Failed to apply mapping: Could not add mapping "
+                    "variable."),
+            false);
+        return FReply::Handled();
+    }
+
+    // 收集映射（只保存 MorphTargetName 非空的）
+    TArray<FLipSyncMappingPair> ValidMapping;
+    for (const TSharedPtr<FLipSyncMappingPair>& Pair : MappingPairs) {
+        if (Pair.IsValid() && !Pair->MorphTargetName.IsEmpty()) {
+            ValidMapping.Add(*Pair);
+        }
+    }
+
+    if (!ULipSyncUtility::SetLipSyncMapping(ControlRigBlueprint.Get(),
+                                            ValidMapping)) {
+        ShowNotification(
+            LOCTEXT("ApplyMappingFailed_Save",
+                    "Failed to apply mapping: could not save mapping. "
+                    "Make sure the Control Rig has been compiled after "
+                    "'Init Lip Sync Control'."),
+            false);
+        return FReply::Handled();
+    }
+
+    // ===== 第二步：将已保存的映射应用到 Rig（原 Apply Mapping to
+    // Rig 逻辑）=====
 
     const int32 ChannelCount =
         ULipSyncUtility::ApplyMappingToRig(ControlRigBlueprint.Get());

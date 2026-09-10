@@ -742,6 +742,27 @@ int32 UBeatBloomControlRigProcessor::SetupControllers(
         if (!bExisted) CreatedCount++;
     }
 
+    // 3.5 创建鼓槌控制器（stick_L / stick_R，父级为对应手掌 H_L / H_R）
+    // 对应 Blender config.py 的 stick_controllers：
+    // 鼓槌挂在手掌下、带自身局部位置+旋转，参与 OTHER_CONTROLLERS 导入导出。
+    // stick_L 挂在 H_L 下
+    bool bStickLExisted = ControlExists(RigHierarchy, TEXT("stick_L"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("stick_L"), TEXT("H_L"));
+    if (!bStickLExisted) {
+        CreatedCount++;
+        UE_LOG(LogTemp, Warning, TEXT("Created stick controller: stick_L (parent: H_L)"));
+    }
+
+    // stick_R 挂在 H_R 下
+    bool bStickRExisted = ControlExists(RigHierarchy, TEXT("stick_R"));
+    FControlRigCreationUtility::EnsureControl(
+        ControlRigBlueprint, TEXT("stick_R"), TEXT("H_R"));
+    if (!bStickRExisted) {
+        CreatedCount++;
+        UE_LOG(LogTemp, Warning, TEXT("Created stick controller: stick_R (parent: H_R)"));
+    }
+
     // 4. 创建手指控制器、ext 辅助控件和极向量控制器
     // 手指前缀：T_(thumb),I_(index), M_(middle), R_(ring), P_(pinky)
     // ext 辅助控件：ext_<手指>，与手指同级，挂在手掌（H_）下
@@ -824,6 +845,9 @@ int32 UBeatBloomControlRigProcessor::SetupControllers(
     // 注意: 双线性映射辅助记录器(Middle_Hand_A/B/C/D, Head_Control_A/B/C/D)
     // 不需要创建 Control Rig 控制器,它们只在 RecorderTransforms 中作为数据存储
 
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(ControlRigBlueprint);
+
     return CreatedCount;
 }
 
@@ -859,6 +883,9 @@ void UBeatBloomControlRigProcessor::CheckObjectsStatus(
     // 手部控制器 (4个)
     ExpectedControllers.Append(
         {TEXT("H_L"), TEXT("HP_L"), TEXT("H_R"), TEXT("HP_R")});
+
+    // 鼓槌控制器 (2个，挂对应手掌下)
+    ExpectedControllers.Append({TEXT("stick_L"), TEXT("stick_R")});
 
     // 手指控制器 + ext 辅助控件 + 手指极向量（各 10 个，挂手掌下）
     TArray<FString> FingerPrefixes = {TEXT("T"), TEXT("I"), TEXT("M"),

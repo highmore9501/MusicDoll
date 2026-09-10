@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 
@@ -52,6 +52,25 @@ class MUSICDOLLCOMMON_API FControlRigCreationUtility {
     static bool EnsureControl(UControlRigBlueprint* ControlRigBlueprint,
                               const FString& ControlName,
                               const FString& ExpectedParentName = TEXT(""));
+
+    /**
+     * 添加「眼睛睁开」对应的 Float Animation Channel
+     *
+     * 检测 Control Rig 当前的 Curves：若存在名称包含「なごみ」的曲线
+     * （如 なごみ / なごみ1），视为眼睛睁开相关曲线；存在时选择名称最短的
+     * 一条，在指定的父 Control（默认 base_root）下创建与之同名的 Float
+     * Animation Channel。多个同长候选按字典序取确定的一条。
+     *
+     * @param ControlRigBlueprint Control Rig 蓝图对象
+     * @param ParentControlName 父控制器名称（默认 "base_root"）
+     * @return 是否成功（无匹配曲线时视为正常跳过并返回 true；失败返回 false）
+     *
+     * @note 幂等：若同名 Float Animation Channel 已存在，直接返回 true
+     * @note 应在演奏者 Control Rig 生成控制体系（base_root 已存在）后调用
+     */
+    static bool AddEyeControl(
+        UControlRigBlueprint* ControlRigBlueprint,
+        const FString& ParentControlName = TEXT("base_root"));
 
     /**
      * 根据控制器名称确定合适的形状

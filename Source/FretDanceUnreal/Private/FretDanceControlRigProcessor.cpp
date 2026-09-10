@@ -212,6 +212,9 @@ int32 UFretDanceControlRigProcessor::SetupControllers(
         }
     }
 
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(ControlRigBlueprint);
+
     UE_LOG(LogTemp, Warning,
            TEXT("✅ SetupControllers completed. Created %d controllers."),
            CreatedCount);

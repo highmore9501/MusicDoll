@@ -704,6 +704,9 @@ void UKeyRippleControlRigProcessor::SetupControllers(
             ControlRigBlueprint, ControllerName, TEXT("controller_root"));
     }
 
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(ControlRigBlueprint);
+
     UE_LOG(LogTemp, Warning, TEXT("Finished setting up controllers"));
 }
 

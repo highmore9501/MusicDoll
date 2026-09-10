@@ -1,9 +1,5 @@
 #include "StringFlowControlRigHelper.h"
 
-#include "ControlRigCreationUtility.h"
-#include "Dom/JsonObject.h"
-#include "Dom/JsonValue.h"
-
 #define LOCTEXT_NAMESPACE "StringFlowControlRigHelper"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,8 +71,13 @@ TSet<FString> FStringFlowControlRigHelper::GetAllControllerNames(
     AllControllerNames.Add(TEXT("FP_L"));
     AllControllerNames.Add(TEXT("FP_R"));
 
-    for (const auto& Pair : StringFlowActor->GuideLines) {
-        AllControllerNames.Add(Pair.Value);
+    // 三点定平面第三点（与 Blender 端同名，挂在 controller_root 下）
+    AllControllerNames.Add(TEXT("middle_fret_board_position"));
+
+    // 大提琴额外头部控制器，挂在 controller_root 下
+    if (StringFlowActor->CurrentInstrumentConfig.InstrumentType ==
+        EStringFlowInstrumentType::CELLO) {
+        AllControllerNames.Add(TEXT("head_control"));
     }
 
     return AllControllerNames;
@@ -156,16 +157,19 @@ void FStringFlowControlRigHelper::InitializeRecorderTransforms(
         }
     }
 
+    // 与 Blender 对齐：状态无关控件（position_s* / middle_fret_board_position /
+    // mid_s* / f9_s* / guide lines）不进入日常 RecorderTransforms。
+    // other_recorders 中仅保留状态相关的 stp_* / bow_position_* 键。
     const FStringFlowStringArray* OtherArray =
         StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
     if (OtherArray) {
         for (int32 i = 0; i < OtherArray->Num(); ++i) {
-            EnsureKey(OtherArray->Get(i));
+            const FString& RecorderName = OtherArray->Get(i);
+            if (RecorderName.StartsWith(TEXT("stp_")) ||
+                RecorderName.StartsWith(TEXT("bow_position_"))) {
+                EnsureKey(RecorderName);
+            }
         }
-    }
-
-    for (const auto& GuidePair : StringFlowActor->GuideLines) {
-        EnsureKey(GuidePair.Value);
     }
 
     UE_LOG(LogTemp, Verbose,
@@ -475,135 +479,6 @@ void FStringFlowControlRigHelper::LoadStateDependentOtherControllers(
 
     LoadSingleController(StringFlowActor, RigHierarchy, TEXT("Bow_Controller"),
                          BowRecorderName, LoadedCount, FailedCount);
-}
-
-void FStringFlowControlRigHelper::SaveStatelessOtherControllers(
-    AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-    int32& SavedCount, int32& FailedCount) {
-    if (!StringFlowActor) {
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("Processing stateless other controllers (position_s*_f*)..."));
-
-    // 从 OtherRecorders 中提取所有记录器，除了 stp、bow_position、mid_s 和
-    // f9_s
-    const FStringFlowStringArray* OtherArray =
-        StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
-    if (!OtherArray) {
-        return;
-    }
-
-    for (int32 i = 0; i < OtherArray->Num(); ++i) {
-        FString RecorderName = OtherArray->Get(i);
-
-        // 跳过状态相关的 stp、bow_position 记录器
-        if (RecorderName.StartsWith(TEXT("stp_")) ||
-            RecorderName.StartsWith(TEXT("bow_position_"))) {
-            continue;
-        }
-
-        // 跳过 mid_s 和 f9_s（蓝图生成的参考点，不需要保存）
-        if (RecorderName.StartsWith(TEXT("mid_s")) ||
-            RecorderName.StartsWith(TEXT("f9_s"))) {
-            continue;
-        }
-
-        // 从记录器名称提取控制器名称
-        FString ControlName = RecorderName;
-
-        // 使用 SaveSingleController 来正确地从 RigHierarchy 读取数据并保存
-        SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                             RecorderName, SavedCount, FailedCount);
-    }
-
-    // 保存 GuideLines 控制器
-    for (const auto& GuidePair : StringFlowActor->GuideLines) {
-        FString ControlName = GuidePair.Value;
-        FString RecorderName = GuidePair.Value;
-
-        SaveSingleController(StringFlowActor, RigHierarchy, ControlName,
-                             RecorderName, SavedCount, FailedCount);
-    }
-}
-
-void FStringFlowControlRigHelper::LoadStatelessOtherControllers(
-    AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-    int32& LoadedCount, int32& FailedCount) {
-    if (!StringFlowActor) {
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("Processing stateless other controllers (position_s*_f*)..."));
-
-    // 从 OtherRecorders 中提取所有记录器，除了 stp、bow_position、mid_s 和
-    // f9_s
-    const FStringFlowStringArray* OtherArray =
-        StringFlowActor->OtherRecorders.Find(TEXT("other_recorders"));
-    if (!OtherArray) {
-        return;
-    }
-
-    for (int32 i = 0; i < OtherArray->Num(); ++i) {
-        FString RecorderName = OtherArray->Get(i);
-
-        // 跳过状态相关的 stp、bow_position 记录器
-        if (RecorderName.StartsWith(TEXT("stp_")) ||
-            RecorderName.StartsWith(TEXT("bow_position_"))) {
-            continue;
-        }
-
-        // 跳过 mid_s 和 f9_s（蓝图生成的参考点，不需要加载）
-        if (RecorderName.StartsWith(TEXT("mid_s")) ||
-            RecorderName.StartsWith(TEXT("f9_s"))) {
-            continue;
-        }
-
-        // 检查记录器是否存在于 RecorderTransforms 中
-        const FStringFlowRecorderTransform* FoundTransform =
-            StringFlowActor->RecorderTransforms.Find(RecorderName);
-        if (!FoundTransform) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("  ⚠ RecorderKey '%s' NOT FOUND in RecorderTransforms"),
-                   *RecorderName);
-            FailedCount++;
-            continue;
-        }
-
-        // 从记录器名称提取控制器名称
-        FString ControlName = RecorderName;
-
-        FRigElementKey ControlKey(*ControlName, ERigElementType::Control);
-        if (!RigHierarchy->Contains(ControlKey)) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("    ⚠ Control '%s' NOT FOUND in RigHierarchy"),
-                   *ControlName);
-            FailedCount++;
-            continue;
-        }
-
-        FRigControlElement* ControlElement =
-            RigHierarchy->Find<FRigControlElement>(ControlKey);
-        if (!ControlElement) {
-            UE_LOG(LogTemp, Warning, TEXT("    ⚠ ControlElement '%s' is NULL"),
-                   *ControlName);
-            FailedCount++;
-            continue;
-        }
-
-        FTransform NewTransform = FoundTransform->ToTransform();
-        FInstrumentControlRigUtility::SetControlLocalTransform(
-            RigHierarchy, ControlName, NewTransform);
-
-        UE_LOG(LogTemp, Warning,
-               TEXT("    ✓ Loaded: %s <- Loc(%.2f, %.2f, %.2f)"), *RecorderName,
-               FoundTransform->Location.X, FoundTransform->Location.Y,
-               FoundTransform->Location.Z);
-
-        LoadedCount++;
-    }
 }
 
 #undef LOCTEXT_NAMESPACE

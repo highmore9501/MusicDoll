@@ -10,7 +10,7 @@ class URigHierarchy;
 /**
  * StringFlow Control Rig 辅助工具类
  * 提供 StringFlow 特有的 Control Rig 辅助方法
- * 
+ *
  * 注意：这些方法是 StringFlow 模块特有的，不应该放入 Common 通用模块
  */
 class STRINGFLOWUNREAL_API FStringFlowControlRigHelper {
@@ -36,7 +36,7 @@ class STRINGFLOWUNREAL_API FStringFlowControlRigHelper {
     // ========================================
 
     /**
-     * 收集所有控制器名称（包括手指、手掌、脚部、其他控制器和辅助线）
+     * 收集所有控制器名称（包括手指、手掌、脚部与其他控制器）
      */
     static TSet<FString> GetAllControllerNames(
         AStringFlowUnreal* StringFlowActor);
@@ -151,26 +151,6 @@ class STRINGFLOWUNREAL_API FStringFlowControlRigHelper {
      * 加载状态相关的其他控制器（stp, bow_position）
      */
     static void LoadStateDependentOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& LoadedCount, int32& FailedCount);
-
-    // ========================================
-    // 批量控制器处理 - 其他控制器（状态无关）
-    // ========================================
-
-    /**
-     * 保存状态无关的其他控制器（position_s*_f*, GuideLines 等）
-     * 跳过 stp, bow_position, mid_s*, f9_s*
-     */
-    static void SaveStatelessOtherControllers(
-        AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
-        int32& SavedCount, int32& FailedCount);
-
-    /**
-     * 加载状态无关的其他控制器（position_s*_f*, GuideLines 等）
-     * 跳过 stp, bow_position, mid_s*, f9_s*
-     */
-    static void LoadStatelessOtherControllers(
         AStringFlowUnreal* StringFlowActor, URigHierarchy* RigHierarchy,
         int32& LoadedCount, int32& FailedCount);
 };

@@ -337,10 +337,6 @@ class STRINGFLOWUNREAL_API AStringFlowUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FStringFlowStringArray> OtherRecorders;
 
-    /** 辅助线记录器 */
-    UPROPERTY()
-    TMap<FString, FString> GuideLines;
-
     // ========== 数据存储 ==========
 
     /** 记录器变换数据存储 */

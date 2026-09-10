@@ -188,6 +188,9 @@ void UWindRiseControlRigProcessor::InitializePerformerControlRig(
                ChannelsAdded, *BreathCtrlName);
     }
 
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(CRBlueprint);
+
     UE_LOG(
         LogTemp, Log,
         TEXT("========== InitializePerformerControlRig Completed =========="));

@@ -179,9 +179,6 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
     // 注意：TP_R 不加入 RightHandControllers，但会在 SetupControllers
     // 中单独创建
 
-    // ========== 初始化辅助线 ==========
-    GuideLines.Empty();
-
     // ========== 初始化左手手指记录器 ==========
     // 结构: p_s{StringIndex}_f{FretIndex}_{FingerNumber}_L_{PositionType}
     LeftFingerRecorders.Empty();
@@ -351,9 +348,6 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
             other_recorders_array.Add(PositionRecorderName);
         }
 
-        // 中间品板参考点：定义指板平面所需的第三点
-        other_recorders_array.Add(TEXT("middle_fret_board_position"));
-
         // 触弦点和弓位置记录器 (为每种右手位置类型)
         for (EStringFlowRightHandPositionType PositionType :
              {EStringFlowRightHandPositionType::NEAR,
@@ -372,16 +366,16 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
             other_recorders_array.Add(BowRecorderName);
         }
     }
+    // 中间品板参考点：定义指板平面所需的第三点（全局仅一份）
+    other_recorders_array.Add(TEXT("middle_fret_board_position"));
     OtherRecorders.Add(TEXT("other_recorders"), other_recorders_array);
 
-    // ========== 初始化辅助线记录器到RecorderTransforms ==========
+    // ========== 初始化状态记录器到 RecorderTransforms ==========
+    // 与 Blender 对齐：状态无关控件仅在 Import/Export 处理，
+    // 日常 Save/Load 不在 RecorderTransforms 中维护。
     FStringFlowRecorderTransform DefaultTransform;
     DefaultTransform.Location = FVector::ZeroVector;
     DefaultTransform.Rotation = FQuat::Identity;
-
-    for (const auto& GuidePair : GuideLines) {
-        RecorderTransforms.Add(GuidePair.Value, DefaultTransform);
-    }
 
     // ========== 初始化所有recorder到RecorderTransforms ==========
     // 初始化左手手指记录器
@@ -444,13 +438,16 @@ void AStringFlowUnreal::InitializeControllersAndRecorders() {
         }
     }
 
-    // 初始化其他记录器
+    // 初始化其他记录器（仅状态相关：stp_* / bow_position_*）
     const FStringFlowStringArray* OtherRecordersArray =
         OtherRecorders.Find(TEXT("other_recorders"));
     if (OtherRecordersArray) {
         for (int32 i = 0; i < OtherRecordersArray->Num(); ++i) {
-            RecorderTransforms.Add(OtherRecordersArray->Get(i),
-                                   DefaultTransform);
+            const FString& RecorderName = OtherRecordersArray->Get(i);
+            if (RecorderName.StartsWith(TEXT("stp_")) ||
+                RecorderName.StartsWith(TEXT("bow_position_"))) {
+                RecorderTransforms.Add(RecorderName, DefaultTransform);
+            }
         }
     }
 }
@@ -581,9 +578,9 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath,
                         MakeShareable(new FJsonObject));
 
     // 辅助Lambda：创建recorder JSON对象（bToBlender 时坐标转换到 Blender 系）
-    // 每个 recorder 同时导出 location 与 rotation_quaternion（H_rotation_ 已移除）；
-    // bIncludeRotation = false 时不写 rotation 字段（Bow 旋转已停采，见施工计划 D4：
-    // 回放时由指向约束实时决定，Rust 端不读）。
+    // 每个 recorder 同时导出 location 与 rotation_quaternion（H_rotation_
+    // 已移除）； bIncludeRotation = false 时不写 rotation 字段（Bow
+    // 旋转已停采，见施工计划 D4： 回放时由指向约束实时决定，Rust 端不读）。
     auto CreateRecorderObject =
         [bToBlender](const FStringFlowRecorderTransform* Transform,
                      bool bIncludeLocation = true,
@@ -604,28 +601,45 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath,
         }
 
         if (bIncludeRotation) {
-            FQuat Rotation = bToBlender
-                                 ? FCoordinateTransformUtility::ToBlenderRotation(
-                                       Transform->Rotation)
-                                 : Transform->Rotation;
+            FQuat Rotation =
+                bToBlender ? FCoordinateTransformUtility::ToBlenderRotation(
+                                 Transform->Rotation)
+                           : Transform->Rotation;
 
-            RecorderObj->SetStringField(TEXT("rotation_mode"), TEXT("QUATERNION"));
+            RecorderObj->SetStringField(TEXT("rotation_mode"),
+                                        TEXT("QUATERNION"));
 
             TArray<TSharedPtr<FJsonValue>> RotationArray;
             RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.W)));
             RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.X)));
             RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.Y)));
             RotationArray.Add(MakeShareable(new FJsonValueNumber(Rotation.Z)));
-            RecorderObj->SetArrayField(TEXT("rotation_quaternion"), RotationArray);
+            RecorderObj->SetArrayField(TEXT("rotation_quaternion"),
+                                       RotationArray);
         }
 
         return RecorderObj;
     };
 
+    auto IsStateDependentOtherRecorder =
+        [](const FString& RecorderName) -> bool {
+        return RecorderName.StartsWith(TEXT("stp_")) ||
+               RecorderName.StartsWith(TEXT("bow_position_"));
+    };
+
+    auto IsDerivedFretboardMarker = [](const FString& RecorderName) -> bool {
+        return RecorderName.StartsWith(TEXT("mid_s")) ||
+               RecorderName.StartsWith(TEXT("f9_s"));
+    };
+
+    UControlRig* ExportCR = GetCachedControlRig(TEXT("Performer"));
+
     // 辅助Lambda：导出指定分类的记录器
     auto ExportRecordersCategory = [this, &CreateRecorderObject,
-                                    &CategoryObjects](
-                                       const FString& CategoryName) {
+                                    &CategoryObjects,
+                                    &IsStateDependentOtherRecorder,
+                                    &IsDerivedFretboardMarker,
+                                    ExportCR](const FString& CategoryName) {
         TSharedPtr<FJsonObject> CategoryObj = CategoryObjects[CategoryName];
 
         // 获取对应分类的recorder列表
@@ -667,6 +681,31 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath,
         // 遍历该分类下的所有recorder名称
         for (int32 i = 0; i < RecorderArray->Num(); ++i) {
             FString RecorderName = RecorderArray->Get(i);
+
+            // mid_s*/f9_s* 是派生参考点：只创建并由图表自动计算，不参与导出。
+            if (CategoryName == TEXT("other_recorders") &&
+                IsDerivedFretboardMarker(RecorderName)) {
+                continue;
+            }
+
+            // 与 Blender 对齐：other_recorders 的状态无关控件只在
+            // Import/Export 处理，导出时直接从当前 Control Rig 读取。
+            if (CategoryName == TEXT("other_recorders") &&
+                !IsStateDependentOtherRecorder(RecorderName)) {
+                if (ExportCR) {
+                    FTransform CurrentTransform;
+                    if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                            ExportCR->GetHierarchy(), RecorderName,
+                            CurrentTransform)) {
+                        FStringFlowRecorderTransform TempTransform;
+                        TempTransform.FromTransform(CurrentTransform);
+                        TSharedPtr<FJsonObject> RecorderObj =
+                            CreateRecorderObject(&TempTransform, true, true);
+                        CategoryObj->SetObjectField(*RecorderName, RecorderObj);
+                        continue;
+                    }
+                }
+            }
 
             // 从RecorderTransforms中查找该recorder的变换数据
             const FStringFlowRecorderTransform* Transform =
@@ -717,10 +756,9 @@ void AStringFlowUnreal::ExportRecorderInfo(const FString& FilePath,
             if (FInstrumentControlRigUtility::GetControlLocalTransform(
                     PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
                 FVector Location =
-                    bToBlender
-                        ? FCoordinateTransformUtility::ToBlenderPosition(
-                              PoleTransform.GetLocation())
-                        : PoleTransform.GetLocation();
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     PoleTransform.GetLocation())
+                               : PoleTransform.GetLocation();
                 TArray<TSharedPtr<FJsonValue>> LocArr = {
                     MakeShareable(new FJsonValueNumber(Location.X)),
                     MakeShareable(new FJsonValueNumber(Location.Y)),
@@ -823,17 +861,33 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // 清空现有的RecorderTransforms并导入新数据
+    // 清空现有的 RecorderTransforms 并导入新数据
     RecorderTransforms.Empty();
 
     int32 ImportedCount = 0;
+    TMap<FString, FStringFlowRecorderTransform>
+        ImportedStatelessOtherTransforms;
+
+    auto IsStateDependentOtherRecorder =
+        [](const FString& RecorderName) -> bool {
+        return RecorderName.StartsWith(TEXT("stp_")) ||
+               RecorderName.StartsWith(TEXT("bow_position_"));
+    };
+
+    auto IsDerivedFretboardMarker = [](const FString& RecorderName) -> bool {
+        return RecorderName.StartsWith(TEXT("mid_s")) ||
+               RecorderName.StartsWith(TEXT("f9_s"));
+    };
 
     // 新格式：分类层级结构
     UE_LOG(LogTemp, Warning,
            TEXT("Importing categorized format with hierarchy"));
 
-    // 辅助 Lambda：用于处理各种recorder分类的导入
-    auto ImportRecordersCategory = [this, JsonObject, &ImportedCount](
+    // 辅助 Lambda：用于处理各种 recorder 分类的导入
+    auto ImportRecordersCategory = [this, JsonObject, &ImportedCount,
+                                    &ImportedStatelessOtherTransforms,
+                                    &IsStateDependentOtherRecorder,
+                                    &IsDerivedFretboardMarker](
                                        const FString& CategoryName) {
         if (!JsonObject->HasField(*CategoryName)) {
             return;
@@ -851,26 +905,24 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                 continue;
             }
 
-            // 获取或创建该recorder的Transform（H_rotation_
-            // 已移除，直接按名称存储）
-            FStringFlowRecorderTransform* TargetTransform =
-                RecorderTransforms.Find(RecorderName);
-            if (!TargetTransform) {
-                FStringFlowRecorderTransform NewTransform;
-                NewTransform.Location = FVector::ZeroVector;
-                NewTransform.Rotation = FQuat::Identity;
-                TargetTransform =
-                    &RecorderTransforms.Add(RecorderName, NewTransform);
+            // mid_s*/f9_s* 是派生参考点：即使旧文件有数据，也不执行导入动作。
+            if (CategoryName == TEXT("other_recorders") &&
+                IsDerivedFretboardMarker(RecorderName)) {
+                continue;
             }
+
+            FStringFlowRecorderTransform ParsedTransform;
+            ParsedTransform.Location = FVector::ZeroVector;
+            ParsedTransform.Rotation = FQuat::Identity;
 
             // 读取位置
             if (RecorderObj->HasField(TEXT("location"))) {
                 TArray<TSharedPtr<FJsonValue>> LocationArray =
                     RecorderObj->GetArrayField(TEXT("location"));
                 if (LocationArray.Num() == 3) {
-                    TargetTransform->Location.X = LocationArray[0]->AsNumber();
-                    TargetTransform->Location.Y = LocationArray[1]->AsNumber();
-                    TargetTransform->Location.Z = LocationArray[2]->AsNumber();
+                    ParsedTransform.Location.X = LocationArray[0]->AsNumber();
+                    ParsedTransform.Location.Y = LocationArray[1]->AsNumber();
+                    ParsedTransform.Location.Z = LocationArray[2]->AsNumber();
                 }
             }
 
@@ -879,11 +931,21 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                 TArray<TSharedPtr<FJsonValue>> RotationArray =
                     RecorderObj->GetArrayField(TEXT("rotation_quaternion"));
                 if (RotationArray.Num() == 4) {
-                    TargetTransform->Rotation.W = RotationArray[0]->AsNumber();
-                    TargetTransform->Rotation.X = RotationArray[1]->AsNumber();
-                    TargetTransform->Rotation.Y = RotationArray[2]->AsNumber();
-                    TargetTransform->Rotation.Z = RotationArray[3]->AsNumber();
+                    ParsedTransform.Rotation.W = RotationArray[0]->AsNumber();
+                    ParsedTransform.Rotation.X = RotationArray[1]->AsNumber();
+                    ParsedTransform.Rotation.Y = RotationArray[2]->AsNumber();
+                    ParsedTransform.Rotation.Z = RotationArray[3]->AsNumber();
                 }
+            }
+
+            // 与 Blender 对齐：other_recorders 中状态无关控件不进日常
+            // RecorderTransforms，仅在 Import/Export 读写。
+            if (CategoryName == TEXT("other_recorders") &&
+                !IsStateDependentOtherRecorder(RecorderName)) {
+                ImportedStatelessOtherTransforms.Add(RecorderName,
+                                                     ParsedTransform);
+            } else {
+                RecorderTransforms.Add(RecorderName, ParsedTransform);
             }
 
             ImportedCount++;
@@ -898,6 +960,30 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
     ImportRecordersCategory(TEXT("right_hand_position_recorders"));
     ImportRecordersCategory(TEXT("right_thumb_position_recorders"));
     ImportRecordersCategory(TEXT("other_recorders"));
+
+    // 与 Blender 对齐：状态无关控件在导入时直接写入当前 Control Rig，
+    // 不写入日常 RecorderTransforms。
+    if (ImportedStatelessOtherTransforms.Num() > 0) {
+        UControlRig* ImportCR = GetCachedControlRig(TEXT("Performer"));
+        if (ImportCR) {
+            URigHierarchy* ImportHierarchy = ImportCR->GetHierarchy();
+            if (ImportHierarchy) {
+                for (const auto& Pair : ImportedStatelessOtherTransforms) {
+                    const FString& RecorderName = Pair.Key;
+
+                    FRigElementKey ControlKey(*RecorderName,
+                                              ERigElementType::Control);
+                    if (!ImportHierarchy->Contains(ControlKey)) {
+                        continue;
+                    }
+
+                    FInstrumentControlRigUtility::SetControlLocalTransform(
+                        ImportHierarchy, RecorderName,
+                        Pair.Value.ToTransform());
+                }
+            }
+        }
+    }
 
     // === 导入 pole_controller：应用局部位置到 Control Rig 控件（保留旋转） ===
     if (JsonObject->HasField(TEXT("pole_controller"))) {
@@ -937,8 +1023,8 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
         }
     }
 
-    // === 将弦头/弦尾位置写入 Control Rig 控件默认值（Initial） ===
-    // 只处理 position_s{i}_f0 / position_s{i}_f12（弦头和弦尾）；
+    // === 将指板关键基准点写入 Control Rig 控件默认值（Initial） ===
+    // 处理 position_s{i}_f0 / position_s{i}_f12 + middle_fret_board_position；
     // mid_s*、f9_s* 由 Control Rig 内插值自动计算位置，不写入。
     // 参考 B/C mapping 的 "Apply Selected to Init"
     // （FControlInitTransformUtility::ApplySelectedControlsTransformToInitial）：
@@ -965,21 +1051,31 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                 constexpr bool bSetupUndo = true;
                 constexpr bool bPrintPythonCommands = false;
 
-                for (int32 StringIndex = 0; StringIndex < StringNumber;
-                     ++StringIndex) {
-                    for (int32 FretNum : {0, 12}) {
-                        FString RecorderName = FString::Printf(
-                            TEXT("position_s%d_f%d"), StringIndex, FretNum);
+                auto FindImportedTransform =
+                    [this, &ImportedStatelessOtherTransforms](
+                        const FString& RecorderName)
+                    -> const FStringFlowRecorderTransform* {
+                    if (const FStringFlowRecorderTransform* StatelessFound =
+                            ImportedStatelessOtherTransforms.Find(
+                                RecorderName)) {
+                        return StatelessFound;
+                    }
+                    return RecorderTransforms.Find(RecorderName);
+                };
 
+                auto ApplyInitialForRecorder =
+                    [&FindImportedTransform, BlueprintHierarchy,
+                     bAffectChildren, bSetupUndo, bPrintPythonCommands,
+                     &InitAppliedCount](const FString& RecorderName) {
                         const FStringFlowRecorderTransform* FoundTransform =
-                            RecorderTransforms.Find(RecorderName);
+                            FindImportedTransform(RecorderName);
                         if (!FoundTransform) {
                             UE_LOG(LogTemp, Warning,
                                    TEXT("ImportRecorderInfo: RecorderKey '%s' "
                                         "NOT FOUND, skip writing initial "
                                         "value"),
                                    *RecorderName);
-                            continue;
+                            return;
                         }
 
                         FRigElementKey ControlKey(*RecorderName,
@@ -990,18 +1086,15 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                                         "FOUND in Blueprint Hierarchy, skip "
                                         "writing initial value"),
                                    *RecorderName);
-                            continue;
+                            return;
                         }
 
-                        // 写入默认值（Initial Local Transform）并清空 Offset
                         BlueprintHierarchy->SetInitialLocalTransform(
                             ControlKey, FoundTransform->ToTransform(),
-                            bAffectChildren, bSetupUndo,
-                            bPrintPythonCommands);
+                            bAffectChildren, bSetupUndo, bPrintPythonCommands);
                         BlueprintHierarchy->SetControlOffsetTransform(
                             ControlKey, FTransform::Identity, true,
-                            bAffectChildren, bSetupUndo,
-                            bPrintPythonCommands);
+                            bAffectChildren, bSetupUndo, bPrintPythonCommands);
 
                         ++InitAppliedCount;
                         UE_LOG(LogTemp, Warning,
@@ -1010,8 +1103,18 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
                                *RecorderName, FoundTransform->Location.X,
                                FoundTransform->Location.Y,
                                FoundTransform->Location.Z);
+                    };
+
+                for (int32 StringIndex = 0; StringIndex < StringNumber;
+                     ++StringIndex) {
+                    for (int32 FretNum : {0, 12}) {
+                        const FString RecorderName = FString::Printf(
+                            TEXT("position_s%d_f%d"), StringIndex, FretNum);
+                        ApplyInitialForRecorder(RecorderName);
                     }
                 }
+
+                ApplyInitialForRecorder(TEXT("middle_fret_board_position"));
 
                 if (InitAppliedCount > 0) {
                     FBlueprintEditorUtils::MarkBlueprintAsModified(
@@ -1021,7 +1124,8 @@ bool AStringFlowUnreal::ImportRecorderInfo(const FString& FilePath) {
 
                 UE_LOG(LogTemp, Warning,
                        TEXT("ImportRecorderInfo: wrote initial values for %d "
-                            "string-end controls (position_s*_f0/f12)"),
+                            "fretboard controls (position_s*_f0/f12 + "
+                            "middle_fret_board_position)"),
                        InitAppliedCount);
             }
         }

@@ -423,10 +423,72 @@ void ABeatBloomUnreal::ExportRecorderInfo(const FString& FilePath,
 
     RootObject->SetObjectField(TEXT("MAPPING_HELPERS"), MappingHelpersObject);
 
-    // ========== 2.5 pole_controller：挂在 ext 下的手指 pole 控件局部位置
+    // ========== 2.5 OTHER_CONTROLLERS：手指、Look_At、stick 的局部数据
+    // 手指与 Look_At 只写位置；stick 额外写旋转。
+    UControlRig* OtherPosCR = GetCachedControlRig(TEXT("Performer"));
+    if (OtherPosCR) {
+        TSharedPtr<FJsonObject> OtherControllersObject =
+            MakeShareable(new FJsonObject);
+        const TArray<FString> PositionNames = {
+            TEXT("I_L"), TEXT("M_L"), TEXT("R_L"), TEXT("P_L"),    TEXT("I_R"),
+            TEXT("M_R"), TEXT("R_R"), TEXT("P_R"), TEXT("Look_At")};
+
+        for (const FString& ControllerName : PositionNames) {
+            FTransform LocalTransform = FTransform::Identity;
+            if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                    OtherPosCR->GetHierarchy(), ControllerName,
+                    LocalTransform)) {
+                continue;
+            }
+
+            FVector Loc = ToBlenderPos(LocalTransform.GetLocation());
+            TArray<TSharedPtr<FJsonValue>> LocArray;
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.X)));
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.Y)));
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.Z)));
+
+            TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+            Entry->SetArrayField(TEXT("location"), LocArray);
+            OtherControllersObject->SetObjectField(*ControllerName, Entry);
+        }
+
+        const TArray<FString> StickNames = {TEXT("stick_L"), TEXT("stick_R")};
+        for (const FString& StickName : StickNames) {
+            FTransform LocalTransform = FTransform::Identity;
+            if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                    OtherPosCR->GetHierarchy(), StickName, LocalTransform)) {
+                continue;
+            }
+
+            FVector Loc = ToBlenderPos(LocalTransform.GetLocation());
+            FQuat Rot = ToBlenderRot(LocalTransform.GetRotation());
+
+            TArray<TSharedPtr<FJsonValue>> LocArray;
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.X)));
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.Y)));
+            LocArray.Add(MakeShareable(new FJsonValueNumber(Loc.Z)));
+
+            TArray<TSharedPtr<FJsonValue>> RotArray;
+            RotArray.Add(MakeShareable(new FJsonValueNumber(Rot.W)));
+            RotArray.Add(MakeShareable(new FJsonValueNumber(Rot.X)));
+            RotArray.Add(MakeShareable(new FJsonValueNumber(Rot.Y)));
+            RotArray.Add(MakeShareable(new FJsonValueNumber(Rot.Z)));
+
+            TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
+            Entry->SetArrayField(TEXT("location"), LocArray);
+            Entry->SetArrayField(TEXT("rotation_quaternion"), RotArray);
+            OtherControllersObject->SetObjectField(*StickName, Entry);
+        }
+
+        if (OtherControllersObject->Values.Num() > 0) {
+            RootObject->SetObjectField(TEXT("OTHER_CONTROLLERS"),
+                                       OtherControllersObject);
+        }
+    }
+
+    // ========== 2.75 pole_controller：挂在 ext 下的手指 pole 控件局部位置
     // （bToBlender 时转换到 Blender 系；从 Control Rig 直接读取） ==========
-    UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));
-    if (PoleCR) {
+    if (OtherPosCR) {
         TSharedPtr<FJsonObject> PoleCtrlObj = MakeShareable(new FJsonObject);
         const TArray<FString> PolePrefixes = {TEXT("T"), TEXT("I"), TEXT("M"),
                                               TEXT("R"), TEXT("P")};
@@ -440,7 +502,7 @@ void ABeatBloomUnreal::ExportRecorderInfo(const FString& FilePath,
         for (const FString& PoleName : PoleNames) {
             FTransform PoleTransform;
             if (FInstrumentControlRigUtility::GetControlLocalTransform(
-                    PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
+                    OtherPosCR->GetHierarchy(), PoleName, PoleTransform)) {
                 FVector Loc = ToBlenderPos(PoleTransform.GetLocation());
                 TArray<TSharedPtr<FJsonValue>> LocArr = {
                     MakeShareable(new FJsonValueNumber(Loc.X)),
@@ -601,7 +663,80 @@ bool ABeatBloomUnreal::ImportRecorderInfo(const FString& FilePath) {
         ImportedHelperCount++;
     }
 
-    // ========== 2.5 导入 pole_controller：应用局部位置到 Control Rig 控件
+    // ========== 2.5 导入 OTHER_CONTROLLERS：应用手指 / Look_At / stick
+    // 的局部数据
+    const bool bHasOtherControllers =
+        JsonObject->HasField(TEXT("OTHER_CONTROLLERS"));
+    const bool bHasLegacyOtherPositions =
+        JsonObject->HasField(TEXT("OTHER_POSITIONS"));
+    if (bHasOtherControllers || bHasLegacyOtherPositions) {
+        UControlRig* OtherPosCR = GetCachedControlRig(TEXT("Performer"));
+        if (!OtherPosCR) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ImportRecorderInfo: ControlRig not available, "
+                        "OTHER_CONTROLLERS not applied"));
+        } else {
+            const FString OtherFieldName = bHasOtherControllers
+                                               ? TEXT("OTHER_CONTROLLERS")
+                                               : TEXT("OTHER_POSITIONS");
+            TSharedPtr<FJsonObject> OtherControllersObj =
+                JsonObject->GetObjectField(OtherFieldName);
+            // 收集成功写入的控件名，最后统一插入关键帧
+            // （否则后续评估会用通道默认值覆盖刚写入的 Current 值，
+            //   导致导入的数据看起来"没被加载"，参考 LoadState 的做法）
+            TArray<FString> KeyframedOtherControllers;
+            for (const auto& PositionPair : OtherControllersObj->Values) {
+                const FString& ControllerName = PositionPair.Key;
+                TSharedPtr<FJsonObject> Entry = PositionPair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+
+                FTransform CurrentTransform;
+                if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+                        OtherPosCR->GetHierarchy(), ControllerName,
+                        CurrentTransform)) {
+                    CurrentTransform = FTransform::Identity;
+                }
+
+                const TArray<TSharedPtr<FJsonValue>>* LocArr = nullptr;
+                if (Entry->TryGetArrayField(TEXT("location"), LocArr) &&
+                    LocArr->Num() == 3) {
+                    CurrentTransform.SetLocation(FVector(
+                        (*LocArr)[0]->AsNumber(), (*LocArr)[1]->AsNumber(),
+                        (*LocArr)[2]->AsNumber()));
+                }
+
+                // stick 控件还要读取旋转（[w, x, y, z]）
+                if (ControllerName == TEXT("stick_L") ||
+                    ControllerName == TEXT("stick_R")) {
+                    const TArray<TSharedPtr<FJsonValue>>* RotArr = nullptr;
+                    if (Entry->TryGetArrayField(TEXT("rotation_quaternion"),
+                                                RotArr) &&
+                        RotArr->Num() == 4) {
+                        CurrentTransform.SetRotation(FQuat(
+                            (*RotArr)[1]->AsNumber(), (*RotArr)[2]->AsNumber(),
+                            (*RotArr)[3]->AsNumber(),
+                            (*RotArr)[0]->AsNumber()));
+                    }
+                }
+
+                if (FInstrumentControlRigUtility::SetControlLocalTransform(
+                        OtherPosCR->GetHierarchy(), ControllerName,
+                        CurrentTransform)) {
+                    KeyframedOtherControllers.Add(ControllerName);
+                }
+            }
+
+            // 写完 Current 后立即插入当前姿态关键帧并完成求值：
+            // 与 LoadState/SaveAllState 相同的模式，防止 Sequencer
+            // 后续评估把未上关键帧的控件值覆盖掉。
+            if (KeyframedOtherControllers.Num() > 0) {
+                UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(
+                    OtherPosCR, KeyframedOtherControllers);
+            }
+        }
+    }
+
+    // ========== 2.75 导入 pole_controller：应用局部位置到 Control Rig 控件
     // （保留旋转） ==========
     if (JsonObject->HasField(TEXT("pole_controller"))) {
         UControlRig* PoleCR = GetCachedControlRig(TEXT("Performer"));

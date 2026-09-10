@@ -181,6 +181,9 @@ int32 UZhengDriftControlRigProcessor::SetupControllers(
             CreatedCount++;
     }
 
+    // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
+    FControlRigCreationUtility::AddEyeControl(Blueprint);
+
     UE_LOG(LogTemp, Warning,
            TEXT("ZhengDrift SetupControllers: Created %d controllers"),
            CreatedCount);
