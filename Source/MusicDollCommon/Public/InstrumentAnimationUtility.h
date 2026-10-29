@@ -89,11 +89,11 @@ struct MUSICDOLLCOMMON_API FBatchInsertKeyframesSettings {
     /** 特殊控制器处理规则：控制器名称前缀 -> 只插入指定轴的位置数据 */
     TMap<FString, ESpecialAxisMode> SpecialControllerRules;
 
-    /** 是否启用旋转插值优化 */
-    bool bUnwrapRotationInterpolation;
+    /** 是否启用旋转通道的欧拉角连续性处理（同一朝向有两组等价欧拉角，择近而用） */
+    bool bFixEulerFlips;
 
     FBatchInsertKeyframesSettings()
-        : FramePadding(600), bUnwrapRotationInterpolation(true) {}
+        : FramePadding(600), bFixEulerFlips(true) {}
 };
 
 /**
@@ -370,31 +370,6 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
      */
     static void LogAvailableChannels(UMovieSceneSection* Section);
 
-    // ===== 旋转处理 =====
-
-    /**
-     * 展开旋转序列，解决欧拉角插值跳变问题
-     * 通过计算相邻帧间的最短角度差，确保旋转值的连续性
-     * 避免从359度到1度这样的跳变
-     *
-     * @param RotationValues 待处理的旋转值数组
-     */
-    static void UnwrapRotationSequence(
-        TArray<FMovieSceneFloatValue>& RotationValues);
-
-    /**
-     * 批量处理所有旋转通道的展开
-     * 同时处理X、Y、Z三个旋转轴的欧拉角连续性问题
-     *
-     * @param RotationXValues X轴旋转值数组
-     * @param RotationYValues Y轴旋转值数组
-     * @param RotationZValues Z轴旋转值数组
-     */
-    static void ProcessRotationChannelsUnwrap(
-        TArray<FMovieSceneFloatValue>& RotationXValues,
-        TArray<FMovieSceneFloatValue>& RotationYValues,
-        TArray<FMovieSceneFloatValue>& RotationZValues);
-
     // ===== 控制器验证 =====
 
     /**
@@ -484,19 +459,6 @@ class MUSICDOLLCOMMON_API UInstrumentAnimationUtility : public UObject {
  */
 class MUSICDOLLCOMMON_API FInstrumentAnimationUtility {
    public:
-    static void UnwrapRotationSequence(
-        TArray<FMovieSceneFloatValue>& RotationValues) {
-        UInstrumentAnimationUtility::UnwrapRotationSequence(RotationValues);
-    }
-
-    static void ProcessRotationChannelsUnwrap(
-        TArray<FMovieSceneFloatValue>& RotationXValues,
-        TArray<FMovieSceneFloatValue>& RotationYValues,
-        TArray<FMovieSceneFloatValue>& RotationZValues) {
-        UInstrumentAnimationUtility::ProcessRotationChannelsUnwrap(
-            RotationXValues, RotationYValues, RotationZValues);
-    }
-
     static FMovieSceneFloatChannel* FindFloatChannel(
         UMovieSceneSection* Section, const FString& ChannelName) {
         return UInstrumentAnimationUtility::FindFloatChannel(Section,

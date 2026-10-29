@@ -510,56 +510,130 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
         return 0;
     }
 
-    // 复用第一个已有 Section（或创建新的 Section）
-    // 不再删除整个 Section，只清理本次要写入的 Morph Target 通道的旧关键帧。
-    // 与 BatchInsertControlRigKeys 的处理方式保持一致。
+    // 本函数会重建 Section（原因见下方"重建前的数据抢救"），
+    // 重建前先把非本次写入的通道数据抢救出来。
     TArray<UMovieSceneSection*> AllExistingSections =
         ControlRigTrack->GetAllSections();
 
-    UMovieSceneSection* Section = nullptr;
-    if (AllExistingSections.Num() > 0) {
-        Section = AllExistingSections[0];
-        UE_LOG(LogTemp, Warning,
-               TEXT("[InstrumentMorphTargetUtility] Reusing existing section "
-                    "for morph target animation"));
-
-        // 只清理本次要写入的 Morph Target 通道，不清除其他通道（如手部控制器）
-        int32 AutoClearedCount = 0;
-        for (const FMorphTargetKeyframeData& Data : KeyframeData) {
-            FMovieSceneFloatChannel* Channel =
-                UInstrumentAnimationUtility::FindFloatChannel(
-                    Section, Data.MorphTargetName);
-            if (Channel) {
-                Channel->Reset();
-                AutoClearedCount++;
-            }
+    // ===================== 重建前的数据抢救 =====================
+    // 控制 Rig 轨的通道集合 = 「运行时 rig 实例的 control 列表」∩「Section 里存的参数」，
+    // 只有在 Section 被重建（或整个 Sequencer 实例被重建）时，通道与"把值送进 rig"的
+    // 那批实体才会重新生成。复用旧 Section 只往里面塞键，实体不会重建 → Section 里明明
+    // 有值、rig 上仍然是 0，节点（Apply Float Channels To Curves）读到的就是 0，
+    // 表现为"节点不生效"，必须重开 Sequencer 或重编译 Control Rig 才恢复。
+    // （材质轨之所以从来不出这个问题，就是因为它在每次烘焙时都 ResetTrackSections 重建 Section。）
+    //
+    // 代价：重建会丢掉 Section 上已有的其它数据（例如同一人物身上由 morph target 驱动的
+    // 眨眼动画）。所以重建前先把"本次不写入"的通道数据整段抄出来，按同样的
+    // FMorphTargetKeyframeData 格式并入本次批量写入的数据里，重建后一次性写回。
+    TSet<FName> NamesBeingWritten;
+    for (const FMorphTargetKeyframeData& Data : KeyframeData) {
+        if (!Data.MorphTargetName.IsEmpty()) {
+            NamesBeingWritten.Add(FName(*Data.MorphTargetName));
         }
-        UE_LOG(LogTemp, Log,
-               TEXT("[InstrumentMorphTargetUtility] Auto-cleared %d morph "
-                    "target channels before writing"),
-               AutoClearedCount);
-
-    } else {
-        // 没有现有 Section，创建新的
-        Section = ControlRigTrack->CreateNewSection();
-        if (!Section) {
-            UE_LOG(LogTemp, Error,
-                   TEXT("[InstrumentMorphTargetUtility] Failed to create new "
-                        "Section for Morph Target animation"));
-            return 0;
-        }
-        ControlRigTrack->AddSection(*Section);
-        UE_LOG(LogTemp, Warning,
-               TEXT("[InstrumentMorphTargetUtility] Created new section for "
-                    "morph target animation"));
     }
+
+    TMap<FName, TArray<TPair<FFrameNumber, float>>> HarvestedKeys;
+    int32 HarvestedKeyCount = 0;
+
+    for (UMovieSceneSection* ExistingSection : AllExistingSections) {
+        UMovieSceneControlRigParameterSection* ExistingParameterSection =
+            Cast<UMovieSceneControlRigParameterSection>(ExistingSection);
+        if (!ExistingParameterSection) {
+            continue;
+        }
+
+        for (const FScalarParameterNameAndCurve& Scalar :
+             ExistingParameterSection->GetScalarParameterNamesAndCurves()) {
+            // 本次要重写的通道不用抢救，重建后会写入新数据
+            if (NamesBeingWritten.Contains(Scalar.ParameterName)) {
+                continue;
+            }
+
+            const FMovieSceneFloatChannel& Channel = Scalar.ParameterCurve;
+            const TArrayView<const FFrameNumber> Frames = Channel.GetTimes();
+            const TArrayView<const FMovieSceneFloatValue> Values =
+                Channel.GetValues();
+            if (Frames.Num() == 0 || Frames.Num() != Values.Num()) {
+                continue;
+            }
+
+            TArray<TPair<FFrameNumber, float>>& OutKeys =
+                HarvestedKeys.FindOrAdd(Scalar.ParameterName);
+            for (int32 KeyIndex = 0; KeyIndex < Frames.Num(); ++KeyIndex) {
+                OutKeys.Emplace(Frames[KeyIndex], Values[KeyIndex].Value);
+            }
+            HarvestedKeyCount += Frames.Num();
+
+            UE_LOG(LogTemp, Log,
+                   TEXT("[InstrumentMorphTargetUtility] Preserving channel '%s' "
+                        "(%d keyframes) from the section being rebuilt"),
+                   *Scalar.ParameterName.ToString(), Frames.Num());
+        }
+    }
+
+    // 把抢救出来的数据转成和本次写入完全相同的格式
+    TArray<FMorphTargetKeyframeData> AllKeyframeData = KeyframeData;
+    for (TPair<FName, TArray<TPair<FFrameNumber, float>>>& Pair :
+         HarvestedKeys) {
+        // 同一通道可能在多个 Section 里有关键帧，合并后按帧号排序
+        Pair.Value.StableSort([](const TPair<FFrameNumber, float>& A,
+                                 const TPair<FFrameNumber, float>& B) {
+            return A.Key < B.Key;
+        });
+
+        FMorphTargetKeyframeData Preserved(Pair.Key.ToString());
+        for (const TPair<FFrameNumber, float>& Key : Pair.Value) {
+            if (Preserved.FrameNumbers.Num() > 0 &&
+                Preserved.FrameNumbers.Last() == Key.Key) {
+                // 同一帧重复时以最后一个为准
+                Preserved.Values.Last() = Key.Value;
+                continue;
+            }
+            Preserved.FrameNumbers.Add(Key.Key);
+            Preserved.Values.Add(Key.Value);
+        }
+        AllKeyframeData.Add(MoveTemp(Preserved));
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentMorphTargetUtility] Harvested %d preserved "
+                "channel(s) / %d keyframe(s) before rebuilding the section"),
+           HarvestedKeys.Num(), HarvestedKeyCount);
+
+    UMovieSceneSection* Section = nullptr;
+    // ===================== 重建 Section =====================
+    // 与材质轨保持一致：每次烘焙都换一个全新的空 Section。
+    // 只有这样，通道与实体才会重新生成，写入的值才能真正到达 rig。
+    if (AllExistingSections.Num() > 1) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("[InstrumentMorphTargetUtility] Track had %d sections; they "
+                    "are merged into the single rebuilt section (all of their "
+                    "scalar parameter channels were preserved above)"),
+               AllExistingSections.Num());
+    }
+
+    Section = UInstrumentAnimationUtility::ResetTrackSections(ControlRigTrack);
+    if (!Section) {
+        UE_LOG(LogTemp, Error,
+               TEXT("[InstrumentMorphTargetUtility] Failed to rebuild the "
+                    "section for Morph Target animation"));
+        return 0;
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("[InstrumentMorphTargetUtility] Rebuilt section (old sections "
+                "removed=%d, preserved channels=%d); writing %d channel(s) in "
+                "total"),
+           AllExistingSections.Num(), HarvestedKeys.Num(),
+           AllKeyframeData.Num());
 
     // 计算帧数范围
     FFrameNumber MinFrame(MAX_int32);
     FFrameNumber MaxFrame(MIN_int32);
     bool bHasFrames = false;
 
-    for (const FMorphTargetKeyframeData& Data : KeyframeData) {
+    for (const FMorphTargetKeyframeData& Data : AllKeyframeData) {
         for (const FFrameNumber& FrameNumber : Data.FrameNumbers) {
             if (FrameNumber < MinFrame) {
                 MinFrame = FrameNumber;
@@ -571,8 +645,8 @@ int32 UInstrumentMorphTargetUtility::WriteMorphTargetAnimationToControlRig(
         }
     }
 
-    // 写入关键帧
-    int32 WrittenTargets = WriteMorphTargetKeyframes(Section, KeyframeData);
+    // 写入关键帧（本次数据 + 重建前抢救出来的数据）
+    int32 WrittenTargets = WriteMorphTargetKeyframes(Section, AllKeyframeData);
 
     // 扩展 Section 范围（而非覆盖），始终从零帧开始
     if (bHasFrames) {

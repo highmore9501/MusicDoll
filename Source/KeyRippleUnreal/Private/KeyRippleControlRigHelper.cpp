@@ -49,8 +49,8 @@ TSet<FString> FKeyRippleControlRigHelper::GetAllControllerNames(
 
     const TMap<FString, FString>* ControllerMaps[] = {
         &KeyRippleActor->FingerControllers, &KeyRippleActor->HandControllers,
-        &KeyRippleActor->KeyBoardPositions, &KeyRippleActor->TargetPoints,
-        &KeyRippleActor->PolePoints};
+        &KeyRippleActor->FootControllers,   &KeyRippleActor->KeyBoardPositions,
+        &KeyRippleActor->TargetPoints,      &KeyRippleActor->PolePoints};
 
     for (const auto* ControllerMap : ControllerMaps) {
         for (const auto& Pair : *ControllerMap) {

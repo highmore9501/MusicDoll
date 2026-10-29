@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
@@ -62,6 +62,22 @@ public:
     static int32 LinearDistributeControls(AZhengDriftUnreal* ZhengDriftActor);
 
     /**
+     * 头部采样：采集默认坐姿下的头部位置（头部原点）
+     *
+     * 头部原点只有一个用途——判断当前哪只手离头更远（更远的那只手主导头部位置）。
+     * 各手部状态的样本跟着 SaveLeftHandState / SaveRightHandState 一起采集。
+     *
+     * @return 是否成功写入（Head_Control 控件缺失时返回 false）
+     */
+    static bool SaveHeadOrigin(AZhengDriftUnreal* ZhengDriftActor);
+
+    /**
+     * 头部采样：把头部原点还原到 Head_Control
+     * @return 是否成功还原（原点从未采集时返回 false）
+     */
+    static bool LoadHeadOrigin(AZhengDriftUnreal* ZhengDriftActor);
+
+    /**
      * 将 RecorderTransforms 中的弦位置数据回写到 Control Rig 控制器
      * 仅在 ImportRecorderInfo 之后调用
      */
@@ -90,18 +106,23 @@ private:
                                           UControlRig* ControlRig);
 
     /**
-     * 辅助：检测当前是否为 A/B/C/D 四态之一，若是则自动把
-     * Middle_Hand 和 Head_Control 的当前位置写入对应的双线性辅助记录器
+     * 头部采样的内部实现（需要调用方已取好 ControlRig）：
+     * 采集头部原点 / 还原头部原点。
      */
-    static void CheckAndSaveBilinearHelpers(AZhengDriftUnreal* ZhengDriftActor,
-                                             UControlRig* ControlRig);
+    static bool SaveHeadOriginInternal(AZhengDriftUnreal* ZhengDriftActor,
+                                       UControlRig* ControlRig);
+    static bool LoadHeadOriginInternal(AZhengDriftUnreal* ZhengDriftActor,
+                                       UControlRig* ControlRig);
 
     /**
-     * 辅助：检测当前是否为 A/B/C/D 四态之一，若是则自动把
-     * 对应双线性辅助记录器中的位置应用到 Middle_Hand 和 Head_Control 控制器
+     * 辅助：把某个手部状态下的"这只手在哪 + 头在哪"写进 HeadSamples。
+     * `SideKey` 取 "left" / "right"，`StateKey` 形如 "Normal_far"。
      */
-    static void CheckAndLoadBilinearHelpers(AZhengDriftUnreal* ZhengDriftActor,
-                                             UControlRig* ControlRig);
+    static void CaptureHeadSample(AZhengDriftUnreal* ZhengDriftActor,
+                                  UControlRig* ControlRig,
+                                  const FString& SideKey,
+                                  const FString& StateKey,
+                                  const FVector& HandLocation);
 
     /** 辅助：从 RecorderTransforms 加载弦位置数据到 ControlRig 控制器 */
     static void LoadStringPositionStates(AZhengDriftUnreal* ZhengDriftActor,

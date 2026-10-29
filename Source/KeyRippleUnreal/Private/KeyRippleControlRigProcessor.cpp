@@ -629,7 +629,14 @@ void UKeyRippleControlRigProcessor::SetupControllers(
             ControlRigBlueprint, ControllerName, TEXT("controller_root"));
     }
 
-    // 3b. 创建 Mid_Hand（作为 Look_At 的父级，必须在 Look_At 之前创建）
+    // 3b. 创建脚部控制器（F_L, FP_L, F_R, FP_R）— 直接挂在 controller_root 下
+    for (const auto& Pair : KeyRippleActor->FootControllers) {
+        const FString& ControllerName = Pair.Value;
+        FControlRigCreationUtility::EnsureControl(
+            ControlRigBlueprint, ControllerName, TEXT("controller_root"));
+    }
+
+    // 3c. 创建 Mid_Hand（作为 Look_At 的父级，必须在 Look_At 之前创建）
     for (const auto& Pair : KeyRippleActor->TargetPoints) {
         if (!Pair.Value.Equals(TEXT("Mid_Hand"))) continue;
         FControlRigCreationUtility::EnsureControl(
@@ -637,49 +644,47 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         break;
     }
 
-    // 3c. 创建手指控制器（0_L, 0_R, ...）— 挂在对应手掌下（H_L 或 H_R）
+    // 3d. 创建手指控制器（0_L, 0_R, ...）— 挂在对应手掌下（H_L 或 H_R）
     for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
         const FString& ControllerName = FingerPair.Value;
         FString HandSuffix =
             ControllerName.EndsWith(TEXT("_L")) ? TEXT("_L") : TEXT("_R");
         FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
-        FControlRigCreationUtility::EnsureControl(
-            ControlRigBlueprint, ControllerName, ParentName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                  ControllerName, ParentName);
     }
 
-    // 3d. 创建辅助控件（ext_）— 每个手指一个，与手指控件一样挂在对应手掌下
+    // 3e. 创建辅助控件（ext_）— 每个手指一个，与手指控件一样挂在对应手掌下
     //     极向量控件（pole_）将绑定在对应的 ext_ 控件下面（见 3f）
     for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
         const FString& FingerControllerName = FingerPair.Value;
         FString ExtControllerName =
             FString::Printf(TEXT("ext_%s"), *FingerControllerName);
-        FString HandSuffix = FingerControllerName.EndsWith(TEXT("_L"))
-                                 ? TEXT("_L")
-                                 : TEXT("_R");
+        FString HandSuffix =
+            FingerControllerName.EndsWith(TEXT("_L")) ? TEXT("_L") : TEXT("_R");
         FString ParentName = FString::Printf(TEXT("H%s"), *HandSuffix);
         FControlRigCreationUtility::EnsureControl(
             ControlRigBlueprint, ExtControllerName, ParentName);
     }
 
-    // 3e. 创建其余目标点控制器（Mid_Hand 已在 3b 中创建，此处跳过）
+    // 3f. 创建其余目标点控制器（Mid_Hand 已在 3c 中创建，此处跳过）
     //     Look_At 挂在 Mid_Hand 下，其余挂在 controller_root 下
     for (const auto& Pair : KeyRippleActor->TargetPoints) {
         const FString& ControllerName = Pair.Value;
-        if (ControllerName.Equals(TEXT("Mid_Hand"))) continue;  // 已在 3b 创建
+        if (ControllerName.Equals(TEXT("Mid_Hand"))) continue;  // 已在 3c 创建
 
         FString ParentName = ControllerName.Equals(TEXT("Look_At"))
                                  ? TEXT("Mid_Hand")
                                  : TEXT("controller_root");
-        FControlRigCreationUtility::EnsureControl(
-            ControlRigBlueprint, ControllerName, ParentName);
+        FControlRigCreationUtility::EnsureControl(ControlRigBlueprint,
+                                                  ControllerName, ParentName);
     }
 
-    // 3f. 创建极向量控制器（pole_0, pole_1, ...）— 挂在对应的 ext_ 控件下面
+    // 3g. 创建极向量控制器（pole_0, pole_1, ...）— 挂在对应的 ext_ 控件下面
     for (const FString& ControllerName : AllControllerNames) {
         if (!ControllerName.StartsWith(TEXT("pole_"))) continue;
 
-        FString PoleFingerNumber =
-            ControllerName.Mid(5);  // 去掉 "pole_" 前缀
+        FString PoleFingerNumber = ControllerName.Mid(5);  // 去掉 "pole_" 前缀
         FString RelatedFingerControllerName;
 
         for (const auto& FingerPair : KeyRippleActor->FingerControllers) {
@@ -690,14 +695,14 @@ void UKeyRippleControlRigProcessor::SetupControllers(
         }
 
         if (!RelatedFingerControllerName.IsEmpty()) {
-            FString ParentName = FString::Printf(
-                TEXT("ext_%s"), *RelatedFingerControllerName);
+            FString ParentName =
+                FString::Printf(TEXT("ext_%s"), *RelatedFingerControllerName);
             FControlRigCreationUtility::EnsureControl(
                 ControlRigBlueprint, ControllerName, ParentName);
         }
     }
 
-    // 3g. 创建键盘位置控制器（KeyBoardPositions）— 挂在 controller_root 下
+    // 3h. 创建键盘位置控制器（KeyBoardPositions）— 挂在 controller_root 下
     for (const auto& Pair : KeyRippleActor->KeyBoardPositions) {
         const FString& ControllerName = Pair.Value;
         FControlRigCreationUtility::EnsureControl(

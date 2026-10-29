@@ -15,7 +15,19 @@
  *   每根骨骼的弯曲程度都很平均（这正是 Blender IK 效果平滑的数学根源）。
  *
  * 与 ArcDistributedIK（两阶段：先解位置再重建旋转）不同，本节点是
- * 单阶段迭代求解，姿态演化依赖初始姿态与极点预处理。
+ * 单阶段迭代求解。
+ *
+ * 求解起点：用骨骼的 InitialLocal（本节点从不写入的数据）级联重建出
+ * 「未被 IK 解算过的 FK 姿态」，根骨骼挂在父级的实时姿态上。起点因此在一帧内
+ * 恒定，不会被本节点自己的写回污染，径向角不再逐帧漂移。
+ *
+ * 极点（pole）处理：Blender 的 ConstrainPoleVector 在【迭代前】预旋转整条链，
+ * 其成立前提是起点末端不在目标上（dir != poledir）。本节点的输入姿态与 IK 输出
+ * 是同一批骨骼，起点末端恰好压在目标上（dir == poledir），该约束恒为单位矩阵、
+ * 在算法内部结构性失效。因此改为【求解后显式对齐】：把整条链绕「根 -> 末端」轴
+ * 刚性旋转，使链的弯曲平面与「根 / 末端 / pole target」确定的平面重合。根与末端
+ * 都在旋转轴上，故末端位置、骨长、相对构型都不变，只有链的朝向改变。
+ * 退化情形（直链没有弯曲平面、pole 落在链轴上）跳过对齐。
  *
  * 末端骨骼（末根）行为：
  * - bPropagateToChildren（"影响子级"）为 true 时，末根骨骼的世界旋转
@@ -41,17 +53,19 @@ struct MUSICDOLLCOMMON_API FRigUnit_BlenderStyleIK
     UPROPERTY(meta = (Input))
     FTransform EffectorTransform;
 
-    /** 收敛精度：末端离目标多近算达标 */
-    UPROPERTY(meta = (Input, Constant))
-    float Precision = 0.05f;
-
     /** 求解权重：0~1 插值 */
     UPROPERTY(meta = (Input))
     float Weight = 1.f;
 
-    /** 最大迭代次数 */
-    UPROPERTY(meta = (Input))
-    int32 MaxIterations = 30;
+    /**
+     * 最大迭代次数（Constant：值直接取这里的默认值，节点针脚上不留副本）。
+     * 非 Constant 的 Input 会把节点首次创建时的默认值烘成针脚字面量，之后改
+     * C++ 默认值不生效，很容易误判成"参数没接进代码"。
+     * 停止判据与 Blender 一致（角度增量范数 < 1e-3），实际求解远早于上限收敛，
+     * 这个值只是发散时的兜底。
+     */
+    UPROPERTY(meta = (Input, Constant, DisplayName = "Max Iterations"))
+    int32 MaxIterations = 100;
 
     /** 影响子级：true 时末端关节的世界旋转跟随 Effector */
     UPROPERTY(meta = (Input, Constant))

@@ -67,6 +67,7 @@ AHarpGlideUnreal::AHarpGlideUnreal() {
     LeftMidNear = 0;
     RightFar = 0;
     RightNear = 0;
+    bUseDoubleString = false;
     bIsUnreal = true;
 
     CurrentLeftHandPose = EHarpGlideHandPose::FAR;
@@ -149,16 +150,10 @@ void AHarpGlideUnreal::InitializeControllersAndRecorders() {
     HandPoleControllers.Add(TEXT("right_ring_pole"), TEXT("R_R_pole"));
     HandPoleControllers.Add(TEXT("right_little_pole"), TEXT("P_R_pole"));
 
-    // ========== 弦位置记录器（94 个：47弦 × 2点 head/end） ==========
+    // ========== 弦位置记录器（StringNumber × 2 点 head/end） ==========
     // 命名：s{n}head / s{n}end（n = 0..StringNumber-1）
     // Blender: self.string_recorders[f's{n}_head'] = f's{n}head'
-    StringPositionRecorders.Empty();
-    for (int32 i = 0; i < StringNumber; ++i) {
-        StringPositionRecorders.Add(FString::Printf(TEXT("s%d_head"), i),
-                                    FString::Printf(TEXT("s%dhead"), i));
-        StringPositionRecorders.Add(FString::Printf(TEXT("s%d_end"), i),
-                                    FString::Printf(TEXT("s%dend"), i));
-    }
+    RebuildStringPositionRecorders();
 
     // ========== 踏板位置记录器（35 个：7唱名 × 5档位） ==========
     // 命名：pedal_{note}_state{n}（n = 0..4）
@@ -239,6 +234,9 @@ void AHarpGlideUnreal::InitializeControllersAndRecorders() {
     AddDefaults(HeadRecorders);
     AddDefaults(FootRestRecorders);
 
+    // 双排弦：按当前开关补上 s0end_L 记录器
+    SyncDoubleStringRecorders();
+
     UE_LOG(LogTemp, Warning,
            TEXT("HarpGlideUnreal: InitializeControllersAndRecorders completed."
                 " Ctrl=%d Rec=%d StringPos=%d PedalPos=%d HandRec=%d"),
@@ -249,6 +247,60 @@ void AHarpGlideUnreal::InitializeControllersAndRecorders() {
            RecorderTransforms.Num(), StringPositionRecorders.Num(),
            PedalPositionRecorders.Num(),
            LeftHandRecorders.Num() + RightHandRecorders.Num());
+}
+
+// ============================================================
+// RebuildStringPositionRecorders
+// ============================================================
+
+void AHarpGlideUnreal::RebuildStringPositionRecorders() {
+    // 按当前 StringNumber 重建「弦位置记录器」的控件名映射
+    // key = s{n}_head / s{n}_end，value = 控件名 s{n}head / s{n}end
+    StringPositionRecorders.Empty();
+    for (int32 StringIndex = 0; StringIndex < StringNumber; ++StringIndex) {
+        StringPositionRecorders.Add(
+            FString::Printf(TEXT("s%d_head"), StringIndex),
+            FString::Printf(TEXT("s%dhead"), StringIndex));
+        StringPositionRecorders.Add(
+            FString::Printf(TEXT("s%d_end"), StringIndex),
+            FString::Printf(TEXT("s%dend"), StringIndex));
+    }
+
+    // 双排弦基准点 s0end_L 随开关补上/移除（本函数不碰 RecorderTransforms，
+    // 磁盘上的坐标由调用方决定保留还是重建）
+    MatchDoubleStringRecorder(bUseDoubleString);
+}
+
+// ============================================================
+// SyncDoubleStringRecorders
+// ============================================================
+
+void AHarpGlideUnreal::SyncDoubleStringRecorders() {
+    MatchDoubleStringRecorder(bUseDoubleString);
+
+    // 勾选时确保存在该记录器条目；取消时清掉，避免残留导出
+    if (bUseDoubleString) {
+        RecorderTransforms.FindOrAdd(TEXT("s0end_L"));
+    } else {
+        RecorderTransforms.Remove(TEXT("s0end_L"));
+    }
+
+    UE_LOG(LogTemp, Warning,
+           TEXT("HarpGlide SyncDoubleStringRecorders: bUseDoubleString=%s, "
+                "StringPositionRecorders=%d"),
+           bUseDoubleString ? TEXT("true") : TEXT("false"),
+           StringPositionRecorders.Num());
+}
+
+void AHarpGlideUnreal::MatchDoubleStringRecorder(bool bEnabled) {
+    // 左排弦唯一基准点：右排弦的 s0 弦尾 → 左排弦的 s0 弦尾
+    const FString RecorderKey = TEXT("s0end_L");
+
+    if (bEnabled) {
+        StringPositionRecorders.Add(RecorderKey, RecorderKey);
+    } else {
+        StringPositionRecorders.Remove(RecorderKey);
+    }
 }
 
 // ============================================================
@@ -460,6 +512,7 @@ void AHarpGlideUnreal::ExportRecorderInfo(const FString& FilePath,
     ConfigObj->SetNumberField(TEXT("left_mid_near"), LeftMidNear);
     ConfigObj->SetNumberField(TEXT("right_far"), RightFar);
     ConfigObj->SetNumberField(TEXT("right_near"), RightNear);
+    ConfigObj->SetBoolField(TEXT("double_string"), bUseDoubleString);
     ConfigObj->SetBoolField(TEXT("is_unreal"), !bToBlender);
     Root->SetObjectField(TEXT("config"), ConfigObj);
 
@@ -644,23 +697,48 @@ bool AHarpGlideUnreal::ImportRecorderInfo(const FString& FilePath) {
     if (Root->HasField(TEXT("config"))) {
         TSharedPtr<FJsonObject> ConfigObj =
             Root->GetObjectField(TEXT("config"));
-        int32 LoadedStringCount = StringNumber;
-        ConfigObj->TryGetNumberField(TEXT("string_count"), LoadedStringCount);
-        if (LoadedStringCount != StringNumber) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("HarpGlide::ImportRecorderInfo: "
-                        "config.string_count=%d, current StringNumber=%d"),
-                   LoadedStringCount, StringNumber);
-        }
-        // 读取手部位置参数
+
+        // 手部位置参数（0~100）
         ConfigObj->TryGetNumberField(TEXT("left_far"), LeftFar);
         ConfigObj->TryGetNumberField(TEXT("left_near"), LeftNear);
         ConfigObj->TryGetNumberField(TEXT("left_mid_far"), LeftMidFar);
         ConfigObj->TryGetNumberField(TEXT("left_mid_near"), LeftMidNear);
         ConfigObj->TryGetNumberField(TEXT("right_far"), RightFar);
         ConfigObj->TryGetNumberField(TEXT("right_near"), RightNear);
+
+        // 双排弦开关
+        const bool bPreviousDoubleString = bUseDoubleString;
+        ConfigObj->TryGetBoolField(TEXT("double_string"), bUseDoubleString);
+
+        // 弦数：与当前值不同时按新弦数重建「弦位置记录器」。
+        // 必须在读取 STRING_RECORDERS 之前完成，否则新弦数的记录器名没有条目，
+        // 导入的弦坐标会落在旧弦数的记录器上。
+        int32 LoadedStringCount = StringNumber;
+        const bool bHasStringCount = ConfigObj->TryGetNumberField(
+            TEXT("string_count"), LoadedStringCount);
+        if (bHasStringCount && LoadedStringCount > 0 &&
+            LoadedStringCount != StringNumber) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("HarpGlide::ImportRecorderInfo: string_count %d -> %d, "
+                        "rebuilding string recorders (re-run Setup All "
+                        "Controllers to match the string controls)"),
+                   StringNumber, LoadedStringCount);
+            StringNumber = LoadedStringCount;
+            RebuildStringPositionRecorders();
+        } else if (bUseDoubleString != bPreviousDoubleString) {
+            // 弦数没变，只同步 s0end_L 记录器名（此时尚未读取
+            // STRING_RECORDERS，对已有坐标是 FindOrAdd，不会冲掉数据）
+            MatchDoubleStringRecorder(bUseDoubleString);
+        }
+
         UE_LOG(LogTemp, Warning,
-               TEXT("HarpGlide::ImportRecorderInfo: Config imported"));
+               TEXT("HarpGlide::ImportRecorderInfo: Config imported "
+                    "(string_count=%d, left_far=%d, left_near=%d, "
+                    "left_mid_far=%d, left_mid_near=%d, right_far=%d, "
+                    "right_near=%d, double_string=%s)"),
+               StringNumber, LeftFar, LeftNear, LeftMidFar, LeftMidNear,
+               RightFar, RightNear,
+               bUseDoubleString ? TEXT("true") : TEXT("false"));
     }
 
     ReadCategory(TEXT("STRING_RECORDERS"));

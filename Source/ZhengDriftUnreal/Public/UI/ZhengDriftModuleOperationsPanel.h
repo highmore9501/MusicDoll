@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "CoreMinimal.h"
 #include "UI/ModuleOperationsPanelBase.h"
@@ -30,6 +30,10 @@ private:
     TArray<TSharedPtr<FString>> LeftHandActionOptions;
     TArray<TSharedPtr<FString>> RightHandPositionOptions;
     TArray<TSharedPtr<FString>> RightHandActionOptions;
+
+    // 头部采样：头部原点（各手部状态的样本跟着 Save Left / Save Right 一起采）
+    FReply OnSaveHeadOrigin();
+    FReply OnLoadHeadOrigin();
 
     // 按钮事件
     FReply OnSaveLeft();

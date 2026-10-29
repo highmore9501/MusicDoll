@@ -277,6 +277,8 @@ bool UZhengDriftControlRigProcessor::SaveLeftHandState(
                                                                 Action);
 
     int32 Saved = 0;
+    FVector PalmLocation = FVector::ZeroVector;
+    bool bHasPalm = false;
     for (const auto& Pair : Mapping) {
         const FString& CtrlName = Pair.Key;
         const FString& RecName = Pair.Value;
@@ -291,10 +293,24 @@ bool UZhengDriftControlRigProcessor::SaveLeftHandState(
             continue;
         }
 
+        if (CtrlName == TEXT("H_L")) {
+            PalmLocation = T.GetLocation();
+            bHasPalm = true;
+        }
+
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
         ZhengDriftActor->RecorderTransforms.FindOrAdd(RecName) = RecT;
         Saved++;
+    }
+
+    // 顺手采一条头部样本：这个手部状态下"这只手在哪、头该在哪"
+    if (bHasPalm) {
+        CaptureHeadSample(ZhengDriftActor, ControlRig, TEXT("left"),
+                          AZhengDriftUnreal::GetLeftHandActionString(Action) +
+                              TEXT("_") +
+                              AZhengDriftUnreal::GetHandPositionString(Position),
+                          PalmLocation);
     }
 
     // 每次保存手部状态时，同步记录所有弦位置控制器的当前值
@@ -302,9 +318,6 @@ bool UZhengDriftControlRigProcessor::SaveLeftHandState(
 
     // 同步记录所有脚部控制器的当前值
     SaveFootControllerStates(ZhengDriftActor, ControlRig);
-
-    // 检测四态并自动保存双线性辅助记录器
-    CheckAndSaveBilinearHelpers(ZhengDriftActor, ControlRig);
 
     UE_LOG(LogTemp, Warning,
            TEXT("ZhengDrift SaveLeftHandState: Saved %d controllers"), Saved);
@@ -338,6 +351,8 @@ bool UZhengDriftControlRigProcessor::SaveRightHandState(
                                                                  Action);
 
     int32 Saved = 0;
+    FVector PalmLocation = FVector::ZeroVector;
+    bool bHasPalm = false;
     for (const auto& Pair : Mapping) {
         const FString& CtrlName = Pair.Key;
         const FString& RecName = Pair.Value;
@@ -352,10 +367,24 @@ bool UZhengDriftControlRigProcessor::SaveRightHandState(
             continue;
         }
 
+        if (CtrlName == TEXT("H_R")) {
+            PalmLocation = T.GetLocation();
+            bHasPalm = true;
+        }
+
         FZhengDriftRecorderTransform RecT;
         RecT.FromTransform(T);
         ZhengDriftActor->RecorderTransforms.FindOrAdd(RecName) = RecT;
         Saved++;
+    }
+
+    // 顺手采一条头部样本：这个手部状态下"这只手在哪、头该在哪"
+    if (bHasPalm) {
+        CaptureHeadSample(ZhengDriftActor, ControlRig, TEXT("right"),
+                          AZhengDriftUnreal::GetRightHandActionString(Action) +
+                              TEXT("_") +
+                              AZhengDriftUnreal::GetHandPositionString(Position),
+                          PalmLocation);
     }
 
     // 每次保存手部状态时，同步记录所有弦位置控制器的当前值
@@ -363,9 +392,6 @@ bool UZhengDriftControlRigProcessor::SaveRightHandState(
 
     // 同步记录所有脚部控制器的当前值
     SaveFootControllerStates(ZhengDriftActor, ControlRig);
-
-    // 检测四态并自动保存双线性辅助记录器
-    CheckAndSaveBilinearHelpers(ZhengDriftActor, ControlRig);
 
     UE_LOG(LogTemp, Warning,
            TEXT("ZhengDrift SaveRightHandState: Saved %d controllers"), Saved);
@@ -375,43 +401,6 @@ bool UZhengDriftControlRigProcessor::SaveRightHandState(
     }
 
     return Saved > 0;
-}
-
-bool UZhengDriftControlRigProcessor::SaveState(
-    AZhengDriftUnreal* ZhengDriftActor,
-    TMap<FString, FTransform>& OutStateData) {
-    bool bLeft = SaveLeftHandState(ZhengDriftActor);
-    bool bRight = SaveRightHandState(ZhengDriftActor);
-
-    if (ZhengDriftActor) {
-        for (const auto& Pair : ZhengDriftActor->RecorderTransforms) {
-            OutStateData.Add(Pair.Key, Pair.Value.ToTransform());
-        }
-    }
-
-    // 在 Sequencer 中为已保存控制器写入关键帧，防止后续操作导致控件复位
-    {  // 影响 LeftHand: H_L,HP_L,T_L,I_L,M_L,R_L,P_L (7)
-        //       RightHand: H_R,HP_R,T_R,I_R,M_R,R_R,P_R (7)
-        //       Foot: F_L,F_L_pole,F_R,F_R_pole (4)
-        //       Target: Head_Control (仅，Middle_Hand/Look_At 不需要)
-        //       — 共 19 个
-        UControlRig* CR = GetControlRig(ZhengDriftActor);
-        if (CR) {
-            TArray<FString> CtrlNames = {
-                TEXT("H_L"),          TEXT("HP_L"), TEXT("T_L"),
-                TEXT("I_L"),          TEXT("M_L"),  TEXT("R_L"),
-                TEXT("P_L"),          TEXT("H_R"),  TEXT("HP_R"),
-                TEXT("T_R"),          TEXT("I_R"),  TEXT("M_R"),
-                TEXT("R_R"),          TEXT("P_R"),  TEXT("F_L"),
-                TEXT("F_L_pole"),     TEXT("F_R"),  TEXT("F_R_pole"),
-                TEXT("Head_Control"),
-            };
-            UInstrumentAnimationUtility::InsertCurrentPoseKeyframes(CR,
-                                                                    CtrlNames);
-        }
-    }
-
-    return bLeft && bRight;
 }
 
 // ============================================================
@@ -477,8 +466,57 @@ bool UZhengDriftControlRigProcessor::LoadState(
     // 加载脚部控制器
     LoadFootControllerStates(ZhengDriftActor, ControlRig);
 
-    // 检测四态并将双线性辅助记录器数据应用到控制器
-    CheckAndLoadBilinearHelpers(ZhengDriftActor, ControlRig);
+    // 头部位置：跟着主导手（离头部原点更远的那只手）走。左右手状态若是一次
+    // 同时采集的，两条样本的头位置相同，取哪条都一样；若分别采集，只有主导手
+    // 那条样本是为眼前这对手位摆的。
+    {
+        const FString LeftKey =
+            TEXT("left_") +
+            AZhengDriftUnreal::GetLeftHandActionString(
+                ZhengDriftActor->CurrentLeftHandAction) +
+            TEXT("_") +
+            AZhengDriftUnreal::GetHandPositionString(
+                ZhengDriftActor->CurrentLeftHandPosition);
+        const FString RightKey =
+            TEXT("right_") +
+            AZhengDriftUnreal::GetRightHandActionString(
+                ZhengDriftActor->CurrentRightHandAction) +
+            TEXT("_") +
+            AZhengDriftUnreal::GetHandPositionString(
+                ZhengDriftActor->CurrentRightHandPosition);
+
+        bool bDominantIsLeft = true;
+        FTransform LeftPalm;
+        FTransform RightPalm;
+        const bool bHasLeftPalm =
+            FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), TEXT("H_L"), LeftPalm);
+        const bool bHasRightPalm =
+            FInstrumentControlRigUtility::GetControlLocalTransform(
+                ControlRig->GetHierarchy(), TEXT("H_R"), RightPalm);
+        if (bHasLeftPalm && bHasRightPalm) {
+            bDominantIsLeft =
+                FVector::Dist(LeftPalm.GetLocation(),
+                              ZhengDriftActor->HeadOrigin) >=
+                FVector::Dist(RightPalm.GetLocation(),
+                              ZhengDriftActor->HeadOrigin);
+        }
+
+        const FZhengDriftHeadSample* HeadSample =
+            ZhengDriftActor->HeadSamples.Find(bDominantIsLeft ? LeftKey
+                                                              : RightKey);
+        if (HeadSample) {
+            FTransform HeadTransform;
+            if (FInstrumentControlRigUtility::GetControlLocalTransform(
+                    ControlRig->GetHierarchy(), TEXT("Head_Control"),
+                    HeadTransform)) {
+                HeadTransform.SetLocation(HeadSample->HeadLocation);
+                FInstrumentControlRigUtility::SetControlLocalTransform(
+                    ControlRig->GetHierarchy(), TEXT("Head_Control"),
+                    HeadTransform);
+            }
+        }
+    }
 
     // 注意：这里不能调用 Evaluate_AnyThread() / ForceEvaluate，
     // 否则 Sequencer 会用当前帧的旧关键帧覆盖刚写入的目标值。
@@ -782,150 +820,127 @@ void UZhengDriftControlRigProcessor::LoadFootControllerStates(
 }
 
 // ============================================================
-// CheckAndSaveBilinearHelpers
+// 头部采样（SaveHeadOrigin / LoadHeadOrigin / CaptureHeadSample）
 // ============================================================
+//
+// 头部位置靠"查表"决定：拿主导手（离头部原点更远的那只手）的位置，去同一只手
+// 的样本里按距离加权。因此需要两样东西：
+//   - 头部原点：默认坐姿下头在哪，只用于判断哪只手离头更远；
+//   - 各手部状态的样本：保存左右手状态时顺手采一条（这只手在哪、头在哪），
+//     每只手 6 条（远/中/近 × 动作），没有单独的采样按钮。
+//
+// Head_Control 的**朝向**不在这里：它由 Track To 约束跟随 Look_At 自动算。
 
-void UZhengDriftControlRigProcessor::CheckAndSaveBilinearHelpers(
-    AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig) {
-    if (!ZhengDriftActor || !ControlRig) return;
+bool UZhengDriftControlRigProcessor::SaveHeadOrigin(
+    AZhengDriftUnreal* ZhengDriftActor) {
+    if (!ValidateZhengDriftActor(ZhengDriftActor, TEXT("SaveHeadOrigin")))
+        return false;
 
-    EZhengDriftHandPosition LeftPos = ZhengDriftActor->CurrentLeftHandPosition;
-    EZhengDriftHandPosition RightPos =
-        ZhengDriftActor->CurrentRightHandPosition;
-    EZhengDriftLeftHandAction LeftAction =
-        ZhengDriftActor->CurrentLeftHandAction;
-    EZhengDriftRightHandAction RightAction =
-        ZhengDriftActor->CurrentRightHandAction;
-
-    // 判断当前是否为四态之一
-    FString StateKey;
-
-    // A 态：左手 Normal（拨奏）+ 右手 Tremolo（摇指）+ 双手 Far
-    if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
-        RightAction == EZhengDriftRightHandAction::TREMOLO &&
-        LeftPos == EZhengDriftHandPosition::FAR &&
-        RightPos == EZhengDriftHandPosition::FAR) {
-        StateKey = TEXT("A");
-    }
-    // B 态：左手 Press（按弦）+ 右手 Normal（拨奏）+ 双手 Far
-    else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
-             RightAction == EZhengDriftRightHandAction::NORMAL &&
-             LeftPos == EZhengDriftHandPosition::FAR &&
-             RightPos == EZhengDriftHandPosition::FAR) {
-        StateKey = TEXT("B");
-    }
-    // C 态：左手 Normal（拨奏）+ 右手 Tremolo（摇指）+ 双手 Near
-    else if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
-             RightAction == EZhengDriftRightHandAction::TREMOLO &&
-             LeftPos == EZhengDriftHandPosition::NEAR &&
-             RightPos == EZhengDriftHandPosition::NEAR) {
-        StateKey = TEXT("C");
-    }
-    // D 态：左手 Press（按弦）+ 右手 Normal（拨奏）+ 双手 Near
-    else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
-             RightAction == EZhengDriftRightHandAction::NORMAL &&
-             LeftPos == EZhengDriftHandPosition::NEAR &&
-             RightPos == EZhengDriftHandPosition::NEAR) {
-        StateKey = TEXT("D");
+    UControlRig* ControlRig = GetControlRig(ZhengDriftActor);
+    if (!ControlRig) {
+        ZhengDriftActor->TriggerControlRigReregistration(
+            TEXT("ControlRig not found during SaveHeadOrigin"));
+        ControlRig = GetControlRig(ZhengDriftActor);
+        if (!ControlRig) return false;
     }
 
-    if (StateKey.IsEmpty()) return;
-
-    // 读取 Middle_Hand 和 Head_Control 的当前位置，写入对应辅助控制器
-    TArray<TPair<FString, FString>> HelperPairs = {
-        {TEXT("Middle_Hand"),
-         FString::Printf(TEXT("Middle_Hand_%s"), *StateKey)},
-        {TEXT("Head_Control"),
-         FString::Printf(TEXT("Head_Control_%s"), *StateKey)},
-    };
-
-    for (const auto& HP : HelperPairs) {
-        const FString& SrcCtrl = HP.Key;
-        const FString& DestName = HP.Value;
-
-        FTransform T;
-        if (!FInstrumentControlRigUtility::GetControlLocalTransform(
-                ControlRig->GetHierarchy(), SrcCtrl, T))
-            continue;
-
-        // 只保存 location
-        FZhengDriftRecorderTransform RecT;
-        RecT.Location = T.GetLocation();
-        ZhengDriftActor->RecorderTransforms.FindOrAdd(DestName) = RecT;
+    const bool bSaved =
+        SaveHeadOriginInternal(ZhengDriftActor, ControlRig);
+    if (bSaved) {
+        ZhengDriftActor->MarkPackageDirty();
     }
-
-    UE_LOG(LogTemp, Warning,
-           TEXT("ZhengDrift CheckAndSaveBilinearHelpers: Saved state '%s'"),
-           *StateKey);
+    return bSaved;
 }
 
-// ============================================================
-// CheckAndLoadBilinearHelpers
-// ============================================================
+bool UZhengDriftControlRigProcessor::LoadHeadOrigin(
+    AZhengDriftUnreal* ZhengDriftActor) {
+    if (!ValidateZhengDriftActor(ZhengDriftActor, TEXT("LoadHeadOrigin")))
+        return false;
 
-void UZhengDriftControlRigProcessor::CheckAndLoadBilinearHelpers(
+    UControlRig* ControlRig = GetControlRig(ZhengDriftActor);
+    if (!ControlRig) {
+        ZhengDriftActor->TriggerControlRigReregistration(
+            TEXT("ControlRig not found during LoadHeadOrigin"));
+        ControlRig = GetControlRig(ZhengDriftActor);
+        if (!ControlRig) return false;
+    }
+
+    return LoadHeadOriginInternal(ZhengDriftActor, ControlRig);
+}
+
+bool UZhengDriftControlRigProcessor::SaveHeadOriginInternal(
     AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig) {
-    if (!ZhengDriftActor || !ControlRig) return;
+    if (!ZhengDriftActor || !ControlRig) return false;
 
-    EZhengDriftHandPosition LeftPos = ZhengDriftActor->CurrentLeftHandPosition;
-    EZhengDriftHandPosition RightPos =
-        ZhengDriftActor->CurrentRightHandPosition;
-    EZhengDriftLeftHandAction LeftAction =
-        ZhengDriftActor->CurrentLeftHandAction;
-    EZhengDriftRightHandAction RightAction =
-        ZhengDriftActor->CurrentRightHandAction;
-
-    FString StateKey;
-
-    if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
-        RightAction == EZhengDriftRightHandAction::TREMOLO &&
-        LeftPos == EZhengDriftHandPosition::FAR &&
-        RightPos == EZhengDriftHandPosition::FAR) {
-        StateKey = TEXT("A");
-    } else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
-               RightAction == EZhengDriftRightHandAction::NORMAL &&
-               LeftPos == EZhengDriftHandPosition::FAR &&
-               RightPos == EZhengDriftHandPosition::FAR) {
-        StateKey = TEXT("B");
-    } else if (LeftAction == EZhengDriftLeftHandAction::NORMAL &&
-               RightAction == EZhengDriftRightHandAction::TREMOLO &&
-               LeftPos == EZhengDriftHandPosition::NEAR &&
-               RightPos == EZhengDriftHandPosition::NEAR) {
-        StateKey = TEXT("C");
-    } else if (LeftAction == EZhengDriftLeftHandAction::PRESS &&
-               RightAction == EZhengDriftRightHandAction::NORMAL &&
-               LeftPos == EZhengDriftHandPosition::NEAR &&
-               RightPos == EZhengDriftHandPosition::NEAR) {
-        StateKey = TEXT("D");
+    FTransform HeadTransform;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            ControlRig->GetHierarchy(), TEXT("Head_Control"), HeadTransform)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ZhengDrift SaveHeadOrigin: controller 'Head_Control' not "
+                    "found in rig"));
+        return false;
     }
 
-    if (StateKey.IsEmpty()) return;
-
-    // 将对应辅助记录器中保存的位置应用到 Head_Control 控制器
-    TArray<TPair<FString, FString>> HelperPairs = {
-        {FString::Printf(TEXT("Head_Control_%s"), *StateKey),
-         TEXT("Head_Control")},
-    };
-
-    for (const auto& HP : HelperPairs) {
-        const FString& SrcName = HP.Key;
-        const FString& DestCtrl = HP.Value;
-
-        const FZhengDriftRecorderTransform* FoundT =
-            ZhengDriftActor->RecorderTransforms.Find(SrcName);
-        if (!FoundT) continue;
-
-        // 只应用 location
-        FTransform NewT;
-        NewT.SetLocation(FoundT->Location);
-
-        FInstrumentControlRigUtility::SetControlLocalTransform(
-            ControlRig->GetHierarchy(), DestCtrl, NewT);
-    }
+    ZhengDriftActor->HeadOrigin = HeadTransform.GetLocation();
 
     UE_LOG(LogTemp, Warning,
-           TEXT("ZhengDrift CheckAndLoadBilinearHelpers: Loaded state '%s'"),
-           *StateKey);
+           TEXT("ZhengDrift SaveHeadOrigin: origin (%.2f, %.2f, %.2f)"),
+           ZhengDriftActor->HeadOrigin.X, ZhengDriftActor->HeadOrigin.Y,
+           ZhengDriftActor->HeadOrigin.Z);
+    return true;
+}
+
+bool UZhengDriftControlRigProcessor::LoadHeadOriginInternal(
+    AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig) {
+    if (!ZhengDriftActor || !ControlRig) return false;
+
+    FTransform HeadTransform;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            ControlRig->GetHierarchy(), TEXT("Head_Control"), HeadTransform)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ZhengDrift LoadHeadOrigin: controller 'Head_Control' not "
+                    "found in rig"));
+        return false;
+    }
+
+    HeadTransform.SetLocation(ZhengDriftActor->HeadOrigin);
+    if (!FInstrumentControlRigUtility::SetControlLocalTransform(
+            ControlRig->GetHierarchy(), TEXT("Head_Control"), HeadTransform)) {
+        return false;
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("ZhengDrift LoadHeadOrigin: restored"));
+    return true;
+}
+
+void UZhengDriftControlRigProcessor::CaptureHeadSample(
+    AZhengDriftUnreal* ZhengDriftActor, UControlRig* ControlRig,
+    const FString& SideKey, const FString& StateKey,
+    const FVector& HandLocation) {
+    if (!ZhengDriftActor || !ControlRig) return;
+
+    FTransform HeadTransform;
+    if (!FInstrumentControlRigUtility::GetControlLocalTransform(
+            ControlRig->GetHierarchy(), TEXT("Head_Control"), HeadTransform)) {
+        UE_LOG(LogTemp, Warning,
+               TEXT("ZhengDrift CaptureHeadSample: controller 'Head_Control' "
+                    "not found in rig, head position of '%s_%s' not recorded"),
+               *SideKey, *StateKey);
+        return;
+    }
+
+    FZhengDriftHeadSample Sample;
+    Sample.HandLocation = HandLocation;
+    Sample.HeadLocation = HeadTransform.GetLocation();
+    ZhengDriftActor->HeadSamples.FindOrAdd(SideKey + TEXT("_") + StateKey) =
+        Sample;
+
+    UE_LOG(LogTemp, Verbose,
+           TEXT("ZhengDrift CaptureHeadSample: %s_%s hand (%.2f, %.2f, %.2f) "
+                "head (%.2f, %.2f, %.2f)"),
+           *SideKey, *StateKey, Sample.HandLocation.X, Sample.HandLocation.Y,
+           Sample.HandLocation.Z, Sample.HeadLocation.X, Sample.HeadLocation.Y,
+           Sample.HeadLocation.Z);
 }
 
 #undef LOCTEXT_NAMESPACE

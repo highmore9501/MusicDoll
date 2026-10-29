@@ -167,6 +167,12 @@ void AKeyRippleUnreal::InitializeControllersAndRecorders() {
         GetHandControllerName(TEXT("right_hand_pivot_controller"),
                               EHandType::RIGHT));
 
+    FootControllers.Empty();
+    FootControllers.Add(TEXT("left_foot_controller"), TEXT("F_L"));
+    FootControllers.Add(TEXT("left_foot_pole"), TEXT("FP_L"));
+    FootControllers.Add(TEXT("right_foot_controller"), TEXT("F_R"));
+    FootControllers.Add(TEXT("right_foot_pole"), TEXT("FP_R"));
+
     HandRecorders.Empty();
     TArray<FString> left_hand_recorders;
     TArray<FString> right_hand_recorders;
@@ -659,10 +665,9 @@ void AKeyRippleUnreal::ExportRecorderInfo(const FString& FilePath,
             if (FInstrumentControlRigUtility::GetControlLocalTransform(
                     PoleCR->GetHierarchy(), PoleName, PoleTransform)) {
                 FVector Location =
-                    bToBlender
-                        ? FCoordinateTransformUtility::ToBlenderPosition(
-                              PoleTransform.GetLocation())
-                        : PoleTransform.GetLocation();
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     PoleTransform.GetLocation())
+                               : PoleTransform.GetLocation();
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
                 Entry->SetArrayField(TEXT("location"),
                                      VectorToJsonArray(Location));

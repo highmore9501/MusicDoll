@@ -180,6 +180,13 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
               Category = "HarpGlide Configuration")
     int32 RightNear;
 
+    /** 是否使用双排弦：启用后额外生成 s0end_L 控件（左排弦唯一基准点，
+     *  左排与右排完全平行，一个点即可推出整排左排弦），
+     *  并随 .harpist 一起导出/导入 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite,
+              Category = "HarpGlide Configuration")
+    bool bUseDoubleString;
+
     /** 标记�?Unreal 导出（始终为 true，写�?.harpist �?Blender
      * 识别�?*/
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly,
@@ -296,6 +303,23 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
      */
     void InitializeControllersAndRecorders();
 
+    /**
+     * 按当前 StringNumber 重建「弦位置记录器」控件名映射（s{n}head / s{n}end），
+     * 并按当前开关补上/移除双排弦基准点 s0end_L。
+     *
+     * 只重建控件名映射 StringPositionRecorders，不动坐标表
+     * RecorderTransforms（导入时坐标来自磁盘，由调用方决定是否保留）。
+     */
+    void RebuildStringPositionRecorders();
+
+    /**
+     * 按当前 bUseDoubleString 同步双排弦记录器（控件映射 + 记录器名 + 控件名）
+     *
+     * 勾选：向 StringPositionRecorders / RecorderTransforms 补上 s0end_L；
+     * 取消：移除该条目。可在运行时反复调用，不会清掉其它记录器的数据。
+     */
+    void SyncDoubleStringRecorders();
+
     // ========== 状态映射方�?==========
 
     /**
@@ -344,4 +368,16 @@ class HARPGLIDEUNREAL_API AHarpGlideUnreal : public AInstrumentBase,
     static FString GetPedalNoteString(EHarpGlidePedalNote Note);
     static FString GetPedalStateString(EHarpGlidePedalState State);
     static FString GetTiltStateString(EHarpGlideTiltState State);
+
+   private:
+    /**
+     * 按给定开关同步「弦位置记录器的控件名」（SetControl 的键）
+     *
+     * 与 SyncDoubleStringRecorders 的区别：本函数**不碰 RecorderTransforms**，
+     * 只维护 SetControl 的键与控件名。导入时开关变更走这条路径——开关与
+     * 磁盘上的数据本就一致，若同时清 RecorderTransforms 会把刚导入的数据抹掉。
+     *
+     * @param bEnabled 目标开关状态
+     */
+    void MatchDoubleStringRecorder(bool bEnabled);
 };

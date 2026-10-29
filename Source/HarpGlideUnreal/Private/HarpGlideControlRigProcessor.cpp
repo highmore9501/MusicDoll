@@ -170,6 +170,12 @@ int32 UHarpGlideControlRigProcessor::SetupControllers(
             CreatedCount++;
     }
 
+    // 8b. 双排弦：左排弦唯一基准点 s0end_L（与弦位置控制器同级）
+    if (HarpGlideActor->bUseDoubleString) {
+        if (CreateController(Blueprint, TEXT("s0end_L"), TEXT("harp_pivot")))
+            CreatedCount++;
+    }
+
     // 眼睛睁开 Control：在 base_root 下按「なごみ」曲线创建同名 Float channel
     FControlRigCreationUtility::AddEyeControl(Blueprint);
 

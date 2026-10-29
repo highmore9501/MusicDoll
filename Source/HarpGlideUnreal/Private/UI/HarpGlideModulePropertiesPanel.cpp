@@ -4,6 +4,7 @@
 #include "HarpGlideMusicInstrumentProcessor.h"
 #include "UI/CommonPanelUtility.h"
 #include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -137,6 +138,36 @@ void SHarpGlideModulePropertiesPanel::CreatePropertyWidgets() {
                         0.0f)[SNew(STextBlock)
                                   .Text(FText::GetEmpty())
                                   .Visibility(EVisibility::Hidden)]];
+
+    // 双排弦开关：勾选后额外生成 s0end_L 控件（左排弦基准点）
+    Container->AddSlot().AutoHeight().Padding(5.0f, 5.0f, 5.0f, 2.0f)
+        [SNew(SHorizontalBox) +
+         SHorizontalBox::Slot().AutoWidth().Padding(0.0f, 0.0f, 5.0f, 0.0f)
+             [SNew(SCheckBox)
+                  .IsChecked_Lambda([HarpGlide]() {
+                      return HarpGlide->bUseDoubleString
+                                 ? ECheckBoxState::Checked
+                                 : ECheckBoxState::Unchecked;
+                  })
+                  .OnCheckStateChanged_Lambda(
+                      [this](ECheckBoxState NewState) {
+                          if (!HarpGlideActor.IsValid()) return;
+                          const bool bEnabled =
+                              (NewState == ECheckBoxState::Checked);
+                          HarpGlideActor->Modify();
+                          HarpGlideActor->bUseDoubleString = bEnabled;
+                          // 同步控件映射（SetControl 的键）+ 记录器名
+                          HarpGlideActor->SyncDoubleStringRecorders();
+                          UE_LOG(LogTemp, Warning,
+                                 TEXT("HarpGlide: double_string = %s "
+                                      "(re-run Setup All Controllers to "
+                                      "create s0end_L)"),
+                                 bEnabled ? TEXT("true") : TEXT("false"));
+                      })] +
+         SHorizontalBox::Slot().AutoWidth().Padding(5.0f, 0.0f)
+             [SNew(STextBlock)
+                  .Text(LOCTEXT("UseDoubleStringLabel",
+                                "Use Double String Row (双排弦)"))]];
 
     // ---- File Paths ----
     Container->AddSlot().AutoHeight().Padding(
@@ -279,6 +310,9 @@ FReply SHarpGlideModulePropertiesPanel::OnExportRecorderInfo() {
 FReply SHarpGlideModulePropertiesPanel::OnImportRecorderInfo() {
     if (!HarpGlideActor.IsValid()) return FReply::Handled();
     HarpGlideActor->ImportRecorderInfo(HarpGlideActor->IOFilePath);
+    // 导入会改写配置（弦数 / 手部位置参数 / 双排弦），重建面板让这些数值
+    // 立即显示为文件里的值（数字行是创建时按值取一次的，不会自己更新）
+    RefreshProperties();
     return FReply::Handled();
 }
 

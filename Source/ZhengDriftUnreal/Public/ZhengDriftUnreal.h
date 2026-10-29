@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include "ControlRig/Public/ControlRig.h"
 #include "CoreMinimal.h"
@@ -67,6 +67,26 @@ struct FZhengDriftRecorderTransform {
     }
 };
 
+/**
+ * 一条头部样本：某个手部状态下"这只手在哪、头该在哪"
+ *
+ * 头部位置是查表算出来的：拿主导手（离头部原点更远的那只手）的位置，
+ * 去同一只手的样本里按距离加权。所以每条样本必须同时记下手的位置和头的位置。
+ */
+USTRUCT(BlueprintType)
+struct FZhengDriftHeadSample {
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FVector HandLocation;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    FVector HeadLocation;
+
+    FZhengDriftHeadSample()
+        : HandLocation(FVector::ZeroVector), HeadLocation(FVector::ZeroVector) {}
+};
+
 // ============================================================
 // 核心 Actor 类
 // ============================================================
@@ -87,7 +107,9 @@ struct FZhengDriftRecorderTransform {
  *   右手 12 个：同上 _R
  *   脚部  4 个：F_L, F_L_pole, F_R, F_R_pole
  *   Target 3 个：Middle_Hand, Look_At, Head_Control
- *   双线性辅助 8 个：Middle_Hand_A/B/C/D, Head_Control_A/B/C/D
+ *   头部采样：头部原点 + 左右手各 6 个手部状态各一条
+ *     （保存左右手状态时顺手采集，没有单独的采样按钮；
+ *      每条样本 = 该状态下"这只手在哪、头在哪"）
  */
 UCLASS(Blueprintable, BlueprintType)
 class ZHENGDRIFTUNREAL_API AZhengDriftUnreal : public AInstrumentBase,
@@ -155,10 +177,16 @@ class ZHENGDRIFTUNREAL_API AZhengDriftUnreal : public AInstrumentBase,
     UPROPERTY()
     TMap<FString, FString> TargetControllers;
 
-    /** 双线性映射辅助控制器：8 个（Middle_Hand_A/B/C/D +
-     * Head_Control_A/B/C/D，只持久化 location） */
+    /** 头部原点：默认坐姿下的头部位置。只用于判断哪只手离头更远 */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZhengDrift Data")
+    FVector HeadOrigin;
+
+    /** 头部采样：key = "{left|right}_{Action}_{Position}"（如 left_Normal_far），
+     *  value = 该状态下这只手与头部的位置。
+     *  保存左右手状态时由 UZhengDriftControlRigProcessor::SaveLeftHandState /
+     *  SaveRightHandState 顺手写入。 */
     UPROPERTY()
-    TMap<FString, FString> BilinearHelpers;
+    TMap<FString, FZhengDriftHeadSample> HeadSamples;
 
     // ========== 记录器映射 ==========
 
@@ -239,4 +267,11 @@ class ZHENGDRIFTUNREAL_API AZhengDriftUnreal : public AInstrumentBase,
     static FString GetHandPositionString(EZhengDriftHandPosition Position);
     static FString GetLeftHandActionString(EZhengDriftLeftHandAction Action);
     static FString GetRightHandActionString(EZhengDriftRightHandAction Action);
+
+    /**
+     * 收集还缺哪些头部样本键（`{side}_{Action}_{Position}`，共 12 条）。
+     * 导出/导入时打一条日志提示，不影响文件写出与读入。
+     */
+    static TArray<FString> CollectMissingHeadSamples(
+        const TMap<FString, FZhengDriftHeadSample>& Samples);
 };

@@ -126,16 +126,10 @@ void AZhengDriftUnreal::InitializeControllersAndRecorders() {
     TargetControllers.Add(TEXT("look_at"), TEXT("Look_At"));
     TargetControllers.Add(TEXT("head_control"), TEXT("Head_Control"));
 
-    // ========== 双线性映射辅助控制器（8 个） ==========
-    BilinearHelpers.Empty();
-    BilinearHelpers.Add(TEXT("middle_hand_a"), TEXT("Middle_Hand_A"));
-    BilinearHelpers.Add(TEXT("middle_hand_b"), TEXT("Middle_Hand_B"));
-    BilinearHelpers.Add(TEXT("middle_hand_c"), TEXT("Middle_Hand_C"));
-    BilinearHelpers.Add(TEXT("middle_hand_d"), TEXT("Middle_Hand_D"));
-    BilinearHelpers.Add(TEXT("head_control_a"), TEXT("Head_Control_A"));
-    BilinearHelpers.Add(TEXT("head_control_b"), TEXT("Head_Control_B"));
-    BilinearHelpers.Add(TEXT("head_control_c"), TEXT("Head_Control_C"));
-    BilinearHelpers.Add(TEXT("head_control_d"), TEXT("Head_Control_D"));
+    // ========== 头部采样（头部原点 + 左右手各 6 个状态） ==========
+    // 没有固定的命名表：保存左右手状态时按 "{side}_{Action}_{Position}" 写入。
+    HeadOrigin = FVector::ZeroVector;
+    HeadSamples.Empty();
 
     // ========== 弦位置记录器（63 个：21弦 × 3点） ==========
     StringPositionRecorders.Empty();
@@ -313,6 +307,30 @@ ASkeletalMeshActor* AZhengDriftUnreal::GetSkeletalMeshActorByName(
     if (ComponentName == TEXT("Zheng")) return Zheng;
     if (ComponentName == TEXT("Performer")) return SkeletalMeshActor;
     return nullptr;
+}
+
+TArray<FString> AZhengDriftUnreal::CollectMissingHeadSamples(
+    const TMap<FString, FZhengDriftHeadSample>& Samples) {
+    TArray<FString> MissingKeys;
+    const TArray<FString> Sides = {TEXT("left"), TEXT("right")};
+    for (const FString& SideKey : Sides) {
+        const TArray<FString> ActionNames =
+            SideKey == TEXT("left")
+                ? TArray<FString>({TEXT("Normal"), TEXT("Press")})
+                : TArray<FString>({TEXT("Normal"), TEXT("Tremolo")});
+        for (const FString& ActionName : ActionNames) {
+            const TArray<FString> PositionNames = {TEXT("far"), TEXT("middle"),
+                                                   TEXT("near")};
+            for (const FString& PositionName : PositionNames) {
+                const FString SampleKey = SideKey + TEXT("_") + ActionName +
+                                          TEXT("_") + PositionName;
+                if (!Samples.Contains(SampleKey)) {
+                    MissingKeys.Add(SampleKey);
+                }
+            }
+        }
+    }
+    return MissingKeys;
 }
 
 // ============================================================
@@ -630,26 +648,58 @@ void AZhengDriftUnreal::ExportRecorderInfo(const FString& FilePath,
     WriteCategory(TEXT("RIGHT_HAND_RECORDERS"), RightHandRecorders);
     WriteFootControllers();
 
-    // 双线性映射辅助控制器（只导出 location）
+    // 头部采样：头部原点 + 左右手各 6 个状态（每条含手的位置与头的位置）
     {
         TSharedPtr<FJsonObject> CatObj = MakeShareable(new FJsonObject);
-        for (const auto& Pair : BilinearHelpers) {
-            const FZhengDriftRecorderTransform* T =
-                RecorderTransforms.Find(Pair.Value);
-            if (T) {
+
+        TSharedPtr<FJsonObject> OriginEntry = MakeShareable(new FJsonObject);
+        const FVector OriginLocation =
+            bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(HeadOrigin)
+                       : HeadOrigin;
+        OriginEntry->SetArrayField(
+            TEXT("location"),
+            FZhengDriftHelpers::VecToJsonArray(OriginLocation));
+        CatObj->SetObjectField(TEXT("origin"), OriginEntry);
+
+        for (const FString& SideKey : {FString(TEXT("left")),
+                                       FString(TEXT("right"))}) {
+            TSharedPtr<FJsonObject> SideObj = MakeShareable(new FJsonObject);
+            const FString SidePrefix = SideKey + TEXT("_");
+            for (const auto& Pair : HeadSamples) {
+                if (!Pair.Key.StartsWith(SidePrefix)) continue;
+                const FString StateKey = Pair.Key.RightChop(SidePrefix.Len());
+
                 TSharedPtr<FJsonObject> Entry = MakeShareable(new FJsonObject);
-                FVector Location =
+                const FVector HandLocation =
                     bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
-                                     T->Location)
-                               : T->Location;
+                                     Pair.Value.HandLocation)
+                               : Pair.Value.HandLocation;
+                const FVector HeadLocation =
+                    bToBlender ? FCoordinateTransformUtility::ToBlenderPosition(
+                                     Pair.Value.HeadLocation)
+                               : Pair.Value.HeadLocation;
                 Entry->SetArrayField(
-                    TEXT("location"),
-                    FZhengDriftHelpers::VecToJsonArray(Location));
-                CatObj->SetObjectField(*Pair.Value, Entry);
+                    TEXT("hand_location"),
+                    FZhengDriftHelpers::VecToJsonArray(HandLocation));
+                Entry->SetArrayField(
+                    TEXT("head_location"),
+                    FZhengDriftHelpers::VecToJsonArray(HeadLocation));
+                SideObj->SetObjectField(StateKey, Entry);
+            }
+            if (SideObj->Values.Num() > 0) {
+                CatObj->SetObjectField(SideKey, SideObj);
             }
         }
-        if (CatObj->Values.Num() > 0) {
-            Root->SetObjectField(TEXT("BILINEAR_HELPERS"), CatObj);
+        Root->SetObjectField(TEXT("HEAD_SAMPLES"), CatObj);
+
+        // 完整性提示（只提示，不影响文件写出）
+        const TArray<FString> MissingKeys =
+            CollectMissingHeadSamples(HeadSamples);
+        if (MissingKeys.Num() > 0) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ZhengDrift ExportRecorderInfo: head samples incomplete "
+                        "(%d of 12 missing): %s"),
+                   MissingKeys.Num(), *FString::Join(MissingKeys, TEXT(", ")));
         }
     }
 
@@ -772,22 +822,57 @@ bool AZhengDriftUnreal::ImportRecorderInfo(const FString& FilePath) {
     ReadCategory(TEXT("RIGHT_HAND_RECORDERS"));
     ReadCategory(TEXT("FOOT_CONTROLLERS"));
 
-    // 双线性映射辅助控制器（只读取 location）
-    if (Root->HasField(TEXT("BILINEAR_HELPERS"))) {
+    // 头部采样：头部原点 + 左右手各 6 个状态
+    if (Root->HasField(TEXT("HEAD_SAMPLES"))) {
         TSharedPtr<FJsonObject> CatObj =
-            Root->GetObjectField(TEXT("BILINEAR_HELPERS"));
-        for (const auto& ObjPair : CatObj->Values) {
-            const FString& HelperName = ObjPair.Key;
-            TSharedPtr<FJsonObject> Entry = ObjPair.Value->AsObject();
-            if (!Entry.IsValid()) continue;
-
-            FZhengDriftRecorderTransform T;
-            if (Entry->HasField(TEXT("location"))) {
-                FZhengDriftHelpers::ReadLocationFromArray(
-                    Entry->GetArrayField(TEXT("location")), T.Location);
-            }
-            RecorderTransforms.FindOrAdd(HelperName) = T;
+            Root->GetObjectField(TEXT("HEAD_SAMPLES"));
+        TSharedPtr<FJsonObject> OriginEntry =
+            CatObj->HasField(TEXT("origin")) &&
+                    CatObj->GetObjectField(TEXT("origin"))->HasField(TEXT("location"))
+                ? CatObj->GetObjectField(TEXT("origin"))
+                : nullptr;
+        if (OriginEntry.IsValid()) {
+            FVector OriginLocation = FVector::ZeroVector;
+            FZhengDriftHelpers::ReadLocationFromArray(
+                OriginEntry->GetArrayField(TEXT("location")), OriginLocation);
+            HeadOrigin = OriginLocation;
             ImportedCount++;
+        }
+        for (const FString& SideKey : {FString(TEXT("left")),
+                                       FString(TEXT("right"))}) {
+            if (!CatObj->HasField(SideKey)) continue;
+            TSharedPtr<FJsonObject> SideObj = CatObj->GetObjectField(SideKey);
+            for (const auto& ObjPair : SideObj->Values) {
+                const FString& StateKey = ObjPair.Key;
+                TSharedPtr<FJsonObject> Entry = ObjPair.Value->AsObject();
+                if (!Entry.IsValid()) continue;
+                if (!Entry->HasField(TEXT("hand_location")) ||
+                    !Entry->HasField(TEXT("head_location"))) {
+                    continue;
+                }
+
+                FZhengDriftHeadSample Sample;
+                FZhengDriftHelpers::ReadLocationFromArray(
+                    Entry->GetArrayField(TEXT("hand_location")),
+                    Sample.HandLocation);
+                FZhengDriftHelpers::ReadLocationFromArray(
+                    Entry->GetArrayField(TEXT("head_location")),
+                    Sample.HeadLocation);
+                HeadSamples.FindOrAdd(SideKey + TEXT("_") + StateKey) = Sample;
+                ImportedCount++;
+            }
+        }
+    }
+
+    // 完整性提示（只提示，不影响导入结果）
+    {
+        const TArray<FString> MissingKeys =
+            CollectMissingHeadSamples(HeadSamples);
+        if (MissingKeys.Num() > 0) {
+            UE_LOG(LogTemp, Warning,
+                   TEXT("ZhengDrift ImportRecorderInfo: head samples incomplete "
+                        "(%d of 12 missing): %s"),
+                   MissingKeys.Num(), *FString::Join(MissingKeys, TEXT(", ")));
         }
     }
 

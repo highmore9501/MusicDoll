@@ -790,36 +790,6 @@ bool UInstrumentAnimationUtility::CleanupInstrumentAnimationTracks(
 #endif
 }
 
-// ========== 旋转处理 ==========
-
-void UInstrumentAnimationUtility::UnwrapRotationSequence(
-    TArray<FMovieSceneFloatValue>& RotationValues) {
-    if (RotationValues.Num() < 2) {
-        return;
-    }
-
-    for (int32 i = 1; i < RotationValues.Num(); ++i) {
-        float PrevAngle = RotationValues[i - 1].Value;
-        float CurrAngle = RotationValues[i].Value;
-
-        // 计算最短角度差 (使用Unreal的FindDeltaAngleDegrees)
-        float Delta = FMath::FindDeltaAngleDegrees(PrevAngle, CurrAngle);
-
-        // 应用累积的角度，确保连续性
-        RotationValues[i].Value = PrevAngle + Delta;
-    }
-}
-
-void UInstrumentAnimationUtility::ProcessRotationChannelsUnwrap(
-    TArray<FMovieSceneFloatValue>& RotationXValues,
-    TArray<FMovieSceneFloatValue>& RotationYValues,
-    TArray<FMovieSceneFloatValue>& RotationZValues) {
-    // 分别处理每个旋转轴
-    UnwrapRotationSequence(RotationXValues);
-    UnwrapRotationSequence(RotationYValues);
-    UnwrapRotationSequence(RotationZValues);
-}
-
 // ========== 通道管理 ==========
 
 FMovieSceneFloatChannel* UInstrumentAnimationUtility::FindFloatChannel(
@@ -930,6 +900,53 @@ bool UInstrumentAnimationUtility::ValidateNoExistingTracks(
 
     return false;
 }
+
+namespace {
+
+/**
+ * 把角度加上若干整圈（360 度），使它离参考角最近。
+ * 加整圈不改变所表示的朝向，只是把数值落到参考角的邻域里。
+ */
+float UnwrapAngleToReference(float InAngle, float InReference) {
+    return InReference + FMath::FindDeltaAngleDegrees(InReference, InAngle);
+}
+
+/**
+ * 在同一个旋转的两组等价欧拉角里，挑出与上一帧最接近的那一组。
+ *
+ * 同一个朝向有 (Roll, Pitch, Yaw) 与 (Roll+180, 180-Pitch, Yaw+180) 两组写法。
+ * Control Rig 的旋转通道存的是三条独立的欧拉角曲线、由引擎逐轴插值，两组写法
+ * 混用会让关键帧之间的插值绕远路。手腕朝向贴近 ±90 度俯仰时两组写法会来回跳
+ * （此时 Roll 与 Yaw 几乎绕同一根轴，很小的朝向变化就对应很大的角度变化），
+ * 所以必须按相邻帧的连续性来选，不能各帧独立换算。
+ */
+FRotator AlignEulerAnglesToPrevious(const FRotator& InRotation,
+                                    const FRotator& InPrevious) {
+    const FRotator Candidates[] = {
+        InRotation,
+        FRotator(180.0f - InRotation.Pitch, InRotation.Yaw + 180.0f,
+                 InRotation.Roll + 180.0f),
+    };
+
+    FRotator BestCandidate = Candidates[0];
+    float BestCost = TNumericLimits<float>::Max();
+    for (const FRotator& Candidate : Candidates) {
+        const FRotator Unwrapped(
+            UnwrapAngleToReference(Candidate.Pitch, InPrevious.Pitch),
+            UnwrapAngleToReference(Candidate.Yaw, InPrevious.Yaw),
+            UnwrapAngleToReference(Candidate.Roll, InPrevious.Roll));
+        const float TotalStep = FMath::Abs(Unwrapped.Pitch - InPrevious.Pitch) +
+                                FMath::Abs(Unwrapped.Yaw - InPrevious.Yaw) +
+                                FMath::Abs(Unwrapped.Roll - InPrevious.Roll);
+        if (TotalStep < BestCost) {
+            BestCost = TotalStep;
+            BestCandidate = Unwrapped;
+        }
+    }
+    return BestCandidate;
+}
+
+}  // namespace
 
 void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
     ULevelSequence* LevelSequence, UControlRig* ControlRigInstance,
@@ -1153,22 +1170,28 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
         TArray<FMovieSceneFloatValue> RotationXValues, RotationYValues,
             RotationZValues;
 
-        // 四元数符号一致性处理（hemisphere alignment）：
-        // 确保相邻帧的四元数在同一半球上，避免 q/-q 歧义导致欧拉角跳变。
-        // q 和 -q 表示相同旋转，但转换为欧拉角后可能差异巨大。
-        // 构建已对齐的四元数序列副本，不修改原始数据。
-        TArray<FQuat> AlignedQuaternions;
-        AlignedQuaternions.Reserve(Keyframes.Num());
-        for (int32 AlignIdx = 0; AlignIdx < Keyframes.Num(); ++AlignIdx) {
-            FQuat CurrentQuat = Keyframes[AlignIdx].Rotation;
-            if (AlignIdx > 0) {
-                const FQuat& PrevQuat = AlignedQuaternions[AlignIdx - 1];
-                if ((PrevQuat | CurrentQuat) < 0.0f) {
-                    CurrentQuat = FQuat(-CurrentQuat.X, -CurrentQuat.Y,
-                                        -CurrentQuat.Z, -CurrentQuat.W);
+        // 旋转通道的欧拉角连续性处理（见 AlignEulerAnglesToPrevious）：
+        // 同一个朝向可以用两组等价的欧拉角表示，若相邻关键帧分别落在两组
+        // 不同的表示上，逐轴插值就会绕远路（手腕朝反方向翻）。
+        // 这里逐帧挑出与上一帧最接近的那组，并把三个轴解绕到同一圈。
+        TArray<FRotator> AlignedEulerAngles;
+        AlignedEulerAngles.SetNum(Keyframes.Num());
+        {
+            FRotator PreviousEuler = FRotator::ZeroRotator;
+            bool bHasPreviousEuler = false;
+            for (int32 AlignIdx = 0; AlignIdx < Keyframes.Num(); ++AlignIdx) {
+                const FAnimationKeyframe& AlignKeyframe = Keyframes[AlignIdx];
+                if (!AlignKeyframe.bHasRotation) continue;
+
+                FRotator EulerAngles = AlignKeyframe.Rotation.Rotator();
+                if (bHasPreviousEuler && Settings.bFixEulerFlips) {
+                    EulerAngles =
+                        AlignEulerAnglesToPrevious(EulerAngles, PreviousEuler);
                 }
+                AlignedEulerAngles[AlignIdx] = EulerAngles;
+                PreviousEuler = EulerAngles;
+                bHasPreviousEuler = true;
             }
-            AlignedQuaternions.Add(CurrentQuat);
         }
 
         for (int32 KeyIdx = 0; KeyIdx < Keyframes.Num(); ++KeyIdx) {
@@ -1211,24 +1234,11 @@ void UInstrumentAnimationUtility::BatchInsertControlRigKeys(
                     MaxFrame = FrameNum;
                 }
 
-                FRotator EulerRotation = AlignedQuaternions[KeyIdx].Rotator();
+                const FRotator& EulerRotation = AlignedEulerAngles[KeyIdx];
                 RotationXValues.Add(FMovieSceneFloatValue(EulerRotation.Roll));
                 RotationYValues.Add(FMovieSceneFloatValue(EulerRotation.Pitch));
                 RotationZValues.Add(FMovieSceneFloatValue(EulerRotation.Yaw));
             }
-        }
-
-        if (Settings.bUnwrapRotationInterpolation) {
-            UE_LOG(LogTemp, Warning,
-                   TEXT("[COMMON] Control '%s': Starting rotation unwrap "
-                        "processing"),
-                   *ControlName);
-            ProcessRotationChannelsUnwrap(RotationXValues, RotationYValues,
-                                          RotationZValues);
-            UE_LOG(LogTemp, Warning,
-                   TEXT("[COMMON] Control '%s': Rotation unwrap processing "
-                        "completed"),
-                   *ControlName);
         }
 
         // Check for special controller handling

@@ -211,6 +211,10 @@ class KEYRIPPLEUNREAL_API AKeyRippleUnreal : public AInstrumentBase {
     UPROPERTY()
     TMap<FString, FStringArray> HandRecorders;
 
+    /** 脚部控制器 */
+    UPROPERTY()
+    TMap<FString, FString> FootControllers;
+
     /** 键盘关键位置点 */
     UPROPERTY()
     TMap<FString, FString> KeyBoardPositions;

@@ -1,4 +1,4 @@
-#include "LipSyncUtility.h"
+﻿#include "LipSyncUtility.h"
 
 #include "Channels/MovieSceneChannelProxy.h"
 #include "Channels/MovieSceneFloatChannel.h"
@@ -856,6 +856,71 @@ bool ULipSyncUtility::ConvertCuesToKeyframeData(
     return OutKeyframeData.Num() > 0;
 }
 
+// ===== lip_sync 通道的关键帧清理（清除按钮与写入流程共用同一份实现）=====
+// 真正把 RootControlName 下所有 Float Animation Channel 的关键帧清空。
+//
+// ！！不要再用 Section->AddScalarParameter(Name, Default, /*bReconstructChannel*/true)
+// 来"清理"！！那个函数第一行就是 if (!HasScalarParameter(Name))：
+// 参数已存在时（第二次生成 Lip 动画时必然已存在）整个函数是空操作，
+// 旧关键帧会全部留下，随后被 section 重建原样搬进新数据里，
+// 表现为旧口型动画仍然存在。
+static int32 ClearLipSyncChannelsUnderControl(
+    UMovieSceneControlRigParameterSection* Section,
+    UControlRig* ControlRigInstance, const FString& RootControlName) {
+    if (!Section || !ControlRigInstance) {
+        return 0;
+    }
+
+    URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
+    if (!RigHierarchy) {
+        return 0;
+    }
+
+    // 通过通道代理找到已有 Float Channel 并 Reset() 清空关键帧
+    FMovieSceneChannelProxy& ChannelProxy = Section->GetChannelProxy();
+    TArrayView<FMovieSceneFloatChannel*> FloatChannels =
+        ChannelProxy.GetChannels<FMovieSceneFloatChannel>();
+
+    int32 ClearedCount = 0;
+    const FRigElementKey RootKey(*RootControlName, ERigElementType::Control);
+    TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys(false);
+
+    for (const FRigElementKey& Key : AllKeys) {
+        if (Key.Type != ERigElementType::Control) {
+            continue;
+        }
+
+        FRigElementKey ParentKey = RigHierarchy->GetFirstParent(Key);
+        if (ParentKey != RootKey) {
+            continue;
+        }
+
+        const FRigControlElement* ControlElement =
+            RigHierarchy->Find<FRigControlElement>(Key);
+        if (!ControlElement || !ControlElement->IsAnimationChannel()) {
+            continue;
+        }
+        if (ControlElement->Settings.ControlType != ERigControlType::Float) {
+            continue;
+        }
+
+        for (FMovieSceneFloatChannel* FloatChannel : FloatChannels) {
+            if (!FloatChannel) {
+                continue;
+            }
+            UE::MovieScene::FControlRigChannelMetaData MetaData =
+                Section->GetChannelMetaData(FloatChannel);
+            if (MetaData && MetaData.GetControlName() == Key.Name) {
+                FloatChannel->Reset();
+                ++ClearedCount;
+                break;
+            }
+        }
+    }
+
+    return ClearedCount;
+}
+
 // ===== 写入 Sequencer（定向清理，不破坏其他轨道）=====
 
 int32 ULipSyncUtility::WriteLipSyncToControlRig(
@@ -957,43 +1022,16 @@ int32 ULipSyncUtility::WriteLipSyncToControlRig(
                     "section"));
     }
 
-    // Step 3: 清理 lip_sync control 下所有 float channel 的关键帧数据
-    // 从 ControlRigInstance 的 Hierarchy 中获取 lip_sync 的所有子级 float
-    // animation channel，对每个 channel 用 bReconstructChannel=true 重建，
-    // 从而清空旧关键帧，确保不会被之前写入的数据干扰
+    // Step 3: 写入关键帧之前，先"事实上"执行一次清除（等价于 UI 上的"清除关键帧"按钮）。
+    // 必须真的把 lip_sync 下所有 float animation channel 的关键帧清空，否则上一版遗留的、
+    // 本次不会重新生成的那些通道会把旧数据带进新数据里（旧口型动画会一直留着）。
     {
-        URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
-        int32 ClearedCount = 0;
-
-        if (RigHierarchy) {
-            FRigElementKey LipSyncKey(*RootControlName,
-                                      ERigElementType::Control);
-            TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys(false);
-            for (const FRigElementKey& Key : AllKeys) {
-                if (Key.Type != ERigElementType::Control) continue;
-
-                FRigElementKey ParentKey = RigHierarchy->GetFirstParent(Key);
-                if (ParentKey != LipSyncKey) continue;
-
-                const FRigControlElement* ControlElement =
-                    RigHierarchy->Find<FRigControlElement>(Key);
-                if (!ControlElement || !ControlElement->IsAnimationChannel())
-                    continue;
-                if (ControlElement->Settings.ControlType !=
-                    ERigControlType::Float)
-                    continue;
-
-                FName ChannelFName = Key.Name;
-                // bReconstructChannel=true 删除旧通道并重建，清空所有关键帧
-                Section->AddScalarParameter(ChannelFName,
-                                            TOptional<float>(0.0f), true);
-                ClearedCount++;
-            }
-        }
+        const int32 ClearedCount = ClearLipSyncChannelsUnderControl(
+            Section, ControlRigInstance, RootControlName);
 
         UE_LOG(LogTemp, Log,
-               TEXT("[LipSyncUtility] WriteLipSyncToControlRig: Cleared %d "
-                    "float channels under '%s'"),
+               TEXT("[LipSyncUtility] WriteLipSyncToControlRig: cleared %d float "
+                    "channels under '%s' before writing"),
                ClearedCount, *RootControlName);
     }
 
@@ -1155,43 +1193,9 @@ bool ULipSyncUtility::ClearLipSyncKeyframes(ASkeletalMeshActor* Performer,
     }
 
     // 清空 RootControlName 下所有 Float Animation Channel 的关键帧
-    URigHierarchy* RigHierarchy = ControlRigInstance->GetHierarchy();
-    int32 ClearedCount = 0;
-
-    if (RigHierarchy) {
-        FRigElementKey RootKey(*RootControlName, ERigElementType::Control);
-        TArray<FRigElementKey> AllKeys = RigHierarchy->GetAllKeys(false);
-        for (const FRigElementKey& Key : AllKeys) {
-            if (Key.Type != ERigElementType::Control) continue;
-
-            FRigElementKey ParentKey = RigHierarchy->GetFirstParent(Key);
-            if (ParentKey != RootKey) continue;
-
-            const FRigControlElement* ControlElement =
-                RigHierarchy->Find<FRigControlElement>(Key);
-            if (!ControlElement || !ControlElement->IsAnimationChannel())
-                continue;
-            if (ControlElement->Settings.ControlType != ERigControlType::Float)
-                continue;
-
-            // 通过通道代理找到已有 Float Channel 并 Reset() 清空关键帧
-            // 注意：AddScalarParameter 对已有通道无效（HasScalarParameter 返回
-            // true 时跳过）
-            FMovieSceneChannelProxy& ChannelProxy = Section->GetChannelProxy();
-            TArrayView<FMovieSceneFloatChannel*> FloatChannels =
-                ChannelProxy.GetChannels<FMovieSceneFloatChannel>();
-            for (FMovieSceneFloatChannel* FloatChannel : FloatChannels) {
-                if (!FloatChannel) continue;
-                UE::MovieScene::FControlRigChannelMetaData MetaData =
-                    Section->GetChannelMetaData(FloatChannel);
-                if (MetaData && MetaData.GetControlName() == Key.Name) {
-                    FloatChannel->Reset();
-                    ClearedCount++;
-                    break;
-                }
-            }
-        }
-    }
+    // （与写入流程共用同一份实现，保证"清除关键帧"按钮与生成时的自动清除行为一致）
+    const int32 ClearedCount = ClearLipSyncChannelsUnderControl(
+        Section, ControlRigInstance, RootControlName);
 
     // 通知 Sequencer 刷新
     Section->Modify();

@@ -1,4 +1,4 @@
-﻿#include "UI/ZhengDriftModuleOperationsPanel.h"
+#include "UI/ZhengDriftModuleOperationsPanel.h"
 
 #include "UI/CommonPanelUtility.h"
 #include "Widgets/Input/SButton.h"
@@ -248,6 +248,66 @@ void SZhengDriftModuleOperationsPanel::CreateOperationWidgets() {
                   .HAlign(HAlign_Center)
                   .ButtonStyle(FAppStyle::Get(), "FlatButton.Default")];
 
+    // ---- Head Sampling（头部采样）----
+    //
+    // 头部原点单独采集；各手部状态的样本跟着上面的 Save Left / Save Right 一起采，
+    // 装载 State 时也会把对应状态的头部位置一并还原。
+    Container->AddSlot().AutoHeight().Padding(
+        5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
+        TEXT("Head Sampling"))];
+
+    Container->AddSlot().AutoHeight().Padding(5.0f, 0.0f, 5.0f, 6.0f)
+        [SNew(STextBlock)
+             .Text(LOCTEXT("HeadSampleHint",
+                           "保存 / 加载左右手状态时会一并采集 / 还原该状态下的头部位置；"
+                           "这里的原点 = 默认坐姿下的头部位置"))
+             .AutoWrapText(true)];
+
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(SHorizontalBox) +
+         SHorizontalBox::Slot().FillWidth(0.5f).Padding(
+             0.0f, 0.0f, 5.0f, 0.0f)[SNew(SButton)
+                                        .Text(LOCTEXT("SaveHeadOriginBtn",
+                                                      "Save Origin"))
+                                        .ToolTipText(LOCTEXT(
+                                            "SaveHeadOriginTooltip",
+                                            "Collect the current Head_Control "
+                                            "position as the head origin"))
+                                        .OnClicked(
+                                            this,
+                                            &SZhengDriftModuleOperationsPanel::
+                                                OnSaveHeadOrigin)
+                                        .HAlign(HAlign_Center)
+                                        .ButtonStyle(
+                                            FAppStyle::Get(),
+                                            "FlatButton.Default")] +
+         SHorizontalBox::Slot().FillWidth(0.5f).Padding(
+             5.0f, 0.0f, 0.0f, 0.0f)[SNew(SButton)
+                                        .Text(LOCTEXT("LoadHeadOriginBtn",
+                                                      "Load Origin"))
+                                        .ToolTipText(LOCTEXT(
+                                            "LoadHeadOriginTooltip",
+                                            "Apply the saved head origin to "
+                                            "Head_Control"))
+                                        .OnClicked(
+                                            this,
+                                            &SZhengDriftModuleOperationsPanel::
+                                                OnLoadHeadOrigin)
+                                        .HAlign(HAlign_Center)
+                                        .ButtonStyle(
+                                            FAppStyle::Get(),
+                                            "FlatButton.Default")]];
+
+    // 已采集的样本数（12 条为齐）
+    Container->AddSlot().AutoHeight().Padding(5.0f)
+        [SNew(STextBlock).Text_Lambda([this]() -> FText {
+            const int32 SampleCount = ZhengDriftActor.IsValid()
+                                          ? ZhengDriftActor->HeadSamples.Num()
+                                          : 0;
+            return FText::FromString(FString::Printf(TEXT("Head samples: %d / 12"),
+                                                     SampleCount));
+        })];
+
     // ---- Animation Generation ----
     Container->AddSlot().AutoHeight().Padding(
         5.0f, 15.0f, 5.0f, 15.0f)[FCommonPanelUtility::CreateSectionHeader(
@@ -334,6 +394,18 @@ FReply SZhengDriftModuleOperationsPanel::OnLoadState() {
     if (!ZhengDriftActor.IsValid()) return FReply::Handled();
     TMap<FString, FTransform> Empty;
     UZhengDriftControlRigProcessor::LoadState(ZhengDriftActor.Get(), Empty);
+    return FReply::Handled();
+}
+
+FReply SZhengDriftModuleOperationsPanel::OnSaveHeadOrigin() {
+    if (!ZhengDriftActor.IsValid()) return FReply::Handled();
+    UZhengDriftControlRigProcessor::SaveHeadOrigin(ZhengDriftActor.Get());
+    return FReply::Handled();
+}
+
+FReply SZhengDriftModuleOperationsPanel::OnLoadHeadOrigin() {
+    if (!ZhengDriftActor.IsValid()) return FReply::Handled();
+    UZhengDriftControlRigProcessor::LoadHeadOrigin(ZhengDriftActor.Get());
     return FReply::Handled();
 }
 

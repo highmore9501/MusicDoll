@@ -40,6 +40,11 @@ struct FBlenderSolver {
     double Weight[MaxDoF] = {};
     double WeightSqrt[MaxDoF] = {};
 
+    // 每个 dof 的"范数权重"（Blender IK_QJacobian::m_d_norm_weight）：
+    // 由 IK_QTask::ComputeJacobian 传入，旋转 dof 为 1.0、平移 dof 为 1e2。
+    // 它被 AngleUpdateNorm() 用来加权角度增量，是收敛判据的口径来源。
+    double NormWeight[MaxDoF] = {};
+
     // SVD(J J^T) 的结果：U(m x m)、V thin(n x m)、奇异值 W(m)
     double SvdU[MaxTasks][MaxTasks] = {};
     double SvdV[MaxDoF][MaxTasks] = {};
@@ -55,10 +60,26 @@ struct FBlenderSolver {
         FMemory::Memzero(&Beta[0], sizeof(Beta));
         FMemory::Memzero(&DTheta[0], sizeof(DTheta));
         FMemory::Memzero(&NormPerDoF[0], sizeof(NormPerDoF));
+        FMemory::Memzero(&NormWeight[0], sizeof(NormWeight));
         for (int32 i = 0; i < NumDoF; ++i) {
             Weight[i] = 1.0;
             WeightSqrt[i] = 1.0;
         }
+    }
+
+    // 整体缩放：对应 Blender IK_QJacobianSolver::Scale(scale, tasks)。
+    // 目标、关节位置、骨长偏移一起按 scale 缩放（旋转不受影响）。
+    // 求解在缩放后的空间里进行，beta 与 clamp 长度因此是无量纲的。
+    static void ScaleProblem(double scale, int32 NumBones, FVector& GoalPos,
+                             TArray<FVector>& Pos,
+                             TArray<FVector>& LocalOffset) {
+        for (int32 i = 0; i < NumBones; ++i) {
+            Pos[i] *= scale;
+        }
+        for (int32 i = 0; i < NumBones - 1; ++i) {
+            LocalOffset[i] *= scale;
+        }
+        GoalPos *= scale;
     }
 
     void SetBetaRow(int32 InRow, const FVector& InV) {
@@ -69,11 +90,17 @@ struct FBlenderSolver {
         }
     }
 
-    void SetJacobianRow(int32 InRow, int32 InDoF, const FVector& InV) {
+    // 对应 Blender IK_QJacobian::SetDerivatives：
+    //   雅可比元素 = v * m_weight_sqrt[dof_id]
+    //   并记录 m_d_norm_weight[dof_id] = norm_weight
+    void SetJacobianRow(int32 InRow, int32 InDoF, const FVector& InV,
+                        double InNormWeight) {
         if (InRow + 2 < MaxTasks && InDoF >= 0 && InDoF < NumDoF) {
-            J[InRow + 0][InDoF] = InV.X;
-            J[InRow + 1][InDoF] = InV.Y;
-            J[InRow + 2][InDoF] = InV.Z;
+            const double WS = WeightSqrt[InDoF];
+            J[InRow + 0][InDoF] = InV.X * WS;
+            J[InRow + 1][InDoF] = InV.Y * WS;
+            J[InRow + 2][InDoF] = InV.Z * WS;
+            NormWeight[InDoF] = InNormWeight;
         }
     }
 
@@ -280,6 +307,19 @@ struct FBlenderSolver {
         }
     }
 
+    // 对应 Blender IK_QJacobian::AngleUpdateNorm()：
+    //   dtheta_abs = fabs(m_d_theta[i] * m_d_norm_weight[i])
+    //   return max(dtheta_abs)
+    // 注意这里乘的是 norm_weight（旋转 dof=1.0，平移 dof=1e2），不是三轴合成长度。
+    // 收敛判据必须用这个口径，才与 Blender 可比。
+    double AngleUpdateNorm() const {
+        double mx = 0.0;
+        for (int32 i = 0; i < NumDoF; ++i) {
+            mx = FMath::Max(FMath::Abs(DTheta[i] * NormWeight[i]), mx);
+        }
+        return mx;
+    }
+
     void Solve() {
         ComputeSVD();
         InvertSDLS();
@@ -292,25 +332,82 @@ struct FBlenderSolver {
 // ================================================================
 
 FRigUnit_BlenderStyleIK_Execute() {
-    // 与兄弟节点 ArcDistributedIK 同风格：把"拉直"与"写回"抽成独立方法，
-    // 主流程按算法分支组织，可读性更好。
+    // 与兄弟节点 ArcDistributedIK 同风格：公用逻辑抽成独立方法，主流程更清晰。
     struct Local {
-        // 把整条链沿 Direction 拉直（就地修改 Rot/Pos；根位置不变）。
-        // 每段骨骼都对齐到同一方向，链变成一条指向目标的直线。
-        static void StretchChainAlongDirection(TArray<FQuat>& Rot,
-                                               TArray<FVector>& Pos,
-                                               const TArray<FVector>& LocalOffset,
-                                               const FVector& Direction) {
-            for (int32 i = 0; i < Rot.Num() - 1; ++i) {
-                const FVector CurSegDir = Rot[i].RotateVector(LocalOffset[i]);
-                if (!CurSegDir.IsNearlyZero()) {
-                    const FQuat Align = FQuat::FindBetweenVectors(
-                        CurSegDir.GetSafeNormal(), Direction);
-                    Rot[i] = (Align * Rot[i]).GetNormalized();
-                }
-                Pos[i + 1] = Pos[i] + Rot[i].RotateVector(LocalOffset[i]);
+        // ================================================================
+        // ---- Pole：求解后的"链平面 -> pole 平面"对齐 ----
+        // 说明：Blender 的 pole 约束是"求解前把链预旋转到 pole 平面 + 求解后再精修"，
+        // 它成立的前提是【求解起点是动画 FK 姿态】——起点末端不在目标上，于是
+        // dir != poledir、约束旋转非零，pole 才能约束零空间。
+        //
+        // 但我们这条链的"输入姿态"与"IK 输出"是同一批骨骼的同一份数据（实测
+        // InitialLocal == CurrentLocal，重建 FK 姿态与当前姿态逐位相同），
+        // 于是每帧起点末端都恰好压在目标上：dir == poledir -> 约束旋转恒为单位
+        // 矩阵 -> pole 在算法内部【结构性失效】。
+        //
+        // 因此这里改用"解算后显式对齐"：
+        //   把整条链绕【链根 -> 末端】轴刚性旋转一个角度，使【链的弯曲平面】
+        //   与【由 链根 / 末端 / pole target 三点确定的 pole 平面】重合。
+        //   * 根与末端都在旋转轴上 -> 末端位置、骨长、相对构型全部不变；
+        //   * 只有链的弯曲平面朝向改变 —— 这正是 pole 的语义。
+        // 该旋转让"链平面"成为 pole target 的确定函数，因此移动 pole 一定能
+        // 改变链的朝向（前提是链确实是弯的：直链没有可定义的弯曲平面）。
+        static void AlignChainPlaneToPole(TArray<FQuat>& Rot, TArray<FVector>& Pos,
+                                          const FVector& PoleTarget) {
+            const int32 N = Rot.Num();
+            if (N < 3 || PoleTarget.IsNearlyZero()) {
+                return;
+            }
+
+            const FVector RootPos = Pos[0];
+            const FVector EndPos = Pos[N - 1];
+            const FVector Dir = (EndPos - RootPos).GetSafeNormal();
+            if (Dir.IsNearlyZero()) {
+                return;
+            }
+
+            // 参考平面（pole 平面）法线：cross(根->末端, 根->pole)
+            const FVector RootToPole = (PoleTarget - RootPos).GetSafeNormal();
+            if (RootToPole.IsNearlyZero()) {
+                return;
+            }
+            FVector RefNormal = FVector::CrossProduct(Dir, RootToPole);
+            if (RefNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
+                // pole 落在链轴上：pole 平面退化，无法定义朝向
+                return;
+            }
+            RefNormal = RefNormal.GetSafeNormal();
+
+            // 链平面法线：由中间关节的平均点决定（链大致共面）
+            FVector MidMean = FVector::ZeroVector;
+            for (int32 i = 1; i < N - 1; ++i) {
+                MidMean += Pos[i];
+            }
+            MidMean /= (float)(N - 2);
+
+            FVector ChainNormal = FVector::CrossProduct(Dir, MidMean - RootPos);
+            if (ChainNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
+                // 链接近完全伸直：没有可定义的弯曲平面，跳过（此时旋转也无意义）
+                return;
+            }
+            ChainNormal = ChainNormal.GetSafeNormal();
+
+            // 绕 Dir 的有符号夹角（两者都垂直于 Dir，故夹角就在垂直于 Dir 的平面内）
+            const double Angle = FMath::Atan2(
+                FVector::DotProduct(FVector::CrossProduct(ChainNormal, RefNormal), Dir),
+                FVector::DotProduct(ChainNormal, RefNormal));
+            if (FMath::IsNearlyZero(Angle, 1e-5)) {
+                return;
+            }
+
+            // 整条链绕链根刚性旋转（末端在轴上 -> 位置不变）
+            const FQuat PoleRot(Dir, Angle);
+            for (int32 i = 0; i < N; ++i) {
+                Pos[i] = RootPos + PoleRot.RotateVector(Pos[i] - RootPos);
+                Rot[i] = (PoleRot * Rot[i]).GetNormalized();
             }
         }
+
 
         // 把解算后的全局姿态写回层级（含 Weight 插值）。
         static void WriteChainToHierarchy(
@@ -385,14 +482,53 @@ FRigUnit_BlenderStyleIK_Execute() {
     LocalOffset.SetNum(NumBones - 1);
     Basis.SetNum(NumBones);
 
-    for (int32 i = 0; i < NumBones; ++i) {
-        InitGlobal[i] = Hierarchy->GetGlobalTransform(CachedBones[i].GetKey());
-        Pos[i] = InitGlobal[i].GetLocation();
-        Rot[i] = InitGlobal[i].GetRotation().GetNormalized();
-        Scale[i] = InitGlobal[i].GetScale3D();
+    // ---- 求解起点 = 重建出的「未被 IK 解算过的 FK 姿态」 ----
+    //
+    // 架构性修正：这是本节点与 Blender 最根本的差别所在。
+    //
+    // Blender 的 IK 约束每帧从【动画姿态】起算（pose channel 由动画曲线重建，
+    // 与 IK 输出无关），求解器只输出 basis 增量。于是：
+    //     dir（根->末端，由起点决定） != poledir（根->目标）
+    //     => mat != polemat => trans != I => pole 项真正约束零空间。
+    //
+    // 我们此前直接读「层级当前姿态」当起点，而本节点每次求值都会把结果写回
+    // 同一批骨骼的 Current，于是同一帧内第二趟求值读到的就是第一趟的输出：
+    //     dir == poledir => mat == polemat => trans == I
+    // 表现为：pole 完全失效、末端永远精确到位、径向角乱跳（三者同一根因）。
+    //
+    // 修正办法（不需要改 rig 结构）：用一份 IK 从不写入的数据重建起点 ——
+    // 骨骼的 InitialLocal（初始局部变换）。本节点只写 Current，从不写 Initial，
+    // 因此 InitialLocal 永远是干净的 rest 相对变换。重建方式：
+    //   * 根骨骼：父级的【实时】姿态 x 根骨骼的 InitialLocal
+    //     （父级是 FK、不受本节点影响；这样链才挂在身体当前的位置/朝向上）
+    //   * 根以下：逐级用 InitialLocal 级联
+    // 得到的链在数学上就是"如果这条链上没有 IK，它此刻会是什么姿态"。
+    {
+        // 根骨骼的父级实时姿态（父级不属于本链，不会被本节点写回）
+        FTransform ParentLiveXfo = FTransform::Identity;
+        if (const FRigBoneElement* RootBone =
+                Hierarchy->Find<FRigBoneElement>(CachedBones[0].GetKey())) {
+            if (RootBone->ParentElement) {
+                ParentLiveXfo = RootBone->ParentElement->GetTransform().Get(
+                    ERigTransformType::CurrentGlobal);
+            }
+        }
+
+        FTransform AccumXfo = ParentLiveXfo;
+        for (int32 i = 0; i < NumBones; ++i) {
+            const FTransform InitLocal =
+                Hierarchy->GetInitialLocalTransform(CachedBones[i].GetKey());
+            AccumXfo = InitLocal * AccumXfo;  // 父 -> 子 级联
+            Pos[i] = AccumXfo.GetLocation();
+            Rot[i] = AccumXfo.GetRotation().GetNormalized();
+            Scale[i] = AccumXfo.GetScale3D();
+        }
     }
 
-    // 长度 = 相邻骨骼真实距离（骨长），求解恢复正常。
+    const FVector GoalPosition = EffectorTransform.GetLocation();
+    const FQuat GoalRotation = EffectorTransform.GetRotation();
+
+    // 长度 = 相邻骨骼真实距离（骨长）
     for (int32 i = 0; i < NumBones - 1; ++i) {
         LocalOffset[i] = Rot[i].Inverse().RotateVector(Pos[i + 1] - Pos[i]);
     }
@@ -405,20 +541,16 @@ FRigUnit_BlenderStyleIK_Execute() {
         Basis[i] = (Rot[i - 1].Inverse() * Rot[i]).GetNormalized();
     }
 
-    const FVector GoalPosition = EffectorTransform.GetLocation();
-    const FQuat GoalRotation = EffectorTransform.GetRotation();
-
-    // ---- 极点（PoleTarget）----
-    // 不在求解前预旋转（预旋转会把链扭成病态构型、导致求解发散或末端
-    // 无法到达 Effector），而是在位置求解（雅可比迭代）完成之后再沿
-    // root->end 轴整体旋转整条链（见下方 "Pole 后旋转"）。根与末端都在
-    // 旋转轴上，位置不变；只有链的弯曲平面朝向改变。
+    // 求解起点姿态：Weight 混合与末端朝向回退都用它，
+    // 保证"Weight=0 不做 IK"的落点就是这条起点链。
+    for (int32 i = 0; i < NumBones; ++i) {
+        InitGlobal[i] = FTransform(Rot[i], Pos[i], Scale[i]);
+    }
 
     // ---- 配置求解器 ----
     BlenderIKImpl::FBlenderSolver Solver;
 
-    // 纯位置任务（已移除 bUseOrientationTask 朝向任务）：
-    // 末端朝向由求解后的 bPropagateToChildren 后处理控制。
+    // 纯位置任务（3 行）；末端朝向由求解后的 bPropagateToChildren 后处理控制。
     const int32 NumTasks = 3;
     const int32 NumDoF = NumBones * 3;
 
@@ -433,55 +565,27 @@ FRigUnit_BlenderStyleIK_Execute() {
     }
     const float ClampLength = TotalLength / (2.0f * NumBones);
 
-    // 收敛阈值 = 用户设定的 Precision：表示"末端离 effector 的距离达标线"，
-    // 迭代结果距离小于它就停止迭代。默认 1e-3。
-    // 注意：直接使用用户精度，不做 min() 裁剪——否则会覆盖用户的精度意图。
-    const double ConvergeThreshold =
-        (Precision > 0.f) ? (double)Precision : 1e-3;
+    // ---- 尺度归一化（对应 Blender IK_QJacobianSolver::Scale）----
+    // Blender 在 Solve() 开头调用 ComputeScale() = 1/Σ MaxExtension（即 1/链总长），
+    // 把目标、关节位置、骨长偏移整体缩放到"链长 ≈ 1"的无量纲空间，解完再缩放回去。
+    // 这决定了 beta 与 clamp 长度之间的相对关系。我们此前直接在世界单位里迭代，
+    // 同一个 1e-3 / 45° / 阻尼在两个不同尺度的空间里不是同一个算法。
+    const double SolveScale = (TotalLength > KINDA_SMALL_NUMBER)
+                                  ? (1.0 / (double)TotalLength)
+                                  : 1.0;
+    FVector SolveGoal = GoalPosition;
+    BlenderIKImpl::FBlenderSolver::ScaleProblem(SolveScale, NumBones, SolveGoal,
+                                                Pos, LocalOffset);
 
-    int32 MaxIter = MaxIterations > 0 ? MaxIterations : 10;
-
-    // 可达性分流：目标在可达边界带内或之外时直接拉直朝目标。
-    // 1) RootToGoal > TotalLength：真正不可达，拉直即最优近似；
-    // 2) RootToGoal ∈ (TotalLength-Precision, TotalLength]：链接近满伸长时
-    //    雅可比在链方向秩不足，SDLS 无法产生径向修正会停滞（链保持伸直但
-    //    方向错误）；提前分流可稳定停在边界带内，残差 < ConvergeThreshold
-    // 该分支自包含：拉直 + 末端旋转 + 写回后直接结束，不再进入迭代。
-    const float RootToGoal = FVector::Dist(Pos[0], GoalPosition);
-    const bool bHandleTooFar = (RootToGoal > TotalLength - ConvergeThreshold);
-
-    if (bHandleTooFar) {
-        const FVector Dir = (GoalPosition - Pos[0]).GetSafeNormal();
-        if (!Dir.IsNearlyZero()) {
-            Local::StretchChainAlongDirection(Rot, Pos, LocalOffset, Dir);
-        }
-        // 拉直后链共线、链平面退化，pole 后旋转天然被跳过；
-        // 末端关节旋转仍按 bPropagateToChildren 语义生效。
-        if (bPropagateToChildren) {
-            Rot[NumBones - 1] = GoalRotation;
-        }
-        Local::WriteChainToHierarchy(Hierarchy, CachedBones, Pos, Rot, Scale,
-                                     InitGlobal, Weight, bPropagateToChildren);
-        return;
-    }
+    // 迭代上限。<=0 时给兜底值；非可达构型下 Blender 没有"提前结束"的分支，
+    // 完全靠迭代把角度范数压下去。上限太小会让输出停在"还没稳定"的中间态，
+    // 从而依赖起始姿态 = 产生抖动。
+    int32 MaxIter = MaxIterations > 0 ? MaxIterations : 100;
 
     // ---- 迭代求解 ----
-    double FinalNorm = 1e30;
-    double LastNorm = 1e30;  // 上一轮残差（保留声明，兼容后续扩展）
-
-    // 目标与链末端几乎重合：位置已满足，无需求解。
-    // 直接跳过迭代并返回（保持初始姿态），防止朝向任务/极点/数值误差导致链被扭曲。
-    // 注意：走到这里必然 !bHandleTooFar（太远分支已提前返回），
-    // 因此该提前返回只作用于雅可比路径，不会丢弃拉直结果。
-    const float InitDist = FVector::Dist(GoalPosition, Pos[NumBones - 1]);
-    const FVector InitEndPos = Pos[NumBones - 1];  // 解算前末端位置（与 InitDist 对应，诊断用）
-    if (InitDist < ConvergeThreshold) {
-        return;
-    }
-
-    int32 NumIterations = 0;  // 实际执行的迭代次数（诊断用）
+    double FinalAngleNorm = 1e30;  // 最后一次迭代的角度增量范数（收敛判据）
+    double PrevAngleNorm = 1e30;   // 上一次的角度范数（停滞检测用）
     for (int32 Iter = 0; Iter < MaxIter; ++Iter) {
-        NumIterations = Iter + 1;
         // NaN 防护：一旦求解产生 NaN，中止并跳过写回，避免污染层级
         bool bHasNaN = false;
         for (int32 i = 0; i < NumBones; ++i) {
@@ -497,7 +601,7 @@ FRigUnit_BlenderStyleIK_Execute() {
         const FVector EndPos = Pos[NumBones - 1];
 
         // ---- 位置任务残差（行 0-2）----
-        FVector DPos = GoalPosition - EndPos;
+        FVector DPos = SolveGoal - EndPos;
         const float DPosLen = DPos.Size();
         if (DPosLen > ClampLength && ClampLength > KINDA_SMALL_NUMBER) {
             DPos = DPos / DPosLen * ClampLength;
@@ -505,8 +609,19 @@ FRigUnit_BlenderStyleIK_Execute() {
         Solver.SetBetaRow(0, DPos);
 
         // ---- 构建雅可比 ----
-        // 位置任务：J 行 = p × axis（p = 骨骼起点到末端，axis =
-        // 骨骼全局旋转轴） 朝向任务：J 行 = axis
+        // 位置任务：J 行 = p × axis，axis 取骨骼全局旋转轴的世界方向。
+        //
+        // 【坐标系一致性说明】本节点施加角度增量用的是 Basis 右乘：
+        //     Basis[i] = Basis[i] * M
+        // 它代数上等价于世界旋转 R <- exp(ω_world) * R：
+        //     R*M = R*M*R^-1*R = exp(R ω R^-1) * R
+        // 因此雅可比取【世界列】P × (Rot[i]*e_j) 才是与施加方式一致的写法。
+        // （已用整链有限差分逐骨骼逐轴验证：世界列与 FD 吻合到 1e-10，
+        //   而 Rot^-1(P×(Rot e)) 或 (Rot^-1 P)×e 都不吻合。）
+        // 零空间性质保持：绕骨骼自身轴的列恒为 0。
+        //
+        // norm_weight 与 Blender IK_QTask.cpp:56-70 一致：旋转 dof = 1.0
+        // （平移 dof 才会用 1e2，本节点没有平移 dof）。
         for (int32 i = 0; i < NumBones; ++i) {
             const FVector P = Pos[i] - EndPos;
             const FVector Axis0 = Rot[i].RotateVector(FVector(1, 0, 0));
@@ -514,13 +629,17 @@ FRigUnit_BlenderStyleIK_Execute() {
             const FVector Axis2 = Rot[i].RotateVector(FVector(0, 0, 1));
 
             const int32 BaseDoF = i * 3;
+            constexpr double RotNormWeight = 1.0;
 
             Solver.SetJacobianRow(0, BaseDoF + 0,
-                                  FVector::CrossProduct(P, Axis0));
+                                  FVector::CrossProduct(P, Axis0),
+                                  RotNormWeight);
             Solver.SetJacobianRow(0, BaseDoF + 1,
-                                  FVector::CrossProduct(P, Axis1));
+                                  FVector::CrossProduct(P, Axis1),
+                                  RotNormWeight);
             Solver.SetJacobianRow(0, BaseDoF + 2,
-                                  FVector::CrossProduct(P, Axis2));
+                                  FVector::CrossProduct(P, Axis2),
+                                  RotNormWeight);
         }
 
         // ---- SDLS 伪逆求解 ----
@@ -536,7 +655,6 @@ FRigUnit_BlenderStyleIK_Execute() {
         // root->UpdateTransform 从根级联重算（下游自动跟随）。这里逐根
         // 右乘 Basis，再统一从根级联出全局旋转 Rot，最后做位置级联。
         // 同时记录角度更新范数（Blender 的 AngleUpdateNorm）用于收敛判断。
-        double AngleNorm = 0.0;
         for (int32 i = 0; i < NumBones; ++i) {
             const int32 BaseDoF = i * 3;
             const FVector Dq((float)Solver.DTheta[BaseDoF + 0],
@@ -544,7 +662,6 @@ FRigUnit_BlenderStyleIK_Execute() {
                              (float)Solver.DTheta[BaseDoF + 2]);
 
             const float DqSize = Dq.Size();
-            AngleNorm = FMath::Max(AngleNorm, (double)DqSize);
             if (DqSize > 1e-8f) {
                 const FQuat M(Dq / DqSize, DqSize);
                 Basis[i] = (Basis[i] * M).GetNormalized();
@@ -563,97 +680,45 @@ FRigUnit_BlenderStyleIK_Execute() {
         }
 
         // ---- 收敛判断 ----
-        FinalNorm = FVector::Dist(GoalPosition, Pos[NumBones - 1]);
+        // Blender IK_QJacobianSolver.cpp:351-359 只测角度范数：
+        //     norm = max(m_jacobian.AngleUpdateNorm(), norm);
+        //     if (norm < 1e-3 && iterations > 10) { solved = true; break; }
+        // 这里同样只用角度范数（DTheta * NormWeight 的最大值，见
+        // FBlenderSolver::AngleUpdateNorm），不要求"位置进精度"——位置判据对
+        // 目标够不到的链永远不成立，会让每次求值都跑满迭代上限、停在半途，
+        // 落点重新变成起始姿态的函数。
+        FinalAngleNorm = Solver.AngleUpdateNorm();
 
-        // 位置残差到位：收敛。
-        if (FinalNorm < ConvergeThreshold && Iter > 10) {
+        // 1) Blender 式收敛：角度增量足够小即认为链已稳定。
+        if (Iter > 10 && FinalAngleNorm < 1e-3) {
             break;
         }
 
-        // Blender 式收敛：角度更新足够小即认为链已稳定，继续迭代无益。
-        // 关键：不再用"位置残差增加"检测——可达目标在近奇异构型时残差
-        // 会有小幅振荡（如 0.148→0.164），旧检测连续 4 次就误判为发散，
-        // 在离目标 0.15 处错误终止迭代（用户报告的 bug）。角度更新小
-        // 即认为达标；不可达场景已由上方"太远分流"处理，不会走到这里。
-        if (Iter > 10 && AngleNorm < 1e-3) {
+        // 2) 停滞检测：角度增量不再下降时，继续迭代只是空转。
+        // 目标够不到（链已伸直）时雅可比近奇异，角度会在小范围里来回摆，
+        // Blender 那条判据可能压不到 1e-3；此时跑到迭代上限只会让输出停在
+        // "半途"状态，落点再次变成起始姿态的函数。角度增量不再下降即说明
+        // 已到极限位置，停下与继续迭代的结果一致。
+        const bool bAngleStalled =
+            (PrevAngleNorm < 1e30) && (FinalAngleNorm > PrevAngleNorm * 0.99) &&
+            (FinalAngleNorm < 5e-2);
+        PrevAngleNorm = FinalAngleNorm;
+        if (Iter > 10 && bAngleStalled) {
             break;
         }
     }
 
-    // ---- Pole 后旋转（把链平面转到参考平面）----
-    // 位置求解（雅可比迭代）已完成：根固定、末端精确到位。
-    // 此时沿 root->end 轴整体旋转整条链，使【链平面】与由【根骨骼、末端、
-    // pole target】三点确定的参考平面重合。根与末端都在旋转轴上 ->
-    // 位置不变；只有链的弯曲平面朝向改变。这符合"pole 只影响链朝向、
-    // 不改变末端位置"的语义。
-    //
-    // 参考平面法线（ArcDistributedIK::CalculateReferencePlaneNormal）：
-    //   RootToEnd   = normalize(End - Root)
-    //   RootToPole  = normalize(Pole - Root)
-    //   PlaneNormal = normalize(cross(RootToEnd, RootToPole))
-    //
-    // 链平面法线：迭代后简单手指链大致共面，取中间关节的平均点作为
-    // 平面内一点：
-    //   MidPos      = average(Pos[1..N-2])
-    //   ChainNormal = normalize(cross(RootToEnd, MidPos - Root))
-    //
-    // 两个平面都包含 root->end 轴，因此只需绕 Dir 旋转一个角度即可重合：
-    //   Angle = atan2(cross(ChainNormal, PlaneNormal)·Dir,
-    //                 ChainNormal·PlaneNormal)
-    //
-    // 【关键】整条链统一左乘同一个旋转（绕 Dir），因此每根骨骼的局部
-    // Basis（相对父）不变：B_i = G_{i-1}^{-1} * G_i，整体左乘后相互抵消。
-    // 所以只需更新全局 Rot 与 Pos，无需动 Basis。
-    if (!PoleTarget.IsNearlyZero()) {
-        const FVector RootPos = Pos[0];
-        const FVector EndPos = Pos[NumBones - 1];
-        const FVector Dir = (EndPos - RootPos).GetSafeNormal();
+    // ---- 从缩放空间还原（Blender: Scale(1/scale, tasks)）----
+    // 求解全程在"链长≈1"的空间里进行，这里把关节位置与骨长偏移还原回世界尺度。
+    // 旋转不受缩放影响，无需还原。
+    BlenderIKImpl::FBlenderSolver::ScaleProblem(1.0 / SolveScale, NumBones,
+                                                SolveGoal, Pos, LocalOffset);
 
-        if (!Dir.IsNearlyZero()) {
-            // 参考平面法线（ArcDistributedIK 同款退化回退）
-            const FVector RootToPole = (PoleTarget - RootPos).GetSafeNormal();
-            FVector PlaneNormal = FVector::CrossProduct(Dir, RootToPole);
-            if (PlaneNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
-                PlaneNormal = FVector::CrossProduct(Dir, FVector::UpVector);
-                if (PlaneNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
-                    PlaneNormal =
-                        FVector::CrossProduct(Dir, FVector::ForwardVector);
-                }
-            }
-            PlaneNormal = PlaneNormal.GetSafeNormal();
-
-            // 链平面法线：由中间关节的平均点决定（链大致共面）
-            FVector ChainNormal = FVector::ZeroVector;
-            if (NumBones >= 3) {
-                FVector MidPos = FVector::ZeroVector;
-                for (int32 i = 1; i < NumBones - 1; ++i) {
-                    MidPos += Pos[i];
-                }
-                MidPos /= (float)(NumBones - 2);
-                ChainNormal = FVector::CrossProduct(Dir, MidPos - RootPos);
-            }
-
-            if (!ChainNormal.IsNearlyZero(KINDA_SMALL_NUMBER)) {
-                ChainNormal = ChainNormal.GetSafeNormal();
-
-                // 绕 Dir 把链平面法线转到参考平面法线的有符号角度
-                const double Angle = FMath::Atan2(
-                    FVector::DotProduct(
-                        FVector::CrossProduct(ChainNormal, PlaneNormal), Dir),
-                    FVector::DotProduct(ChainNormal, PlaneNormal));
-
-                if (!FMath::IsNearlyZero(Angle, 1e-5)) {
-                    const FQuat PoleRot(Dir, Angle);
-
-                    for (int32 i = 0; i < NumBones; ++i) {
-                        Pos[i] =
-                            RootPos + PoleRot.RotateVector(Pos[i] - RootPos);
-                        Rot[i] = (PoleRot * Rot[i]).GetNormalized();
-                    }
-                }
-            }
-        }
-    }
+    // ---- Pole：求解后的显式对齐（替代 Blender 的"后精修"）----
+    // Blender 的 pole 约束在我们的数据源下恒为单位矩阵（dir == poledir），
+    // 因此改为在解算结束后直接把整条链的弯曲平面对齐到 pole 平面。
+    // 根与末端在旋转轴上 -> 末端位置/骨长/相对构型都不变，只改链的朝向。
+    Local::AlignChainPlaneToPole(Rot, Pos, PoleTarget);
 
     // ---- 末端关节旋转 ----
     // bPropagateToChildren 语义（用户要求）：
@@ -665,31 +730,6 @@ FRigUnit_BlenderStyleIK_Execute() {
     //            在整个迭代中保持初始值；Pole 后旋转整体左乘也不改 Basis。
     if (bPropagateToChildren) {
         Rot[NumBones - 1] = GoalRotation;
-    }
-
-    // ---- 诊断日志（临时排查用）----
-    // 当解算结束后，末端（Pos[NumBones-1]，即倒数第二根与末根骨骼之间的关节）
-    // 到 effector 的距离仍超过解算前距离的 10 倍时，说明求解异常（停滞/发散），
-    // 输出当前现场信息，便于定位问题。纯排查用途，不影响求解与写回结果。
-    // 注意：走到这里必为雅可比路径（拉直分流已提前返回）。
-    {
-        const FVector FinalEndPos = Pos[NumBones - 1];
-        const double FinalDist = (double)FVector::Dist(GoalPosition, FinalEndPos);
-        if (FinalDist > 10.0 * (double)InitDist) {
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK][诊断] 末端到 effector 距离异常放大: "
-                        "解算后 %.4f > 10x 解算前 %.4f | 链总长 %.4f | "
-                        "雅可比迭代(%d次)"),
-                   FinalDist, (double)InitDist, TotalLength, NumIterations);
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK][诊断]   解算前末端 %s | 最终末端 %s | effector %s"),
-                   *InitEndPos.ToString(), *FinalEndPos.ToString(),
-                   *GoalPosition.ToString());
-            UE_LOG(LogControlRig, Warning,
-                   TEXT("[BlenderStyleIK][诊断]   根位置 %s | NumBones %d | "
-                        "Precision %.4f | MaxIter %d"),
-                   *Pos[0].ToString(), NumBones, (double)ConvergeThreshold, MaxIter);
-        }
     }
 
     // ---- 写回层级 ----
